@@ -9,7 +9,7 @@ import { Plus } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface InputPanelProps {
-  onGenerateBracket: (participants: string[], seedType: "random" | "ordered" | "as-entered") => void;
+  onGenerateBracket: (participants: string[], seedType: "random" | "ordered") => void;
 }
 
 const InputPanel = ({ onGenerateBracket }: InputPanelProps) => {
@@ -23,7 +23,7 @@ const InputPanel = ({ onGenerateBracket }: InputPanelProps) => {
     individual: ["", ""],
     file: [],
   });
-  const [seedType, setSeedType] = useState<"random" | "ordered" | "as-entered">("random");
+  const [seedType, setSeedType] = useState<"random" | "ordered">("random");
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -212,11 +212,7 @@ const InputPanel = ({ onGenerateBracket }: InputPanelProps) => {
         <Label className="block text-sm font-medium text-slate-700 mb-2">
           Seeding Options
         </Label>
-        <RadioGroup 
-          value={seedType} 
-          onValueChange={(value: "random" | "ordered" | "as-entered") => setSeedType(value)} 
-          className="mt-2 flex flex-wrap gap-2"
-        >
+        <RadioGroup value={seedType} onValueChange={(value: "random" | "ordered") => setSeedType(value)} className="mt-2 flex">
           <div className="flex items-center">
             <RadioGroupItem id="random" value="random" />
             <Label htmlFor="random" className="ml-2 text-sm text-slate-700">Random Seeding</Label>
@@ -224,10 +220,6 @@ const InputPanel = ({ onGenerateBracket }: InputPanelProps) => {
           <div className="flex items-center ml-4">
             <RadioGroupItem id="ordered" value="ordered" />
             <Label htmlFor="ordered" className="ml-2 text-sm text-slate-700">Use Order as Seeding</Label>
-          </div>
-          <div className="flex items-center ml-4">
-            <RadioGroupItem id="as-entered" value="as-entered" />
-            <Label htmlFor="as-entered" className="ml-2 text-sm text-slate-700">Use Order as Entered</Label>
           </div>
         </RadioGroup>
       </div>
