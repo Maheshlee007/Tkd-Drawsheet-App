@@ -225,23 +225,27 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
       </div>
 
       <div className="overflow-x-auto" ref={bracketContainerRef}>
-        <div className="bracket-display min-w-[750px] relative pb-8" style={{ minHeight: bracketData.length > 2 ? 400 : 200 }}>
+        <div className="bracket-display min-w-[900px] relative pb-8" style={{ minHeight: bracketData.length > 2 ? 500 : 250, minWidth: bracketData.length * 240 }}>
           {/* Render rounds */}
           {(enableAnimation ? animatedBracket : bracketData)?.map((round, roundIndex) => (
             <div
               key={`round-${roundIndex}`}
               className="bracket-round flex flex-col justify-around absolute"
               style={{
-                left: `${roundIndex * 208}px`,
+                left: `${roundIndex * 230}px`,
                 top: 0,
                 bottom: 0,
-                width: "12rem",
+                width: "14rem",
               }}
             >
               {round.map((match, matchIndex) => (
                 <div
                   key={`match-${match.id}`}
-                  className="bracket-match p-3 border border-slate-200 rounded-md bg-white shadow-sm relative mb-4"
+                  className={`bracket-match p-3 border rounded-md bg-white shadow-sm relative mb-6 ${
+                    roundIndex === 0 ? "border-blue-500 bg-blue-50 bg-opacity-40" : 
+                    roundIndex === 1 ? "border-red-500 bg-red-50 bg-opacity-60" : 
+                    "border-slate-200"
+                  }`}
                   data-match-id={match.id}
                 >
                   {/* First participant */}
