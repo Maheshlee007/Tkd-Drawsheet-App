@@ -634,7 +634,7 @@ function shuffleArray<T>(array: T[]): T[] {
  */
 export function calculateBracketConnectors(
   bracketData: BracketMatch[][],
-  containerElement: HTMLElement
+  containerElement: HTMLDivElement
 ): Array<{ left: number; top: number; width?: number; height?: number; type: string }> {
   const connectors: Array<{ left: number; top: number; width?: number; height?: number; type: string }> = [];
   
