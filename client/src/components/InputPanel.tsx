@@ -140,6 +140,13 @@ const InputPanel = ({ onGenerateBracket }: InputPanelProps) => {
             value={participants.bulk}
             onChange={(e) => setParticipants(prev => ({ ...prev, bulk: e.target.value }))}
           />
+          {participants.bulk.trim() && (
+            <div className="mt-2 text-sm text-slate-600">
+              Participants count: <span className="font-medium">
+                {participants.bulk.split('\n').filter(line => line.trim().length > 0).length}
+              </span>
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="individual" className="mb-6">
