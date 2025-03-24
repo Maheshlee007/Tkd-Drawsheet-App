@@ -39,8 +39,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Removed the check for even number of participants
       // Our new bracket generation properly handles odd numbers with byes
       
+      // Add logging for debugging
+      console.log(`Generating bracket for ${participants.length} participants with seedType: ${seedType}`);
+      
       // Generate bracket
       const bracketData = createBracket(participants, seedType);
+      
+      // Log the first round to see if byes are distributed correctly
+      if (bracketData.length > 0) {
+        console.log('First round matches:', JSON.stringify(bracketData[0].map(m => ({ 
+          p1: m.participants[0], 
+          p2: m.participants[1]
+        }))));
+      }
       
       // Store the tournament in memory
       const tournament = await storage.createTournament({
