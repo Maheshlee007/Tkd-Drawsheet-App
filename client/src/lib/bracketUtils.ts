@@ -26,7 +26,7 @@ export function createBracket(
   const numByes = nextPowerOfTwo - participantCount;
   
   // Create a new array with participants and byes properly distributed
-  const seededWithByes = distributeByesInBracket(seededParticipants, numByes);
+  const pairs = createPairsWithByes(seededParticipants, numByes);
   
   // Calculate the number of rounds needed
   const numRounds = Math.log2(nextPowerOfTwo);
@@ -44,14 +44,15 @@ export function createBracket(
     const nextMatchId = i % 2 === 0 ? `match-r2-${Math.floor(i / 2) + 1}` : `match-r2-${Math.floor(i / 2) + 1}`;
     
     // Get participants for this match from the seeded array with byes
-    const participant1 = seededWithByes[i * 2];
-    const participant2 = seededWithByes[i * 2 + 1];
+    const pair = pairs[i];
+    const participant1 = pair[0];
+    const participant2 = pair[1];
     
-    // If one participant is null (bye), the other advances automatically
+    // If one participant is marked with (bye), the other advances automatically
     let winner = null;
-    if (participant1 && !participant2) {
+    if (participant1 && participant2 && participant2.endsWith("(bye)")) {
       winner = participant1;
-    } else if (!participant1 && participant2) {
+    } else if (participant1 && participant2 && participant1.endsWith("(bye)")) {
       winner = participant2;
     }
     
@@ -104,123 +105,157 @@ export function createBracket(
 }
 
 /**
- * Distributes byes in the bracket according to proper seeding rules
- * @param participants The list of participants
+ * Creates pairs of participants with byes correctly distributed
+ * @param participants List of participants
  * @param numByes Number of byes needed
- * @returns Array with participants and nulls (byes) properly distributed
+ * @returns Array of pairs, each containing two participants or byes
  */
-function distributeByesInBracket(
+function createPairsWithByes(
   participants: string[],
   numByes: number
-): (string | null)[] {
+): [string, string][] {
   const n = participants.length;
   const totalPositions = n + numByes;
-  const result: (string | null)[] = Array(totalPositions).fill(null);
+  const numPairs = totalPositions / 2;
+  const result: [string, string][] = [];
   
   // Handle the case where we have no byes
   if (numByes === 0) {
-    return participants;
+    for (let i = 0; i < n/2; i++) {
+      result.push([participants[i], participants[n-1-i]]);
+    }
+    return result;
   }
   
-  // Determine upper and lower half distribution
-  let upperHalfSize, lowerHalfSize;
-  let upperByes, lowerByes;
+  // Create a copy of participants for manipulation
+  const participantsCopy = [...participants];
+  
+  // Create total bracket positions
+  const positions: (string | null)[] = Array(totalPositions).fill(null);
+  
+  // Determine bye distribution for odd/even participant counts
+  const byePositions: number[] = [];
   
   if (n % 2 === 0) { // Even number of participants
-    upperHalfSize = n / 2;
-    lowerHalfSize = n / 2;
-    upperByes = numByes / 2;
-    lowerByes = numByes / 2;
+    // For even count, distribute byes equally in top and bottom half
+    distributeByesForEvenCount(byePositions, numByes, totalPositions);
   } else { // Odd number of participants
-    upperHalfSize = Math.ceil(n / 2);
-    lowerHalfSize = Math.floor(n / 2);
-    upperByes = Math.ceil(numByes / 2);
-    lowerByes = Math.floor(numByes / 2);
+    // For odd count, upper half gets ceiling, lower half gets floor
+    distributeByesForOddCount(byePositions, numByes, totalPositions);
   }
   
-  // Arrays to track assigned positions for upper and lower halves
-  const upperHalfPositions: number[] = [];
-  const lowerHalfPositions: number[] = [];
+  // Mark bye positions
+  byePositions.forEach(pos => {
+    positions[pos] = "(bye)";
+  });
   
-  // Create arrays of participants for upper and lower half
-  const upperHalf = participants.slice(0, upperHalfSize);
-  const lowerHalf = participants.slice(upperHalfSize);
-  
-  // Assign positions with byes for upper half
-  assignByePositions(upperHalfPositions, upperByes, 0, totalPositions / 2 - 1);
-  
-  // Assign positions with byes for lower half
-  assignByePositions(lowerHalfPositions, lowerByes, totalPositions / 2, totalPositions - 1);
-  
-  // Put upper half participants into their positions
-  const upperPositionsWithNoByes = getPositionsWithNoByes(0, totalPositions / 2 - 1, upperHalfPositions);
-  for (let i = 0; i < upperHalf.length; i++) {
-    result[upperPositionsWithNoByes[i]] = upperHalf[i];
+  // Fill in participants in non-bye positions
+  let participantIndex = 0;
+  for (let i = 0; i < totalPositions; i++) {
+    if (positions[i] === null) {
+      positions[i] = participantsCopy[participantIndex++];
+    }
   }
   
-  // Put lower half participants into their positions
-  const lowerPositionsWithNoByes = getPositionsWithNoByes(totalPositions / 2, totalPositions - 1, lowerHalfPositions);
-  for (let i = 0; i < lowerHalf.length; i++) {
-    result[lowerPositionsWithNoByes[i]] = lowerHalf[i];
+  // Create pairs
+  for (let i = 0; i < numPairs; i++) {
+    const pos1 = i;
+    const pos2 = totalPositions - 1 - i;
+    
+    let p1 = positions[pos1];
+    let p2 = positions[pos2];
+    
+    // If a position is marked as bye, add it as NAME(bye)
+    if (p1 === "(bye)" && p2 !== "(bye)" && p2 !== null) {
+      p1 = p2 + "(bye)";
+      p2 = "";
+    } else if (p2 === "(bye)" && p1 !== "(bye)" && p1 !== null) {
+      p2 = p1 + "(bye)";
+      p1 = "";
+    }
+    
+    // Add the pair
+    result.push([p1 || "", p2 || ""]);
   }
   
   return result;
 }
 
 /**
- * Assigns bye positions according to seeding rules
- * @param positions Array to store positions with byes
- * @param numByes Number of byes to assign
- * @param start Starting position index
- * @param end Ending position index
+ * Distributes byes for even number of participants
+ * Byes are distributed equally in top and bottom halves
  */
-function assignByePositions(
-  positions: number[],
+function distributeByesForEvenCount(
+  byePositions: number[],
+  numByes: number,
+  totalPositions: number
+): void {
+  const halfByes = numByes / 2;
+  const halfSize = totalPositions / 2;
+  
+  // Upper half: alternate top-down
+  distributeByesInHalf(byePositions, halfByes, 0, halfSize - 1);
+  
+  // Lower half: alternate bottom-up
+  distributeByesInHalf(byePositions, halfByes, halfSize, totalPositions - 1);
+}
+
+/**
+ * Distributes byes for odd number of participants
+ * Upper half gets ceiling(numByes/2), lower half gets floor(numByes/2)
+ */
+function distributeByesForOddCount(
+  byePositions: number[],
+  numByes: number,
+  totalPositions: number
+): void {
+  const upperByes = Math.ceil(numByes / 2);
+  const lowerByes = Math.floor(numByes / 2);
+  const halfSize = totalPositions / 2;
+  
+  // Upper half: alternate top-down
+  distributeByesInHalf(byePositions, upperByes, 0, halfSize - 1);
+  
+  // Lower half: alternate bottom-up
+  distributeByesInHalf(byePositions, lowerByes, halfSize, totalPositions - 1);
+}
+
+/**
+ * Distributes byes within a half of the bracket
+ */
+function distributeByesInHalf(
+  byePositions: number[],
   numByes: number,
   start: number,
   end: number
 ): void {
   if (numByes <= 0) return;
   
-  // Alternating pattern from top and bottom seeds
-  let byesAssigned = 0;
-  let topIndex = 0;
-  let bottomIndex = end - start;
+  // For upper half (start == 0): start from last seed, then first seed
+  // For lower half: start from first seed, then last seed
+  const isUpperHalf = start === 0;
   
-  while (byesAssigned < numByes) {
-    // Add position from bottom seed
-    if (byesAssigned % 2 === 0) {
-      positions.push(end - bottomIndex);
-      bottomIndex--;
-    } 
-    // Add position from top seed
-    else {
-      positions.push(start + topIndex);
-      topIndex++;
+  // Array of positions in order of receiving byes
+  const positionOrder: number[] = [];
+  
+  if (isUpperHalf) {
+    // Upper half: start with last seed, then first seed
+    for (let i = 0; i < (end - start + 1) / 2; i++) {
+      positionOrder.push(end - i); // Last seed first
+      positionOrder.push(start + i); // Then first seed
     }
-    byesAssigned++;
-  }
-}
-
-/**
- * Gets positions that don't have byes assigned
- * @param start Starting position index
- * @param end Ending position index
- * @param byePositions Array of positions with byes
- * @returns Array of positions without byes
- */
-function getPositionsWithNoByes(
-  start: number,
-  end: number,
-  byePositions: number[]
-): number[] {
-  const result: number[] = [];
-  for (let i = start; i <= end; i++) {
-    if (!byePositions.includes(i)) {
-      result.push(i);
+  } else {
+    // Lower half: start with first seed, then last seed
+    for (let i = 0; i < (end - start + 1) / 2; i++) {
+      positionOrder.push(start + i); // First seed first
+      positionOrder.push(end - i); // Then last seed
     }
   }
-  return result;
+  
+  // Assign bye positions according to the order
+  for (let i = 0; i < numByes; i++) {
+    byePositions.push(positionOrder[i]);
+  }
 }
 
 /**
