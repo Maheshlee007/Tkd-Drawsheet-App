@@ -3,25 +3,19 @@ import { BracketMatch } from "@shared/schema";
 /**
  * Creates a single elimination tournament bracket with proper bye distribution
  * @param participants List of participants
- * @param seedType Method for seeding (random, ordered, or as-entered)
+ * @param seedType Method for seeding (random or ordered)
  * @returns An array of rounds, each containing matches
  */
 export function createBracket(
   participants: string[],
-  seedType: "random" | "ordered" | "as-entered"
+  seedType: "random" | "ordered"
 ): BracketMatch[][] {
   // Make a copy of participants array
   let seededParticipants = [...participants];
 
-  // Apply seeding based on the selected option
+  // Apply random seeding if specified
   if (seedType === "random") {
-    // Randomize the order
     seededParticipants = shuffleArray(seededParticipants);
-  } else if (seedType === "as-entered") {
-    // Use the original order as entered by the user
-    // No need to modify seededParticipants as it's already in the original order
-  } else {
-    // "ordered" - already handled by default, participants are ordered by seed
   }
   
   // Hardcoded brackets for specific participant counts
@@ -640,7 +634,7 @@ function shuffleArray<T>(array: T[]): T[] {
  */
 export function calculateBracketConnectors(
   bracketData: BracketMatch[][],
-  containerElement: HTMLDivElement
+  containerElement: HTMLElement
 ): Array<{ left: number; top: number; width?: number; height?: number; type: string }> {
   const connectors: Array<{ left: number; top: number; width?: number; height?: number; type: string }> = [];
   

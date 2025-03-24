@@ -1,10 +1,8 @@
-import React, { useState } from "react";
+import React from "react";
 import InputPanel from "@/components/InputPanel";
 import BracketDisplay from "@/components/BracketDisplay";
 import ExportModal from "@/components/ExportModal";
 import { useTournament } from "@/hooks/useTournament";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 
 const Home: React.FC = () => {
   const {
@@ -18,8 +16,6 @@ const Home: React.FC = () => {
     exportAsPDF,
     copyToClipboard,
   } = useTournament();
-  
-  const [enableAnimation, setEnableAnimation] = useState(true);
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
@@ -32,43 +28,12 @@ const Home: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Input Panel */}
         <div className="lg:col-span-1">
-          <InputPanel 
-            onGenerateBracket={(participants, seedType) => 
-              generateBracket(participants, seedType as "random" | "ordered" | "as-entered")
-            } />
-          
-          {/* Animation Toggle */}
-          {bracketData && (
-            <div className="mt-6 p-4 rounded-lg border bg-white shadow-sm">
-              <div className="flex items-center space-x-2 justify-between">
-                <div>
-                  <h3 className="text-lg font-medium">Tournament Animation</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Watch how matches progress through the tournament
-                  </p>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Switch 
-                    id="animation-mode" 
-                    checked={enableAnimation}
-                    onCheckedChange={setEnableAnimation}
-                  />
-                  <Label htmlFor="animation-mode">
-                    {enableAnimation ? "Enabled" : "Disabled"}
-                  </Label>
-                </div>
-              </div>
-            </div>
-          )}
+          <InputPanel onGenerateBracket={generateBracket} />
         </div>
 
         {/* Bracket Display */}
         <div className="lg:col-span-2">
-          <BracketDisplay 
-            bracketData={bracketData} 
-            onExport={openExportModal} 
-            enableAnimation={enableAnimation}
-          />
+          <BracketDisplay bracketData={bracketData} onExport={openExportModal} />
         </div>
       </div>
 

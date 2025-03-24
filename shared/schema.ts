@@ -47,7 +47,7 @@ export interface BracketMatch {
 // Schema for validating tournament creation request
 export const createTournamentSchema = z.object({
   participants: z.array(z.string()).min(2),
-  seedType: z.enum(["random", "ordered", "as-entered"]),
+  seedType: z.enum(["random", "ordered"]),
 });
 
 export type CreateTournamentRequest = z.infer<typeof createTournamentSchema>;
