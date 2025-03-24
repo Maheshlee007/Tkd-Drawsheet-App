@@ -193,11 +193,21 @@ function distributeByesForEvenCount(
   const halfByes = numByes / 2;
   const halfSize = totalPositions / 2;
   
-  // Upper half: alternate top-down
-  distributeByesInHalf(byePositions, halfByes, 0, halfSize - 1);
-  
-  // Lower half: alternate bottom-up
-  distributeByesInHalf(byePositions, halfByes, halfSize, totalPositions - 1);
+  // For tournaments with less than 8 participants
+  if (totalPositions <= 8) {
+    // Upper half: first seed, then last seed
+    distributeByesInHalfForSmallEven(byePositions, halfByes, 0, halfSize - 1, true);
+    
+    // Lower half: last seed, then first seed
+    distributeByesInHalfForSmallEven(byePositions, halfByes, halfSize, totalPositions - 1, false);
+  } else {
+    // For larger tournaments: different pattern
+    // Upper half: last seed, top first, last, top second...
+    distributeByesInHalfForLargeEven(byePositions, halfByes, 0, halfSize - 1, true);
+    
+    // Lower half: first seed, last, top LH second...
+    distributeByesInHalfForLargeEven(byePositions, halfByes, halfSize, totalPositions - 1, false);
+  }
 }
 
 /**
@@ -213,42 +223,128 @@ function distributeByesForOddCount(
   const lowerByes = Math.floor(numByes / 2);
   const halfSize = totalPositions / 2;
   
-  // Upper half: alternate top-down
-  distributeByesInHalf(byePositions, upperByes, 0, halfSize - 1);
+  // For odd tournaments, the pattern is different from even ones
+  // Upper half: last seed, first seed, second-to-last...
+  distributeByesInHalfForOdd(byePositions, upperByes, 0, halfSize - 1, true);
   
-  // Lower half: alternate bottom-up
-  distributeByesInHalf(byePositions, lowerByes, halfSize, totalPositions - 1);
+  // Lower half: first seed, last seed, second seed...
+  distributeByesInHalfForOdd(byePositions, lowerByes, halfSize, totalPositions - 1, false);
 }
 
 /**
- * Distributes byes within a half of the bracket
+ * Distributes byes within a half of the bracket for small even tournaments (<=8)
  */
-function distributeByesInHalf(
+function distributeByesInHalfForSmallEven(
   byePositions: number[],
   numByes: number,
   start: number,
-  end: number
+  end: number,
+  isUpperHalf: boolean
 ): void {
   if (numByes <= 0) return;
-  
-  // For upper half (start == 0): start from last seed, then first seed
-  // For lower half: start from first seed, then last seed
-  const isUpperHalf = start === 0;
   
   // Array of positions in order of receiving byes
   const positionOrder: number[] = [];
   
   if (isUpperHalf) {
-    // Upper half: start with last seed, then first seed
-    for (let i = 0; i < (end - start + 1) / 2; i++) {
-      positionOrder.push(end - i); // Last seed first
-      positionOrder.push(start + i); // Then first seed
+    // Upper half for small even tournaments: first seed, then last seed
+    positionOrder.push(start); // First seed
+    positionOrder.push(end);   // Last seed
+    // Add more if needed (alternating)
+    for (let i = 1; i < (end - start + 1) / 2; i++) {
+      positionOrder.push(start + i);
+      positionOrder.push(end - i);
     }
   } else {
-    // Lower half: start with first seed, then last seed
-    for (let i = 0; i < (end - start + 1) / 2; i++) {
-      positionOrder.push(start + i); // First seed first
-      positionOrder.push(end - i); // Then last seed
+    // Lower half for small even tournaments: last seed, then first seed
+    positionOrder.push(end);   // Last seed
+    positionOrder.push(start); // First seed
+    // Add more if needed (alternating)
+    for (let i = 1; i < (end - start + 1) / 2; i++) {
+      positionOrder.push(end - i);
+      positionOrder.push(start + i);
+    }
+  }
+  
+  // Assign bye positions according to the order
+  for (let i = 0; i < numByes; i++) {
+    byePositions.push(positionOrder[i]);
+  }
+}
+
+/**
+ * Distributes byes within a half of the bracket for large even tournaments (>8)
+ */
+function distributeByesInHalfForLargeEven(
+  byePositions: number[],
+  numByes: number,
+  start: number,
+  end: number,
+  isUpperHalf: boolean
+): void {
+  if (numByes <= 0) return;
+  
+  // Array of positions in order of receiving byes
+  const positionOrder: number[] = [];
+  
+  if (isUpperHalf) {
+    // Upper half: last seed, top first, last, top second...
+    positionOrder.push(end);     // Last seed
+    positionOrder.push(start);   // Top first seed
+    // More complex patterns for larger brackets
+    for (let i = 1; i < (end - start + 1) / 2; i++) {
+      positionOrder.push(end - i);   // Next last seed
+      positionOrder.push(start + i); // Next top seed
+    }
+  } else {
+    // Lower half: first seed, last, top LH second...
+    positionOrder.push(start);   // First seed
+    positionOrder.push(end);     // Last seed
+    // More complex patterns for larger brackets
+    for (let i = 1; i < (end - start + 1) / 2; i++) {
+      positionOrder.push(start + i); // Next top seed
+      positionOrder.push(end - i);   // Next last seed
+    }
+  }
+  
+  // Assign bye positions according to the order
+  for (let i = 0; i < numByes; i++) {
+    byePositions.push(positionOrder[i]);
+  }
+}
+
+/**
+ * Distributes byes within a half of the bracket for odd tournaments
+ */
+function distributeByesInHalfForOdd(
+  byePositions: number[],
+  numByes: number,
+  start: number,
+  end: number,
+  isUpperHalf: boolean
+): void {
+  if (numByes <= 0) return;
+  
+  // Array of positions in order of receiving byes
+  const positionOrder: number[] = [];
+  
+  if (isUpperHalf) {
+    // Upper half for odd tournaments: last seed, then first seed
+    positionOrder.push(end);   // Last seed
+    positionOrder.push(start); // First seed
+    // Add more if needed (alternating)
+    for (let i = 1; i < (end - start + 1) / 2; i++) {
+      positionOrder.push(end - i);   // Second-to-last seed
+      positionOrder.push(start + i); // Second seed
+    }
+  } else {
+    // Lower half for odd tournaments: first seed, then last seed
+    positionOrder.push(start); // First seed
+    positionOrder.push(end);   // Last seed
+    // Add more if needed (alternating)
+    for (let i = 1; i < (end - start + 1) / 2; i++) {
+      positionOrder.push(start + i); // Second seed
+      positionOrder.push(end - i);   // Second-to-last seed
     }
   }
   
