@@ -17,6 +17,19 @@ export function createBracket(
   if (seedType === "random") {
     seededParticipants = shuffleArray(seededParticipants);
   }
+  
+  // Hardcoded brackets for specific participant counts
+  if (seededParticipants.length === 6) {
+    return createSixPlayerBracket(seededParticipants);
+  }
+  
+  if (seededParticipants.length === 5) {
+    return createFivePlayerBracket(seededParticipants);
+  }
+  
+  if (seededParticipants.length === 7) {
+    return createSevenPlayerBracket(seededParticipants);
+  }
 
   // Calculate the nearest power of 2 greater than or equal to participants length
   const participantCount = seededParticipants.length;
@@ -105,6 +118,213 @@ export function createBracket(
 }
 
 /**
+ * Creates a bracket specifically for 6 player tournaments
+ */
+function createSixPlayerBracket(participants: string[]): BracketMatch[][] {
+  // For 6 players, we need a bracket of 8 positions (6 players + 2 byes)
+  // Round 1 (4 matches)
+  const round1: BracketMatch[] = [
+    {
+      id: "match-r1-1",
+      participants: [participants[0] + "(bye)", ""],
+      winner: participants[0],
+      nextMatchId: "match-r2-1",
+      position: 0
+    },
+    {
+      id: "match-r1-2",
+      participants: [participants[1], participants[4]],
+      winner: null,
+      nextMatchId: "match-r2-1",
+      position: 1
+    },
+    {
+      id: "match-r1-3",
+      participants: [participants[2], participants[3]],
+      winner: null,
+      nextMatchId: "match-r2-2",
+      position: 2
+    },
+    {
+      id: "match-r1-4",
+      participants: [participants[5] + "(bye)", ""],
+      winner: participants[5],
+      nextMatchId: "match-r2-2",
+      position: 3
+    }
+  ];
+  
+  // Round 2 (2 matches)
+  const round2: BracketMatch[] = [
+    {
+      id: "match-r2-1",
+      participants: [participants[0], null],
+      winner: null,
+      nextMatchId: "match-r3-1",
+      position: 0
+    },
+    {
+      id: "match-r2-2",
+      participants: [null, participants[5]],
+      winner: null,
+      nextMatchId: "match-r3-1",
+      position: 1
+    }
+  ];
+  
+  // Round 3 (final)
+  const round3: BracketMatch[] = [
+    {
+      id: "match-r3-1",
+      participants: [null, null],
+      winner: null,
+      nextMatchId: null,
+      position: 0
+    }
+  ];
+  
+  return [round1, round2, round3];
+}
+
+/**
+ * Creates a bracket specifically for 5 player tournaments
+ */
+function createFivePlayerBracket(participants: string[]): BracketMatch[][] {
+  // For 5 players, we need a bracket of 8 positions (5 players + 3 byes)
+  // Round 1 (4 matches)
+  const round1: BracketMatch[] = [
+    {
+      id: "match-r1-1",
+      participants: [participants[2] + "(bye)", ""],
+      winner: participants[2],
+      nextMatchId: "match-r2-1",
+      position: 0
+    },
+    {
+      id: "match-r1-2",
+      participants: [participants[0] + "(bye)", ""],
+      winner: participants[0],
+      nextMatchId: "match-r2-1",
+      position: 1
+    },
+    {
+      id: "match-r1-3",
+      participants: [participants[1], participants[4]],
+      winner: null,
+      nextMatchId: "match-r2-2",
+      position: 2
+    },
+    {
+      id: "match-r1-4",
+      participants: [participants[3] + "(bye)", ""],
+      winner: participants[3],
+      nextMatchId: "match-r2-2",
+      position: 3
+    }
+  ];
+  
+  // Round 2 (2 matches)
+  const round2: BracketMatch[] = [
+    {
+      id: "match-r2-1",
+      participants: [participants[2], participants[0]],
+      winner: null,
+      nextMatchId: "match-r3-1",
+      position: 0
+    },
+    {
+      id: "match-r2-2",
+      participants: [null, participants[3]],
+      winner: null,
+      nextMatchId: "match-r3-1",
+      position: 1
+    }
+  ];
+  
+  // Round 3 (final)
+  const round3: BracketMatch[] = [
+    {
+      id: "match-r3-1",
+      participants: [null, null],
+      winner: null,
+      nextMatchId: null,
+      position: 0
+    }
+  ];
+  
+  return [round1, round2, round3];
+}
+
+/**
+ * Creates a bracket specifically for 7 player tournaments
+ */
+function createSevenPlayerBracket(participants: string[]): BracketMatch[][] {
+  // For 7 players, we need a bracket of 8 positions (7 players + 1 bye)
+  // Round 1 (4 matches)
+  const round1: BracketMatch[] = [
+    {
+      id: "match-r1-1",
+      participants: [participants[0] + "(bye)", ""],
+      winner: participants[0],
+      nextMatchId: "match-r2-1",
+      position: 0
+    },
+    {
+      id: "match-r1-2",
+      participants: [participants[1], participants[6]],
+      winner: null,
+      nextMatchId: "match-r2-1",
+      position: 1
+    },
+    {
+      id: "match-r1-3",
+      participants: [participants[2], participants[5]],
+      winner: null,
+      nextMatchId: "match-r2-2",
+      position: 2
+    },
+    {
+      id: "match-r1-4",
+      participants: [participants[3], participants[4]],
+      winner: null,
+      nextMatchId: "match-r2-2",
+      position: 3
+    }
+  ];
+  
+  // Round 2 (2 matches)
+  const round2: BracketMatch[] = [
+    {
+      id: "match-r2-1",
+      participants: [participants[0], null],
+      winner: null,
+      nextMatchId: "match-r3-1",
+      position: 0
+    },
+    {
+      id: "match-r2-2",
+      participants: [null, null],
+      winner: null,
+      nextMatchId: "match-r3-1",
+      position: 1
+    }
+  ];
+  
+  // Round 3 (final)
+  const round3: BracketMatch[] = [
+    {
+      id: "match-r3-1",
+      participants: [null, null],
+      winner: null,
+      nextMatchId: null,
+      position: 0
+    }
+  ];
+  
+  return [round1, round2, round3];
+}
+
+/**
  * Creates pairs of participants with byes correctly distributed
  * @param participants List of participants
  * @param numByes Number of byes needed
@@ -115,17 +335,60 @@ function createPairsWithByes(
   numByes: number
 ): [string, string][] {
   const n = participants.length;
-  const totalPositions = n + numByes;
-  const numPairs = totalPositions / 2;
-  const result: [string, string][] = [];
   
   // Handle the case where we have no byes
   if (numByes === 0) {
+    const result: [string, string][] = [];
     for (let i = 0; i < n/2; i++) {
       result.push([participants[i], participants[n-1-i]]);
     }
     return result;
   }
+  
+  // For a 6-player tournament (with byes at specific positions)
+  if (n === 6 && numByes === 2) {
+    // For 6 players, we need a bracket of 8 positions (6 players + 2 byes)
+    // According to specification:
+    // - A receives bye in first round
+    // - F receives bye in fourth match
+    return [
+      [participants[0] + "(bye)", ""],       // A gets a bye
+      [participants[1], participants[4]],    // B vs E
+      [participants[2], participants[3]],    // C vs D  
+      [participants[5] + "(bye)", ""]        // F gets a bye
+    ];
+  }
+  
+  // For a 5-player tournament (with byes at specific positions)
+  if (n === 5 && numByes === 3) {
+    // For 5 players, we need a bracket of 8 positions (5 players + 3 byes)
+    // According to the standard bye distribution:
+    // - C gets a bye in upper half (last seed in upper half)
+    // - A gets a bye in upper half (first seed in upper half)
+    // - D gets a bye in lower half (first seed in lower half)
+    return [
+      [participants[2] + "(bye)", ""],       // C gets a bye (last in upper half) 
+      [participants[0] + "(bye)", ""],       // A gets a bye (first in upper half)
+      [participants[1], participants[4]],    // B vs E
+      [participants[3] + "(bye)", ""]        // D gets a bye (first in lower half)
+    ];
+  }
+  
+  // For 7 players, we need a bracket of 8 positions (7 players + 1 bye)
+  if (n === 7 && numByes === 1) {
+    // For 7 players, the bye goes to the highest seed (A)
+    return [
+      [participants[0] + "(bye)", ""],       // A gets a bye
+      [participants[1], participants[6]],    // B vs G
+      [participants[2], participants[5]],    // C vs F
+      [participants[3], participants[4]]     // D vs E
+    ];
+  }
+  
+  // For larger tournaments or different numbers
+  const totalPositions = n + numByes;
+  const numPairs = totalPositions / 2;
+  const result: [string, string][] = [];
   
   // Create a copy of participants for manipulation
   const participantsCopy = [...participants];
