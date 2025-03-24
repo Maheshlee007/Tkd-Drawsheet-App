@@ -32,7 +32,10 @@ const Home: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Input Panel */}
         <div className="lg:col-span-1">
-          <InputPanel onGenerateBracket={generateBracket} />
+          <InputPanel 
+            onGenerateBracket={(participants, seedType) => 
+              generateBracket(participants, seedType as "random" | "ordered" | "as-entered")
+            } />
           
           {/* Animation Toggle */}
           {bracketData && (
