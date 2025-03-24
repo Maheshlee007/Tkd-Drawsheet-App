@@ -3,25 +3,194 @@ import { Button } from "@/components/ui/button";
 import { BracketMatch } from "@shared/schema";
 import { calculateBracketConnectors } from "@/lib/bracketUtils";
 import { Download } from "lucide-react";
+import AnimationControls from "./AnimationControls";
 
 interface BracketDisplayProps {
   bracketData: BracketMatch[][] | null;
   onExport: () => void;
+  enableAnimation?: boolean;
 }
 
-const BracketDisplay: React.FC<BracketDisplayProps> = ({ bracketData, onExport }) => {
+const BracketDisplay: React.FC<BracketDisplayProps> = ({ 
+  bracketData, 
+  onExport,
+  enableAnimation = true
+}) => {
   const [connectors, setConnectors] = useState<
     Array<{ left: number; top: number; width?: number; height?: number; type: string }>
   >([]);
   const bracketContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Animation state
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [totalSteps, setTotalSteps] = useState(0);
+  const [animationSpeed, setAnimationSpeed] = useState(1);
+  const [animatedBracket, setAnimatedBracket] = useState<BracketMatch[][] | null>(null);
+  
+  // Animation interval reference
+  const animationIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Calculate connector lines when the bracket data changes
   useEffect(() => {
     if (bracketData && bracketContainerRef.current) {
       const newConnectors = calculateBracketConnectors(bracketData, bracketContainerRef.current);
       setConnectors(newConnectors);
+      
+      // Initialize animation state if enableAnimation is true
+      if (enableAnimation) {
+        calculateTotalSteps();
+        resetAnimation();
+      } else {
+        setAnimatedBracket(bracketData);
+      }
     }
   }, [bracketData]);
+  
+  // Calculate total steps for animation
+  const calculateTotalSteps = () => {
+    if (!bracketData) return;
+    
+    let steps = 0;
+    // First step: Show initial bracket with all participants
+    steps += 1;
+    
+    // Count steps for each round's matches
+    bracketData.forEach((round) => {
+      // Each match result is a step
+      steps += round.length;
+    });
+    
+    setTotalSteps(steps);
+  };
+  
+  // Reset animation to beginning
+  const resetAnimation = () => {
+    setCurrentStep(0);
+    setIsAnimating(false);
+    
+    if (bracketData) {
+      // Create initial state of bracket with no winners
+      const initialBracket = bracketData.map((round) => 
+        round.map((match) => ({
+          ...match,
+          winner: null
+        }))
+      );
+      
+      // For the first round, we already have the participants
+      setAnimatedBracket(initialBracket);
+    }
+    
+    // Clear any running animation
+    if (animationIntervalRef.current) {
+      clearInterval(animationIntervalRef.current);
+      animationIntervalRef.current = null;
+    }
+  };
+  
+  // Progress animation by one step
+  const progressAnimation = () => {
+    if (!bracketData || currentStep >= totalSteps) {
+      setIsAnimating(false);
+      return;
+    }
+    
+    // Clone current animated bracket
+    const newAnimatedBracket = JSON.parse(JSON.stringify(animatedBracket));
+    
+    // Determine which match to update based on the current step
+    const stepOffset = 1; // First step is just showing the bracket
+    
+    if (currentStep < stepOffset) {
+      // First step is already handled by showing initial bracket
+      setCurrentStep((prev) => prev + 1);
+      return;
+    }
+    
+    const stepIndex = currentStep - stepOffset;
+    let matchesToProcess = 0;
+    let targetRound = 0;
+    let targetMatch = 0;
+    
+    // Find which round and match this step corresponds to
+    for (let roundIndex = 0; roundIndex < bracketData.length; roundIndex++) {
+      const roundMatches = bracketData[roundIndex].length;
+      if (stepIndex < matchesToProcess + roundMatches) {
+        targetRound = roundIndex;
+        targetMatch = stepIndex - matchesToProcess;
+        break;
+      }
+      matchesToProcess += roundMatches;
+    }
+    
+    // Get the target match
+    const origMatch = bracketData[targetRound][targetMatch];
+    
+    // Update the winner in the animated bracket
+    if (origMatch && newAnimatedBracket[targetRound][targetMatch]) {
+      newAnimatedBracket[targetRound][targetMatch].winner = origMatch.winner;
+      
+      // If there's a next match, update the participant there
+      if (origMatch.nextMatchId && origMatch.winner) {
+        // Find the next match
+        for (let r = targetRound + 1; r < newAnimatedBracket.length; r++) {
+          const nextMatchIndex = newAnimatedBracket[r].findIndex(
+            (m: BracketMatch) => m.id === origMatch.nextMatchId
+          );
+          
+          if (nextMatchIndex !== -1) {
+            // Determine which side to place the winner (0 or 1)
+            const matchPosition = origMatch.position;
+            const isEvenPosition = matchPosition % 2 === 0;
+            const participantIndex = isEvenPosition ? 0 : 1;
+            
+            // Update the participant
+            newAnimatedBracket[r][nextMatchIndex].participants[participantIndex] = origMatch.winner;
+            break;
+          }
+        }
+      }
+    }
+    
+    // Update the animated bracket
+    setAnimatedBracket(newAnimatedBracket);
+    setCurrentStep((prev) => prev + 1);
+  };
+  
+  // Effect for animation playback
+  useEffect(() => {
+    if (isAnimating) {
+      // Start animation interval
+      animationIntervalRef.current = setInterval(() => {
+        progressAnimation();
+      }, 1000 / animationSpeed);
+    } else if (animationIntervalRef.current) {
+      // Stop animation
+      clearInterval(animationIntervalRef.current);
+      animationIntervalRef.current = null;
+    }
+    
+    // Clean up interval on unmount
+    return () => {
+      if (animationIntervalRef.current) {
+        clearInterval(animationIntervalRef.current);
+      }
+    };
+  }, [isAnimating, currentStep, animationSpeed, animatedBracket]);
+  
+  // Update connectors when animated bracket changes
+  useEffect(() => {
+    if (animatedBracket && bracketContainerRef.current) {
+      setTimeout(() => {
+        const container = bracketContainerRef.current;
+        if (container) {
+          const newConnectors = calculateBracketConnectors(animatedBracket, container);
+          setConnectors(newConnectors);
+        }
+      }, 50); // Small delay to allow DOM to update
+    }
+  }, [animatedBracket]);
 
   // If no bracket data is available, show empty state
   if (!bracketData) {
@@ -58,7 +227,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({ bracketData, onExport }
       <div className="overflow-x-auto" ref={bracketContainerRef}>
         <div className="bracket-display min-w-[750px] relative pb-8" style={{ minHeight: bracketData.length > 2 ? 400 : 200 }}>
           {/* Render rounds */}
-          {bracketData.map((round, roundIndex) => (
+          {(enableAnimation ? animatedBracket : bracketData)?.map((round, roundIndex) => (
             <div
               key={`round-${roundIndex}`}
               className="bracket-round flex flex-col justify-around absolute"
@@ -102,7 +271,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({ bracketData, onExport }
                   </div>
 
                   {/* Show winner badge for final match */}
-                  {roundIndex === bracketData.length - 1 && match.winner && (
+                  {roundIndex === (enableAnimation ? (animatedBracket?.length || 0) : bracketData.length) - 1 && match.winner && (
                     <div className="absolute -right-16 top-1/2 transform -translate-y-1/2 bg-primary text-white text-xs py-1 px-2 rounded-full">
                       Winner
                     </div>
@@ -127,6 +296,80 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({ bracketData, onExport }
           ))}
         </div>
       </div>
+      
+      {/* Animation Controls */}
+      {enableAnimation && animatedBracket && (
+        <AnimationControls
+          isPlaying={isAnimating}
+          setIsPlaying={setIsAnimating}
+          currentStep={currentStep}
+          setCurrentStep={(step) => {
+            // When manually setting a step, we need to rebuild the bracket state
+            setCurrentStep(0); // Reset first
+            
+            // Then simulate progressing to the specified step
+            const simBracket = JSON.parse(JSON.stringify(animatedBracket));
+            for (let i = 0; i <= step; i++) {
+              // We're not actually changing state here, just building a simulated bracket
+              // Copy the progressAnimation logic but apply it to a local variable
+              if (i > 0) { // Skip first step which is just the initial display
+                const stepIndex = i - 1;
+                let matchesToProcess = 0;
+                let targetRound = 0;
+                let targetMatch = 0;
+                
+                // Find which match this step corresponds to
+                for (let roundIndex = 0; roundIndex < bracketData.length; roundIndex++) {
+                  const roundMatches = bracketData[roundIndex].length;
+                  if (stepIndex < matchesToProcess + roundMatches) {
+                    targetRound = roundIndex;
+                    targetMatch = stepIndex - matchesToProcess;
+                    break;
+                  }
+                  matchesToProcess += roundMatches;
+                }
+                
+                // Get the target match
+                const origMatch = bracketData[targetRound][targetMatch];
+                
+                // Update the winner in the simulated bracket
+                if (origMatch && simBracket[targetRound][targetMatch]) {
+                  simBracket[targetRound][targetMatch].winner = origMatch.winner;
+                  
+                  // If there's a next match, update the participant there
+                  if (origMatch.nextMatchId && origMatch.winner) {
+                    // Find the next match
+                    for (let r = targetRound + 1; r < simBracket.length; r++) {
+                      const nextMatchIndex = simBracket[r].findIndex(
+                        (m: BracketMatch) => m.id === origMatch.nextMatchId
+                      );
+                      
+                      if (nextMatchIndex !== -1) {
+                        // Determine which side to place the winner
+                        const matchPosition = origMatch.position;
+                        const isEvenPosition = matchPosition % 2 === 0;
+                        const participantIndex = isEvenPosition ? 0 : 1;
+                        
+                        // Update the participant
+                        simBracket[r][nextMatchIndex].participants[participantIndex] = origMatch.winner;
+                        break;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            
+            // Set the state to the resulting bracket and step
+            setAnimatedBracket(simBracket);
+            setCurrentStep(step);
+          }}
+          totalSteps={totalSteps}
+          resetAnimation={resetAnimation}
+          animationSpeed={animationSpeed}
+          setAnimationSpeed={setAnimationSpeed}
+        />
+      )}
     </div>
   );
 };
