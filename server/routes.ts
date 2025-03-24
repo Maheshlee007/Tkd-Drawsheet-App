@@ -36,11 +36,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      if (participants.length % 2 !== 0) {
-        return res.status(400).json({ 
-          message: "Number of participants must be even" 
-        });
-      }
+      // Removed the check for even number of participants
+      // Our new bracket generation properly handles odd numbers with byes
       
       // Generate bracket
       const bracketData = createBracket(participants, seedType);
