@@ -81,10 +81,8 @@ const InputPanel = ({ onGenerateBracket }: InputPanelProps) => {
       return;
     }
 
-    if (participantsList.length % 2 !== 0) {
-      setError("Please enter an even number of participants for a proper bracket.");
-      return;
-    }
+    // We no longer require an even number of participants
+    // Our enhanced bracket logic with byes handles odd numbers properly
 
     setError(null);
     onGenerateBracket(participantsList, seedType);
