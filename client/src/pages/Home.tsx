@@ -1,8 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import InputPanel from "@/components/InputPanel";
 import BracketDisplay from "@/components/BracketDisplay";
 import ExportModal from "@/components/ExportModal";
 import { useTournament } from "@/hooks/useTournament";
+import { Button } from "@/components/ui/button";
+import { RefreshCw } from "lucide-react";
 
 const Home: React.FC = () => {
   const {
@@ -16,6 +18,55 @@ const Home: React.FC = () => {
     exportAsPDF,
     copyToClipboard,
   } = useTournament();
+  
+  const [showInputPanel, setShowInputPanel] = useState<boolean>(true);
+  
+  // Handler to generate bracket and hide input panel
+  const handleGenerateBracket = (participants: string[], seedType: "random" | "ordered" | "as-entered") => {
+    generateBracket(participants, seedType);
+    setShowInputPanel(false);
+  };
+  
+  // Reset function to show input panel again
+  const handleReset = () => {
+    setShowInputPanel(true);
+  };
+  
+  // Calculate tournament statistics
+  const calculateStats = () => {
+    if (!bracketData) return null;
+    
+    const totalRounds = bracketData.length;
+    const totalMatches = bracketData.flat().length;
+    
+    // Count participants
+    const matches = bracketData[0];
+    let participantCount = 0;
+    let byeCount = 0;
+    
+    matches.forEach(match => {
+      if (match.participants[0] && match.participants[0] !== "(bye)") participantCount++;
+      if (match.participants[1] && match.participants[1] !== "(bye)") participantCount++;
+      if (match.participants[0] === "(bye)") byeCount++;
+      if (match.participants[1] === "(bye)") byeCount++;
+    });
+    
+    // Calculate pools (if more than 16 participants)
+    let poolCount = 1;
+    if (participantCount > 16) {
+      poolCount = Math.ceil(participantCount / 16);
+    }
+    
+    return {
+      participants: participantCount,
+      rounds: totalRounds,
+      matches: totalMatches,
+      byes: byeCount,
+      pools: poolCount
+    };
+  };
+  
+  const stats = calculateStats();
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
@@ -26,9 +77,48 @@ const Home: React.FC = () => {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Input Panel */}
+        {/* Input Panel or Stats Panel */}
         <div className="lg:col-span-1">
-          <InputPanel onGenerateBracket={generateBracket} />
+          {showInputPanel ? (
+            <InputPanel onGenerateBracket={handleGenerateBracket} />
+          ) : (
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h2 className="text-xl font-semibold text-slate-800 mb-4">Tournament Statistics</h2>
+              
+              {stats && (
+                <div className="space-y-3">
+                  <div className="flex justify-between py-2 border-b border-slate-100">
+                    <span className="text-slate-600">Participants:</span>
+                    <span className="font-medium">{stats.participants}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-slate-100">
+                    <span className="text-slate-600">Rounds:</span>
+                    <span className="font-medium">{stats.rounds}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-slate-100">
+                    <span className="text-slate-600">Matches:</span>
+                    <span className="font-medium">{stats.matches}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-slate-100">
+                    <span className="text-slate-600">Byes:</span>
+                    <span className="font-medium">{stats.byes}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-slate-100">
+                    <span className="text-slate-600">Pools:</span>
+                    <span className="font-medium">{stats.pools}</span>
+                  </div>
+                </div>
+              )}
+              
+              <Button 
+                className="w-full mt-6 flex items-center justify-center"
+                onClick={handleReset}
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Generate New Bracket
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Bracket Display */}

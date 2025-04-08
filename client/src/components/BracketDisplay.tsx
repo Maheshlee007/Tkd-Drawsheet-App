@@ -113,9 +113,11 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                   {/* First participant */}
                   <div
                     className={`participant p-2 mb-1 text-sm rounded-r-sm ${
-                      match.winner === match.participants[0]
-                        ? "border-l-4 border-primary bg-slate-50"
-                        : "border-l-4 border-transparent"
+                      match.participants[0] === "(bye)" 
+                        ? "border-l-4 border-green-300 bg-green-50"
+                        : match.winner === match.participants[0]
+                          ? "border-l-4 border-primary bg-slate-50"
+                          : "border-l-4 border-blue-400"
                     }`}
                   >
                     <span
@@ -132,9 +134,11 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                   {/* Second participant */}
                   <div
                     className={`participant p-2 text-sm rounded-r-sm ${
-                      match.winner === match.participants[1]
-                        ? "border-l-4 border-primary bg-slate-50"
-                        : "border-l-4 border-transparent"
+                      match.participants[1] === "(bye)" 
+                        ? "border-l-4 border-green-300 bg-green-50"
+                        : match.winner === match.participants[1]
+                          ? "border-l-4 border-primary bg-slate-50"
+                          : "border-l-4 border-red-400"
                     }`}
                   >
                     <span
