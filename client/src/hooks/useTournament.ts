@@ -66,49 +66,72 @@ export const useTournament = () => {
     const bracketContainer = document.querySelector(".overflow-x-auto");
     if (!bracketContainer) return;
 
-    // Make sure the container has the full width and is scrolled to the start
-    const originalScrollLeft = bracketContainer.scrollLeft;
-    const originalWidth = (bracketContainer as HTMLElement).style.width;
-    const originalOverflow = (bracketContainer as HTMLElement).style.overflow;
-    
-    // Temporarily adjust the container to capture everything
-    (bracketContainer as HTMLElement).scrollLeft = 0;
-    (bracketContainer as HTMLElement).style.width = 'auto';
-    (bracketContainer as HTMLElement).style.overflow = 'visible';
-
+    // Make a clone of the bracket to avoid modifying the original DOM
     const bracketElement = document.querySelector(".bracket-display");
-    if (!bracketElement) {
-      // Restore original state if bracket display not found
-      (bracketContainer as HTMLElement).scrollLeft = originalScrollLeft;
-      (bracketContainer as HTMLElement).style.width = originalWidth;
-      (bracketContainer as HTMLElement).style.overflow = originalOverflow;
-      return;
-    }
+    if (!bracketElement) return;
 
-    // Calculate full dimensions
-    const width = bracketElement.scrollWidth;
-    const height = bracketElement.scrollHeight;
+    // Create a clone of the bracket for exporting
+    const cloneContainer = document.createElement('div');
+    cloneContainer.style.position = 'absolute';
+    cloneContainer.style.top = '-9999px';
+    cloneContainer.style.left = '-9999px';
+    cloneContainer.style.width = 'max-content';
+    cloneContainer.style.overflow = 'visible';
+    
+    // Clone the content
+    const clone = bracketElement.cloneNode(true) as HTMLElement;
+    clone.style.width = 'max-content';
+    clone.style.height = 'auto';
+    clone.style.position = 'relative';
+    clone.style.display = 'flex';
+    clone.style.padding = '20px';
+    clone.style.backgroundColor = 'white';
+    
+    // Add to document temporarily
+    cloneContainer.appendChild(clone);
+    document.body.appendChild(cloneContainer);
 
-    html2canvas(bracketElement as HTMLElement, {
+    // Capture the clone
+    html2canvas(clone, {
       backgroundColor: "#FFFFFF",
-      width: width,
-      height: height,
-      scale: 1.5,  // Higher scale for better quality
-      scrollX: 0,
-      scrollY: 0,
-      windowWidth: width,
-      windowHeight: height
+      width: clone.scrollWidth,
+      height: clone.scrollHeight,
+      scale: 1.0, // Lower scale for full bracket
+      allowTaint: true,
+      useCORS: true,
+      logging: false,
+      onclone: (document) => {
+        // Adjust styles in the cloned document for better export
+        const clonedStyles = document.createElement('style');
+        clonedStyles.textContent = `
+          .bracket-round {
+            width: 180px !important;
+            padding: 5px !important;
+          }
+          .bracket-match {
+            padding: 5px !important;
+            margin-bottom: 10px !important;
+          }
+          .participant {
+            padding: 3px 5px !important;
+            margin-bottom: 3px !important;
+          }
+        `;
+        document.head.appendChild(clonedStyles);
+      }
     }).then((canvas) => {
       const link = document.createElement("a");
       link.download = "tournament-bracket.png";
       link.href = canvas.toDataURL("image/png");
       link.click();
       
-      // Restore original container properties
-      (bracketContainer as HTMLElement).scrollLeft = originalScrollLeft;
-      (bracketContainer as HTMLElement).style.width = originalWidth;
-      (bracketContainer as HTMLElement).style.overflow = originalOverflow;
+      // Remove the temporary clone
+      document.body.removeChild(cloneContainer);
       
+      closeExportModal();
+    }).catch(error => {
+      console.error("Export error:", error);
+      document.body.removeChild(cloneContainer);
       closeExportModal();
     });
   }, [closeExportModal]);
@@ -118,38 +141,59 @@ export const useTournament = () => {
     const bracketContainer = document.querySelector(".overflow-x-auto");
     if (!bracketContainer) return;
 
-    // Make sure the container has the full width and is scrolled to the start
-    const originalScrollLeft = bracketContainer.scrollLeft;
-    const originalWidth = (bracketContainer as HTMLElement).style.width;
-    const originalOverflow = (bracketContainer as HTMLElement).style.overflow;
-    
-    // Temporarily adjust the container to capture everything
-    (bracketContainer as HTMLElement).scrollLeft = 0;
-    (bracketContainer as HTMLElement).style.width = 'auto';
-    (bracketContainer as HTMLElement).style.overflow = 'visible';
-
+    // Make a clone of the bracket to avoid modifying the original DOM
     const bracketElement = document.querySelector(".bracket-display");
-    if (!bracketElement) {
-      // Restore original state if bracket display not found
-      (bracketContainer as HTMLElement).scrollLeft = originalScrollLeft;
-      (bracketContainer as HTMLElement).style.width = originalWidth;
-      (bracketContainer as HTMLElement).style.overflow = originalOverflow;
-      return;
-    }
+    if (!bracketElement) return;
 
-    // Calculate full dimensions
-    const width = bracketElement.scrollWidth;
-    const height = bracketElement.scrollHeight;
+    // Create a clone of the bracket for exporting
+    const cloneContainer = document.createElement('div');
+    cloneContainer.style.position = 'absolute';
+    cloneContainer.style.top = '-9999px';
+    cloneContainer.style.left = '-9999px';
+    cloneContainer.style.width = 'max-content';
+    cloneContainer.style.overflow = 'visible';
+    
+    // Clone the content
+    const clone = bracketElement.cloneNode(true) as HTMLElement;
+    clone.style.width = 'max-content';
+    clone.style.height = 'auto';
+    clone.style.position = 'relative';
+    clone.style.display = 'flex';
+    clone.style.padding = '20px';
+    clone.style.backgroundColor = 'white';
+    
+    // Add to document temporarily
+    cloneContainer.appendChild(clone);
+    document.body.appendChild(cloneContainer);
 
-    html2canvas(bracketElement as HTMLElement, {
+    // Capture the clone
+    html2canvas(clone, {
       backgroundColor: "#FFFFFF",
-      width: width,
-      height: height,
-      scale: 1.5,  // Higher scale for better quality
-      scrollX: 0,
-      scrollY: 0,
-      windowWidth: width,
-      windowHeight: height
+      width: clone.scrollWidth,
+      height: clone.scrollHeight,
+      scale: 1.0, // Lower scale for full bracket
+      allowTaint: true,
+      useCORS: true,
+      logging: false,
+      onclone: (document) => {
+        // Adjust styles in the cloned document for better export
+        const clonedStyles = document.createElement('style');
+        clonedStyles.textContent = `
+          .bracket-round {
+            width: 180px !important;
+            padding: 5px !important;
+          }
+          .bracket-match {
+            padding: 5px !important;
+            margin-bottom: 10px !important;
+          }
+          .participant {
+            padding: 3px 5px !important;
+            margin-bottom: 3px !important;
+          }
+        `;
+        document.head.appendChild(clonedStyles);
+      }
     }).then((canvas) => {
       const imgData = canvas.toDataURL("image/png");
       const pdf = new jsPDF({
@@ -163,11 +207,13 @@ export const useTournament = () => {
       pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
       pdf.save("tournament-bracket.pdf");
       
-      // Restore original container properties
-      (bracketContainer as HTMLElement).scrollLeft = originalScrollLeft;
-      (bracketContainer as HTMLElement).style.width = originalWidth;
-      (bracketContainer as HTMLElement).style.overflow = originalOverflow;
+      // Remove the temporary clone
+      document.body.removeChild(cloneContainer);
       
+      closeExportModal();
+    }).catch(error => {
+      console.error("Export error:", error);
+      document.body.removeChild(cloneContainer);
       closeExportModal();
     });
   }, [closeExportModal]);
@@ -177,38 +223,59 @@ export const useTournament = () => {
     const bracketContainer = document.querySelector(".overflow-x-auto");
     if (!bracketContainer) return;
 
-    // Make sure the container has the full width and is scrolled to the start
-    const originalScrollLeft = bracketContainer.scrollLeft;
-    const originalWidth = (bracketContainer as HTMLElement).style.width;
-    const originalOverflow = (bracketContainer as HTMLElement).style.overflow;
-    
-    // Temporarily adjust the container to capture everything
-    (bracketContainer as HTMLElement).scrollLeft = 0;
-    (bracketContainer as HTMLElement).style.width = 'auto';
-    (bracketContainer as HTMLElement).style.overflow = 'visible';
-
+    // Make a clone of the bracket to avoid modifying the original DOM
     const bracketElement = document.querySelector(".bracket-display");
-    if (!bracketElement) {
-      // Restore original state if bracket display not found
-      (bracketContainer as HTMLElement).scrollLeft = originalScrollLeft;
-      (bracketContainer as HTMLElement).style.width = originalWidth;
-      (bracketContainer as HTMLElement).style.overflow = originalOverflow;
-      return;
-    }
+    if (!bracketElement) return;
 
-    // Calculate full dimensions
-    const width = bracketElement.scrollWidth;
-    const height = bracketElement.scrollHeight;
+    // Create a clone of the bracket for exporting
+    const cloneContainer = document.createElement('div');
+    cloneContainer.style.position = 'absolute';
+    cloneContainer.style.top = '-9999px';
+    cloneContainer.style.left = '-9999px';
+    cloneContainer.style.width = 'max-content';
+    cloneContainer.style.overflow = 'visible';
+    
+    // Clone the content
+    const clone = bracketElement.cloneNode(true) as HTMLElement;
+    clone.style.width = 'max-content';
+    clone.style.height = 'auto';
+    clone.style.position = 'relative';
+    clone.style.display = 'flex';
+    clone.style.padding = '20px';
+    clone.style.backgroundColor = 'white';
+    
+    // Add to document temporarily
+    cloneContainer.appendChild(clone);
+    document.body.appendChild(cloneContainer);
 
-    html2canvas(bracketElement as HTMLElement, {
+    // Capture the clone
+    html2canvas(clone, {
       backgroundColor: "#FFFFFF",
-      width: width,
-      height: height,
-      scale: 1.5,  // Higher scale for better quality
-      scrollX: 0,
-      scrollY: 0,
-      windowWidth: width,
-      windowHeight: height
+      width: clone.scrollWidth,
+      height: clone.scrollHeight,
+      scale: 1.0, // Lower scale for full bracket
+      allowTaint: true,
+      useCORS: true,
+      logging: false,
+      onclone: (document) => {
+        // Adjust styles in the cloned document for better export
+        const clonedStyles = document.createElement('style');
+        clonedStyles.textContent = `
+          .bracket-round {
+            width: 180px !important;
+            padding: 5px !important;
+          }
+          .bracket-match {
+            padding: 5px !important;
+            margin-bottom: 10px !important;
+          }
+          .participant {
+            padding: 3px 5px !important;
+            margin-bottom: 3px !important;
+          }
+        `;
+        document.head.appendChild(clonedStyles);
+      }
     }).then((canvas) => {
       canvas.toBlob((blob) => {
         if (blob) {
@@ -219,15 +286,17 @@ export const useTournament = () => {
               description: "Bracket copied to clipboard!",
             });
             
-            // Restore original container properties
-            (bracketContainer as HTMLElement).scrollLeft = originalScrollLeft;
-            (bracketContainer as HTMLElement).style.width = originalWidth;
-            (bracketContainer as HTMLElement).style.overflow = originalOverflow;
+            // Remove the temporary clone
+            document.body.removeChild(cloneContainer);
             
             closeExportModal();
           });
         }
       });
+    }).catch(error => {
+      console.error("Copy error:", error);
+      document.body.removeChild(cloneContainer);
+      closeExportModal();
     });
   }, [closeExportModal, toast]);
 
