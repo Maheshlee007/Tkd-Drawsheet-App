@@ -1,0 +1,127 @@
+// Utility to get the next power of 2
+function getNextPowerOfTwo(n) {
+    return Math.pow(2, Math.ceil(Math.log2(n)));
+}
+
+// Standard and Reversed Bye Distribution for 3-8 players
+const STANDARD_BYES = {
+    3: [0], 5: [0, 3, 4], 6: [0, 5], 7: [0]
+};
+const REVERSED_BYES = {
+    3: [2], 5: [0, 1, 4], 6: [0, 5], 7: [6]
+};
+
+function determineBracketSize(n) {
+    return getNextPowerOfTwo(n);
+}
+
+function splitIntoUpperLower(n, byes, reversed = false) {
+    let upper, lower, upperByes, lowerByes;
+
+  if (n % 2 === 0) {
+        upper = lower = n / 2;
+        upperByes = lowerByes = Math.floor(byes / 2);
+    } else if (!reversed) {
+        upper = (n - 1) / 2;
+        lower = (n + 1) / 2;
+        upperByes = Math.ceil((byes + 1) / 2);
+        lowerByes = byes - upperByes;
+    } else {
+        upper = (n + 1) / 2;
+        lower = (n - 1) / 2;
+        upperByes = Math.floor((byes - 1) / 2);
+        lowerByes = byes - upperByes;
+    }
+
+    return { upper, lower, upperByes, lowerByes };
+}
+
+function assignByes(players, byeIndexes) {
+    let output = Array(players.length).fill(null);
+    let paired = new Set();
+
+    for (let i = 0; i < players.length; i++) {
+        if (byeIndexes.includes(i)) {
+            output[i] = [players[i], "Bye"];
+            paired.add(i);
+        }
+    }
+
+    for (let i = 0; i < players.length; i++) {
+        if (!paired.has(i) && output[i] === null) {
+            let j = i + 1;
+            while (j < players.length && (paired.has(j) || output[j] !== null)) j++;
+            if (j < players.length) {
+                output[i] = [players[i], players[j]];
+                output[j] = null;
+                paired.add(i);
+                paired.add(j);
+            }
+        }
+    }
+
+    return output.filter(match => match !== null);
+}
+
+function generateBrackets(players, forcedByes = null, reversed = false) {
+    let n = players.length;
+
+    if (forcedByes !== null && forcedByes === n) {
+        let byeIndexes = [...Array(n).keys()];
+        return assignByes(players, byeIndexes);
+    }
+
+    if (n <= 8) {
+        const pattern = reversed ? REVERSED_BYES[n] : STANDARD_BYES[n];
+        const byeIndexes = (forcedByes !== null && (!pattern || pattern.length !== forcedByes))
+            ? [...Array(forcedByes).keys()]
+            : (pattern || []);
+        return assignByes(players, byeIndexes);
+    }
+
+    let totalBrackets = determineBracketSize(n);
+    let byes = totalBrackets - n;
+
+    if (byes === 0) {
+        return assignByes(players, []);
+    }
+
+    let { upper, lower, upperByes, lowerByes } = splitIntoUpperLower(n, byes, reversed);
+console.log("data",{ upper, lower, upperByes, lowerByes })
+    let upperPlayers = players.slice(0, upper);
+    let lowerPlayers = players.slice(upper);
+
+    let upperBracket = generateBrackets(upperPlayers, upperByes, false);
+    let lowerBracket = generateBrackets(lowerPlayers, lowerByes, true);
+
+    return [...upperBracket, ...lowerBracket];
+}
+
+// Pool Determination Logic Based on Bracket Size
+function determinePools(n) {
+    if (n <= 32) return 2;
+    if (n <= 64) return 4;
+    if (n <= 128) return 8;
+    if (n <= 256) return 16;
+    return Math.pow(2, Math.ceil(Math.log2(n / 16)));
+}
+
+// Group Matches Into Pools for Display
+function groupMatchesIntoPools(matches, poolCount) {
+    const matchesPerPool = Math.ceil(matches.length / poolCount);
+    const pools = [];
+    for (let i = 0; i < matches.length; i += matchesPerPool) {
+        pools.push(matches.slice(i, i + matchesPerPool));
+    }
+    return pools;
+}
+
+// Example: 64 Players
+let players = Array.from({ length: 50 }, (_, i) => `Player ${i + 1}`);
+const bracket = generateBrackets(players);
+const poolCount = determinePools(players.length);
+const pools = groupMatchesIntoPools(bracket, poolCount);
+
+console.log("Bracket:", bracket);
+console.log("Number of Pools:", poolCount);
+console.log("Pools:", pools);

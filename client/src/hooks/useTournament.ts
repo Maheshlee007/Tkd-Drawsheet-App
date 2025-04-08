@@ -19,7 +19,7 @@ export const useTournament = () => {
       seedType,
     }: {
       participants: string[];
-      seedType: "random" | "ordered";
+      seedType: "random" | "ordered" | "as-entered";
     }) => {
       const response = await apiRequest("POST", "/api/tournaments/generate", {
         participants,
@@ -45,7 +45,7 @@ export const useTournament = () => {
 
   // Generate the bracket
   const generateBracket = useCallback(
-    (participants: string[], seedType: "random" | "ordered") => {
+    (participants: string[], seedType: "random" | "ordered" | "as-entered") => {
       generateBracketMutation.mutate({ participants, seedType });
     },
     [generateBracketMutation]
