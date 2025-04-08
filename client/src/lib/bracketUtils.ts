@@ -1,45 +1,155 @@
 import { BracketMatch } from "@shared/schema";
 
+// Utility to get the next power of 2
+function getNextPowerOfTwo(n: number): number {
+  return Math.pow(2, Math.ceil(Math.log2(n)));
+}
+
+// Standard and Reversed Bye Distribution for 3-8 players
+const STANDARD_BYES: {[key: number]: number[]} = {
+  3: [0], 5: [0, 3, 4], 6: [0, 5], 7: [0]
+};
+const REVERSED_BYES: {[key: number]: number[]} = {
+  3: [2], 5: [0, 1, 4], 6: [0, 5], 7: [6]
+};
+
+// Generate bracket pairs using the new algorithm
+function generateBracketPairs(
+  participants: string[], 
+  seedType: "random" | "ordered" | "as-entered"
+): [string, string][] {
+  // Apply random seeding if specified
+  let seededParticipants = [...participants];
+  if (seedType === "random") {
+    seededParticipants = shuffleArray(seededParticipants);
+  }
+  // For "as-entered" we just use the original order
+
+  const matches = generateBrackets(seededParticipants);
+  return matches;
+}
+
+function determineBracketSize(n: number): number {
+  return getNextPowerOfTwo(n);
+}
+
+function splitIntoUpperLower(n: number, byes: number, reversed = false): { upper: number; lower: number; upperByes: number; lowerByes: number } {
+  let upper, lower, upperByes, lowerByes;
+
+  if (n % 2 === 0) {
+    upper = lower = n / 2;
+    upperByes = lowerByes = Math.floor(byes / 2);
+  } else if (!reversed) {
+    upper = (n - 1) / 2;
+    lower = (n + 1) / 2;
+    upperByes = Math.ceil((byes + 1) / 2);
+    lowerByes = byes - upperByes;
+  } else {
+    upper = (n + 1) / 2;
+    lower = (n - 1) / 2;
+    upperByes = Math.floor((byes - 1) / 2);
+    lowerByes = byes - upperByes;
+  }
+
+  return { upper, lower, upperByes, lowerByes };
+}
+
+function assignByes(players: string[], byeIndexes: number[]): [string, string][] {
+  let output = Array(players.length).fill(null);
+  let paired = new Set<number>();
+
+  for (let i = 0; i < players.length; i++) {
+    if (byeIndexes.includes(i)) {
+      output[i] = [players[i], "(bye)"];
+      paired.add(i);
+    }
+  }
+
+  for (let i = 0; i < players.length; i++) {
+    if (!paired.has(i) && output[i] === null) {
+      let j = i + 1;
+      while (j < players.length && (paired.has(j) || output[j] !== null)) j++;
+      if (j < players.length) {
+        output[i] = [players[i], players[j]];
+        output[j] = null;
+        paired.add(i);
+        paired.add(j);
+      }
+    }
+  }
+
+  return output.filter(match => match !== null);
+}
+
+function generateBrackets(players: string[], forcedByes: number | null = null, reversed = false): [string, string][] {
+  let n = players.length;
+
+  if (forcedByes !== null && forcedByes === n) {
+    let byeIndexes = Array.from({length: n}, (_, i) => i);
+    return assignByes(players, byeIndexes);
+  }
+
+  if (n <= 8) {
+    const pattern = reversed ? REVERSED_BYES[n] : STANDARD_BYES[n];
+    const byeIndexes = (forcedByes !== null && (!pattern || pattern.length !== forcedByes))
+      ? Array.from({length: forcedByes}, (_, i) => i)
+      : (pattern || []);
+    return assignByes(players, byeIndexes);
+  }
+
+  let totalBrackets = determineBracketSize(n);
+  let byes = totalBrackets - n;
+
+  if (byes === 0) {
+    return assignByes(players, []);
+  }
+
+  let { upper, lower, upperByes, lowerByes } = splitIntoUpperLower(n, byes, reversed);
+
+  let upperPlayers = players.slice(0, upper);
+  let lowerPlayers = players.slice(upper);
+
+  let upperBracket = generateBrackets(upperPlayers, upperByes, false);
+  let lowerBracket = generateBrackets(lowerPlayers, lowerByes, true);
+
+  return [...upperBracket, ...lowerBracket];
+}
+
+// Pool Determination Logic Based on Bracket Size
+function determinePools(n: number): number {
+  if (n <= 32) return 2;
+  if (n <= 64) return 4;
+  if (n <= 128) return 8;
+  if (n <= 256) return 16;
+  return Math.pow(2, Math.ceil(Math.log2(n / 16)));
+}
+
+// Group Matches Into Pools for Display
+function groupMatchesIntoPools(matches: [string, string][], poolCount: number): [string, string][][] {
+  const matchesPerPool = Math.ceil(matches.length / poolCount);
+  const pools: [string, string][][] = [];
+  for (let i = 0; i < matches.length; i += matchesPerPool) {
+    pools.push(matches.slice(i, i + matchesPerPool));
+  }
+  return pools;
+}
+
 /**
  * Creates a single elimination tournament bracket with proper bye distribution
  * @param participants List of participants
- * @param seedType Method for seeding (random or ordered)
+ * @param seedType Method for seeding (random, ordered, or as-entered)
  * @returns An array of rounds, each containing matches
  */
 export function createBracket(
   participants: string[],
-  seedType: "random" | "ordered"
+  seedType: "random" | "ordered" | "as-entered" = "random"
 ): BracketMatch[][] {
-  // Make a copy of participants array
-  let seededParticipants = [...participants];
-
-  // Apply random seeding if specified
-  if (seedType === "random") {
-    seededParticipants = shuffleArray(seededParticipants);
-  }
+  // Generate first-round pairs using the new algorithm
+  const pairs = generateBracketPairs(participants, seedType);
   
-  // Hardcoded brackets for specific participant counts
-  if (seededParticipants.length === 6) {
-    return createSixPlayerBracket(seededParticipants);
-  }
-  
-  if (seededParticipants.length === 5) {
-    return createFivePlayerBracket(seededParticipants);
-  }
-  
-  if (seededParticipants.length === 7) {
-    return createSevenPlayerBracket(seededParticipants);
-  }
-
   // Calculate the nearest power of 2 greater than or equal to participants length
-  const participantCount = seededParticipants.length;
-  const nextPowerOfTwo = Math.pow(2, Math.ceil(Math.log2(participantCount)));
-  
-  // Calculate number of byes needed to fill the bracket
-  const numByes = nextPowerOfTwo - participantCount;
-  
-  // Create a new array with participants and byes properly distributed
-  const pairs = createPairsWithByes(seededParticipants, numByes);
+  const participantCount = participants.length;
+  const nextPowerOfTwo = getNextPowerOfTwo(participantCount);
   
   // Calculate the number of rounds needed
   const numRounds = Math.log2(nextPowerOfTwo);
@@ -50,22 +160,22 @@ export function createBracket(
     .map(() => []);
   
   // First round: fill in participants according to seeding with byes
-  const firstRoundMatchCount = nextPowerOfTwo / 2;
+  const firstRoundMatchCount = pairs.length;
   
   for (let i = 0; i < firstRoundMatchCount; i++) {
     const matchId = `match-r1-${i + 1}`;
     const nextMatchId = i % 2 === 0 ? `match-r2-${Math.floor(i / 2) + 1}` : `match-r2-${Math.floor(i / 2) + 1}`;
     
-    // Get participants for this match from the seeded array with byes
+    // Get participants for this match from the generated pairs
     const pair = pairs[i];
     const participant1 = pair[0];
     const participant2 = pair[1];
     
     // If one participant is marked with (bye), the other advances automatically
     let winner = null;
-    if (participant1 && participant2 && participant2.endsWith("(bye)")) {
+    if (participant1 && participant2 && participant2 === "(bye)") {
       winner = participant1;
-    } else if (participant1 && participant2 && participant1.endsWith("(bye)")) {
+    } else if (participant1 && participant2 && participant1 === "(bye)") {
       winner = participant2;
     }
     
