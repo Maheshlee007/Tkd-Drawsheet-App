@@ -86,26 +86,22 @@ const Home: React.FC = () => {
               <h2 className="text-xl font-semibold text-slate-800 mb-4">Tournament Statistics</h2>
               
               {stats && (
-                <div className="space-y-3">
-                  <div className="flex justify-between py-2 border-b border-slate-100">
-                    <span className="text-slate-600">Participants:</span>
-                    <span className="font-medium">{stats.participants}</span>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex flex-col p-3 border rounded-md border-slate-200 bg-slate-50">
+                    <span className="text-slate-600 text-sm">Participants</span>
+                    <span className="font-medium text-lg">{stats.participants}</span>
                   </div>
-                  <div className="flex justify-between py-2 border-b border-slate-100">
-                    <span className="text-slate-600">Rounds:</span>
-                    <span className="font-medium">{stats.rounds}</span>
+                  <div className="flex flex-col p-3 border rounded-md border-slate-200 bg-slate-50">
+                    <span className="text-slate-600 text-sm">Pools</span>
+                    <span className="font-medium text-lg">{stats.pools}</span>
                   </div>
-                  <div className="flex justify-between py-2 border-b border-slate-100">
-                    <span className="text-slate-600">Matches:</span>
-                    <span className="font-medium">{stats.matches}</span>
+                  <div className="flex flex-col p-3 border rounded-md border-slate-200 bg-slate-50">
+                    <span className="text-slate-600 text-sm">Total Matches</span>
+                    <span className="font-medium text-lg">{stats.matches}</span>
                   </div>
-                  <div className="flex justify-between py-2 border-b border-slate-100">
-                    <span className="text-slate-600">Byes:</span>
-                    <span className="font-medium">{stats.byes}</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b border-slate-100">
-                    <span className="text-slate-600">Pools:</span>
-                    <span className="font-medium">{stats.pools}</span>
+                  <div className="flex flex-col p-3 border rounded-md border-slate-200 bg-slate-50">
+                    <span className="text-slate-600 text-sm">Rounds</span>
+                    <span className="font-medium text-lg">{stats.rounds}</span>
                   </div>
                 </div>
               )}

@@ -68,3 +68,29 @@
   background-color: #d1d5db;
   flex-shrink: 0;
 }
+
+/* Improve bracket alignment */
+.bracket-display {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+}
+
+.bracket-round {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  margin-right: 30px;
+}
+
+.bracket-match {
+  width: 180px;
+  margin-bottom: 15px;
+}
+
+/* Ensure consistent heights for matches */
+.participant {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+}
