@@ -89,19 +89,16 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
 
       <div className="overflow-x-auto" ref={bracketContainerRef}>
         <div
-          className="bracket-display min-w-[750px] relative pb-8"
-          style={{ minHeight: bracketData.length > 2 ? 400 : 200 }}
+          className="bracket-display relative pb-8"
+          style={{ minHeight: bracketData.length > 2 ? 500 : 300 }}
         >
           {/* Render rounds */}
           {bracketData.map((round, roundIndex) => (
             <div
               key={`round-${roundIndex}`}
-              className="bracket-round flex flex-col justify-around absolute"
+              className="bracket-round"
               style={{
-                left: `${roundIndex * 208}px`,
-                top: 0,
-                bottom: 0,
-                width: "12rem",
+                width: "220px",
               }}
             >
               {round.map((match, matchIndex) => (
@@ -114,10 +111,10 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                   <div
                     className={`participant p-2 mb-1 text-sm rounded-r-sm ${
                       match.participants[0] === "(bye)" 
-                        ? "border-l-4 border-green-300 bg-green-50"
+                        ? "border-l-4 border-green-400 bg-green-50 text-green-700"
                         : match.winner === match.participants[0]
                           ? "border-l-4 border-primary bg-slate-50"
-                          : "border-l-4 border-blue-400"
+                          : "border-l-4 border-blue-400 bg-blue-50"
                     }`}
                   >
                     <span
@@ -135,10 +132,10 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                   <div
                     className={`participant p-2 text-sm rounded-r-sm ${
                       match.participants[1] === "(bye)" 
-                        ? "border-l-4 border-green-300 bg-green-50"
+                        ? "border-l-4 border-green-400 bg-green-50 text-green-700"
                         : match.winner === match.participants[1]
                           ? "border-l-4 border-primary bg-slate-50"
-                          : "border-l-4 border-red-400"
+                          : "border-l-4 border-red-400 bg-red-50"
                     }`}
                   >
                     <span
