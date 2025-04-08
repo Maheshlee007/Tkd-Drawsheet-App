@@ -63,24 +63,94 @@ export const useTournament = () => {
 
   // Export as PNG
   const exportAsPNG = useCallback(() => {
-    const bracketElement = document.querySelector(".bracket-display");
-    if (!bracketElement) return;
+    const bracketContainer = document.querySelector(".overflow-x-auto");
+    if (!bracketContainer) return;
 
-    html2canvas(bracketElement as HTMLElement, { backgroundColor: "#FFFFFF" }).then((canvas) => {
+    // Make sure the container has the full width and is scrolled to the start
+    const originalScrollLeft = bracketContainer.scrollLeft;
+    const originalWidth = (bracketContainer as HTMLElement).style.width;
+    const originalOverflow = (bracketContainer as HTMLElement).style.overflow;
+    
+    // Temporarily adjust the container to capture everything
+    (bracketContainer as HTMLElement).scrollLeft = 0;
+    (bracketContainer as HTMLElement).style.width = 'auto';
+    (bracketContainer as HTMLElement).style.overflow = 'visible';
+
+    const bracketElement = document.querySelector(".bracket-display");
+    if (!bracketElement) {
+      // Restore original state if bracket display not found
+      (bracketContainer as HTMLElement).scrollLeft = originalScrollLeft;
+      (bracketContainer as HTMLElement).style.width = originalWidth;
+      (bracketContainer as HTMLElement).style.overflow = originalOverflow;
+      return;
+    }
+
+    // Calculate full dimensions
+    const width = bracketElement.scrollWidth;
+    const height = bracketElement.scrollHeight;
+
+    html2canvas(bracketElement as HTMLElement, {
+      backgroundColor: "#FFFFFF",
+      width: width,
+      height: height,
+      scale: 1.5,  // Higher scale for better quality
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: width,
+      windowHeight: height
+    }).then((canvas) => {
       const link = document.createElement("a");
       link.download = "tournament-bracket.png";
       link.href = canvas.toDataURL("image/png");
       link.click();
+      
+      // Restore original container properties
+      (bracketContainer as HTMLElement).scrollLeft = originalScrollLeft;
+      (bracketContainer as HTMLElement).style.width = originalWidth;
+      (bracketContainer as HTMLElement).style.overflow = originalOverflow;
+      
       closeExportModal();
     });
   }, [closeExportModal]);
 
   // Export as PDF
   const exportAsPDF = useCallback(() => {
-    const bracketElement = document.querySelector(".bracket-display");
-    if (!bracketElement) return;
+    const bracketContainer = document.querySelector(".overflow-x-auto");
+    if (!bracketContainer) return;
 
-    html2canvas(bracketElement as HTMLElement, { backgroundColor: "#FFFFFF" }).then((canvas) => {
+    // Make sure the container has the full width and is scrolled to the start
+    const originalScrollLeft = bracketContainer.scrollLeft;
+    const originalWidth = (bracketContainer as HTMLElement).style.width;
+    const originalOverflow = (bracketContainer as HTMLElement).style.overflow;
+    
+    // Temporarily adjust the container to capture everything
+    (bracketContainer as HTMLElement).scrollLeft = 0;
+    (bracketContainer as HTMLElement).style.width = 'auto';
+    (bracketContainer as HTMLElement).style.overflow = 'visible';
+
+    const bracketElement = document.querySelector(".bracket-display");
+    if (!bracketElement) {
+      // Restore original state if bracket display not found
+      (bracketContainer as HTMLElement).scrollLeft = originalScrollLeft;
+      (bracketContainer as HTMLElement).style.width = originalWidth;
+      (bracketContainer as HTMLElement).style.overflow = originalOverflow;
+      return;
+    }
+
+    // Calculate full dimensions
+    const width = bracketElement.scrollWidth;
+    const height = bracketElement.scrollHeight;
+
+    html2canvas(bracketElement as HTMLElement, {
+      backgroundColor: "#FFFFFF",
+      width: width,
+      height: height,
+      scale: 1.5,  // Higher scale for better quality
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: width,
+      windowHeight: height
+    }).then((canvas) => {
       const imgData = canvas.toDataURL("image/png");
       const pdf = new jsPDF({
         orientation: "landscape",
@@ -92,16 +162,54 @@ export const useTournament = () => {
       
       pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
       pdf.save("tournament-bracket.pdf");
+      
+      // Restore original container properties
+      (bracketContainer as HTMLElement).scrollLeft = originalScrollLeft;
+      (bracketContainer as HTMLElement).style.width = originalWidth;
+      (bracketContainer as HTMLElement).style.overflow = originalOverflow;
+      
       closeExportModal();
     });
   }, [closeExportModal]);
 
   // Copy to clipboard
   const copyToClipboard = useCallback(() => {
-    const bracketElement = document.querySelector(".bracket-display");
-    if (!bracketElement) return;
+    const bracketContainer = document.querySelector(".overflow-x-auto");
+    if (!bracketContainer) return;
 
-    html2canvas(bracketElement as HTMLElement, { backgroundColor: "#FFFFFF" }).then((canvas) => {
+    // Make sure the container has the full width and is scrolled to the start
+    const originalScrollLeft = bracketContainer.scrollLeft;
+    const originalWidth = (bracketContainer as HTMLElement).style.width;
+    const originalOverflow = (bracketContainer as HTMLElement).style.overflow;
+    
+    // Temporarily adjust the container to capture everything
+    (bracketContainer as HTMLElement).scrollLeft = 0;
+    (bracketContainer as HTMLElement).style.width = 'auto';
+    (bracketContainer as HTMLElement).style.overflow = 'visible';
+
+    const bracketElement = document.querySelector(".bracket-display");
+    if (!bracketElement) {
+      // Restore original state if bracket display not found
+      (bracketContainer as HTMLElement).scrollLeft = originalScrollLeft;
+      (bracketContainer as HTMLElement).style.width = originalWidth;
+      (bracketContainer as HTMLElement).style.overflow = originalOverflow;
+      return;
+    }
+
+    // Calculate full dimensions
+    const width = bracketElement.scrollWidth;
+    const height = bracketElement.scrollHeight;
+
+    html2canvas(bracketElement as HTMLElement, {
+      backgroundColor: "#FFFFFF",
+      width: width,
+      height: height,
+      scale: 1.5,  // Higher scale for better quality
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: width,
+      windowHeight: height
+    }).then((canvas) => {
       canvas.toBlob((blob) => {
         if (blob) {
           const item = new ClipboardItem({ "image/png": blob });
@@ -110,6 +218,12 @@ export const useTournament = () => {
               title: "Success",
               description: "Bracket copied to clipboard!",
             });
+            
+            // Restore original container properties
+            (bracketContainer as HTMLElement).scrollLeft = originalScrollLeft;
+            (bracketContainer as HTMLElement).style.width = originalWidth;
+            (bracketContainer as HTMLElement).style.overflow = originalOverflow;
+            
             closeExportModal();
           });
         }

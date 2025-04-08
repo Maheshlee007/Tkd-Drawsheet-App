@@ -13,7 +13,7 @@ interface InputPanelProps {
 }
 
 const InputPanel = ({ onGenerateBracket }: InputPanelProps) => {
-  const [inputMethod, setInputMethod] = useState<string>("bulk");
+  const [inputMethod, setInputMethod] = useState<string>("blank");
   const [participants, setParticipants] = useState<{
     bulk: string;
     individual: string[];
@@ -231,7 +231,12 @@ const InputPanel = ({ onGenerateBracket }: InputPanelProps) => {
               max="64"
               className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary text-sm"
               value={participants.blank}
-              onChange={(e) => setParticipants(prev => ({ ...prev, blank: parseInt(e.target.value) || 2 }))}
+              onChange={(e) => {
+                // Clear the field and set the new value
+                const value = e.target.value.replace(/\D/g, '');
+                const numValue = parseInt(value) || 2;
+                setParticipants(prev => ({ ...prev, blank: numValue }));
+              }}
             />
           </div>
           <div className="mt-2 text-sm text-slate-600">
