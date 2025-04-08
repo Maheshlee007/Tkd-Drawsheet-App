@@ -25,3 +25,46 @@
 .connector-vertical {
   width: 1px;
 }
+
+
+.bracket {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  font-family: 'Inter', sans-serif;
+  color: #333;
+}
+
+.bracket-stage {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.match {
+  display: flex;
+  align-items: center;
+  background-color: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 10px 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.team {
+  flex: 1;
+  text-align: center;
+  padding: 5px;
+}
+
+.winner {
+  color: #22c55e; /* Adjust the color as needed */
+  font-weight: bold;
+}
+
+.connector {
+  width: 20px;
+  height: 2px;
+  background-color: #d1d5db;
+  flex-shrink: 0;
+}
