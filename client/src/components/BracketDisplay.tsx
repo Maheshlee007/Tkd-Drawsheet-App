@@ -10,6 +10,26 @@ interface BracketDisplayProps {
   onExport: () => void;
 }
 
+// Function to determine if a player had a bye in the previous round
+function previousRoundHadBye(playerName: string, bracketData: BracketMatch[][], currentRound: number): boolean {
+  if (currentRound <= 0 || !bracketData[currentRound - 1]) return false;
+  
+  // Find the player in the previous round
+  const prevRound = bracketData[currentRound - 1];
+  
+  for (const match of prevRound) {
+    // If this player faced a bye in the previous round
+    if (
+      (match.participants[0] === playerName && match.participants[1] === "(bye)") ||
+      (match.participants[1] === playerName && match.participants[0] === "(bye)")
+    ) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
 const BracketDisplay: React.FC<BracketDisplayProps> = ({
   bracketData,
   onExport,
@@ -117,13 +137,19 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
   }
 
   // Function to get style class for participant
-  const getParticipantStyle = (participant: string | null, hasBye: boolean, isTop: boolean) => {
+  const getParticipantStyle = (participant: string | null, hasMatchBye: boolean, isOpponentBye: boolean, isTop: boolean) => {
     if (participant === "(bye)") {
-      return "border-l-4 border-green-400 bg-green-50 text-green-700";
+      // Style for bye placeholder (gray with green border)
+      return "border-l-4 border-green-400 bg-gray-100 text-gray-500";
     }
     
-    if (hasBye) {
-      // Style for player with a bye (green left border and light green background)
+    if (isOpponentBye) {
+      // Style for player who got a bye (green left border and light green background)
+      return "border-l-4 border-green-400 bg-green-50";
+    }
+    
+    if (hasMatchBye) {
+      // Style for player from a match that had a bye elsewhere
       return "border-l-4 border-green-400 bg-green-50";
     }
     
@@ -190,7 +216,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
 
       <div className="overflow-x-auto print:w-full" ref={bracketContainerRef}>
         <div
-          className="bracket-display relative pb-8 print:pb-0 print:landscape print:mt-0"
+          className="bracket-display relative pb-8 print:pb-0 print:landscape print:mt-0 flex justify-start"
           style={{ minHeight: currentBracket.length > 2 ? 500 : 300 }}
         >
           {/* Render rounds */}
@@ -199,29 +225,39 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
               key={`round-${roundIndex}`}
               className="bracket-round print:pl-2 print:pt-2"
               style={{
-                width: "220px",
+                width: "180px", // Reduced width to use more horizontal space
               }}
             >
               {round.map((match, matchIndex) => {
-                // Determine if either participant has a bye in a previous round
-                const hasByeTop = match.participants[0] !== null && match.participants[0] !== "(bye)" && 
-                  match.participants[0]?.toLowerCase().includes("player") && 
-                  (round[matchIndex]?.participants[0] === "(bye)" || match.participants[0] === "(bye)");
-                  
-                const hasByeBottom = match.participants[1] !== null && match.participants[1] !== "(bye)" && 
-                  match.participants[1]?.toLowerCase().includes("player") && 
-                  (round[matchIndex]?.participants[1] === "(bye)" || match.participants[1] === "(bye)");
+                // Get the previous round's match that led to this match
+                const isFirstRound = roundIndex === 0;
+                
+                // Check for opponent bye conditions
+                const hasOpponentByeTop = match.participants[0] !== null && 
+                                      match.participants[1] === "(bye)";
+                                      
+                const hasOpponentByeBottom = match.participants[1] !== null && 
+                                        match.participants[0] === "(bye)";
+                
+                // Check for byes in previous matches that led to this player
+                const hasMatchByeTop = !isFirstRound && match.participants[0] !== null && 
+                                    match.participants[0] !== "(bye)" &&
+                                    previousRoundHadBye(match.participants[0], bracketData, roundIndex);
+                                    
+                const hasMatchByeBottom = !isFirstRound && match.participants[1] !== null && 
+                                      match.participants[1] !== "(bye)" &&
+                                      previousRoundHadBye(match.participants[1], bracketData, roundIndex);
 
                 return (
                   <div
                     key={`match-${match.id}`}
-                    className="bracket-match p-3 border border-slate-200 rounded-md bg-white shadow-sm relative mb-4 print:mb-2 print:p-2 print:shadow-none print:bg-gray-50"
+                    className="bracket-match p-2 border border-slate-200 rounded-md bg-white shadow-sm relative mb-3 print:mb-1 print:p-1 print:shadow-none print:bg-gray-50"
                     data-match-id={match.id}
                   >
                     {/* First participant */}
                     <div
-                      className={`participant p-2 mb-1 text-sm rounded-r-sm print:p-1 ${
-                        getParticipantStyle(match.participants[0], hasByeTop, true)
+                      className={`participant py-1 px-2 mb-1 text-sm rounded-r-sm print:py-0.5 print:px-1 ${
+                        getParticipantStyle(match.participants[0], hasMatchByeTop, hasOpponentByeTop, true)
                       } ${
                         match.winner === match.participants[0] ? "font-medium" : ""
                       }`}
@@ -231,8 +267,8 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
 
                     {/* Second participant */}
                     <div
-                      className={`participant p-2 text-sm rounded-r-sm print:p-1 ${
-                        getParticipantStyle(match.participants[1], hasByeBottom, false)
+                      className={`participant py-1 px-2 text-sm rounded-r-sm print:py-0.5 print:px-1 ${
+                        getParticipantStyle(match.participants[1], hasMatchByeBottom, hasOpponentByeBottom, false)
                       } ${
                         match.winner === match.participants[1] ? "font-medium" : ""
                       }`}
