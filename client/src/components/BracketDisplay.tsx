@@ -9,16 +9,28 @@ interface BracketDisplayProps {
   onExport: () => void;
 }
 
-const BracketDisplay: React.FC<BracketDisplayProps> = ({ bracketData, onExport }) => {
+const BracketDisplay: React.FC<BracketDisplayProps> = ({
+  bracketData,
+  onExport,
+}) => {
   const [connectors, setConnectors] = useState<
-    Array<{ left: number; top: number; width?: number; height?: number; type: string }>
+    Array<{
+      left: number;
+      top: number;
+      width?: number;
+      height?: number;
+      type: string;
+    }>
   >([]);
   const bracketContainerRef = useRef<HTMLDivElement>(null);
 
   // Calculate connector lines when the bracket data changes
   useEffect(() => {
     if (bracketData && bracketContainerRef.current) {
-      const newConnectors = calculateBracketConnectors(bracketData, bracketContainerRef.current);
+      const newConnectors = calculateBracketConnectors(
+        bracketData,
+        bracketContainerRef.current,
+      );
       setConnectors(newConnectors);
     }
   }, [bracketData]);
@@ -28,14 +40,32 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({ bracketData, onExport }
     return (
       <div className="bg-white rounded-lg shadow-md p-6">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold text-slate-800">Tournament Bracket</h2>
+          <h2 className="text-xl font-semibold text-slate-800">
+            Tournament Bracket
+          </h2>
         </div>
         <div className="flex flex-col items-center justify-center py-12 text-center">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-slate-300 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="h-16 w-16 text-slate-300 mb-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+            />
           </svg>
-          <h3 className="text-lg font-medium text-slate-700 mb-2">No Bracket Generated</h3>
-          <p className="text-slate-500 max-w-sm">Enter your tournament participants and click "Generate Bracket" to see your tournament structure.</p>
+          <h3 className="text-lg font-medium text-slate-700 mb-2">
+            No Bracket Generated
+          </h3>
+          <p className="text-slate-500 max-w-sm">
+            Enter your tournament participants and click "Generate Bracket" to
+            see your tournament structure.
+          </p>
         </div>
       </div>
     );
@@ -44,7 +74,9 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({ bracketData, onExport }
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-semibold text-slate-800">Tournament Bracket</h2>
+        <h2 className="text-xl font-semibold text-slate-800">
+          Tournament Bracket
+        </h2>
         <Button
           onClick={onExport}
           variant="outline"
@@ -56,7 +88,10 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({ bracketData, onExport }
       </div>
 
       <div className="overflow-x-auto" ref={bracketContainerRef}>
-        <div className="bracket-display min-w-[750px] relative pb-8" style={{ minHeight: bracketData.length > 2 ? 400 : 200 }}>
+        <div
+          className="bracket-display min-w-[750px] relative pb-8"
+          style={{ minHeight: bracketData.length > 2 ? 400 : 200 }}
+        >
           {/* Render rounds */}
           {bracketData.map((round, roundIndex) => (
             <div
@@ -83,11 +118,17 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({ bracketData, onExport }
                         : "border-l-4 border-transparent"
                     }`}
                   >
-                    <span className={match.winner === match.participants[0] ? "font-medium" : ""}>
+                    <span
+                      className={
+                        match.winner === match.participants[0]
+                          ? "font-medium"
+                          : ""
+                      }
+                    >
                       {match.participants[0] || "TBD"}
                     </span>
                   </div>
-                  
+
                   {/* Second participant */}
                   <div
                     className={`participant p-2 text-sm rounded-r-sm ${
@@ -96,7 +137,13 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({ bracketData, onExport }
                         : "border-l-4 border-transparent"
                     }`}
                   >
-                    <span className={match.winner === match.participants[1] ? "font-medium" : ""}>
+                    <span
+                      className={
+                        match.winner === match.participants[1]
+                          ? "font-medium"
+                          : ""
+                      }
+                    >
                       {match.participants[1] || "TBD"}
                     </span>
                   </div>
