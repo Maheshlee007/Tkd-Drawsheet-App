@@ -18,12 +18,14 @@ const InputPanel = ({ onGenerateBracket }: InputPanelProps) => {
     bulk: string;
     individual: string[];
     file: string[];
+    blank: number;
   }>({
     bulk: "",
     individual: ["", ""],
     file: [],
+    blank: 8
   });
-  const [seedType, setSeedType] = useState<"random" | "ordered" | "as-entered">("random");
+  const [seedType, setSeedType] = useState<"random" | "ordered" | "as-entered">("as-entered");
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -73,6 +75,9 @@ const InputPanel = ({ onGenerateBracket }: InputPanelProps) => {
         .filter(name => name.trim().length > 0);
     } else if (inputMethod === "file") {
       participantsList = participants.file;
+    } else if (inputMethod === "blank") {
+      // Generate numbered participants like "Player 1", "Player 2", etc.
+      participantsList = Array.from({ length: participants.blank }, (_, i) => `Player ${i + 1}`);
     }
 
     // Validate participant count
@@ -94,6 +99,7 @@ const InputPanel = ({ onGenerateBracket }: InputPanelProps) => {
       bulk: "",
       individual: ["", ""],
       file: [],
+      blank: 8
     });
     setFileName(null);
     setError(null);
@@ -125,6 +131,12 @@ const InputPanel = ({ onGenerateBracket }: InputPanelProps) => {
             className="px-4 py-2 text-sm font-medium data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary rounded-none data-[state=inactive]:bg-transparent data-[state=inactive]:text-slate-600"
           >
             File Upload
+          </TabsTrigger>
+          <TabsTrigger 
+            value="blank" 
+            className="px-4 py-2 text-sm font-medium data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary rounded-none data-[state=inactive]:bg-transparent data-[state=inactive]:text-slate-600"
+          >
+            Blank Bracket
           </TabsTrigger>
         </TabsList>
 
@@ -205,6 +217,26 @@ const InputPanel = ({ onGenerateBracket }: InputPanelProps) => {
               <p>Found {participants.file.length} participants</p>
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="blank" className="mb-6">
+          <Label htmlFor="blank-count" className="block text-sm font-medium text-slate-700 mb-2">
+            Number of participants
+          </Label>
+          <div className="flex items-center">
+            <Input 
+              id="blank-count"
+              type="number"
+              min="2"
+              max="64"
+              className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary text-sm"
+              value={participants.blank}
+              onChange={(e) => setParticipants(prev => ({ ...prev, blank: parseInt(e.target.value) || 2 }))}
+            />
+          </div>
+          <div className="mt-2 text-sm text-slate-600">
+            This will create a bracket with {participants.blank} unnamed players (Player 1, Player 2, etc.)
+          </div>
         </TabsContent>
       </Tabs>
       
