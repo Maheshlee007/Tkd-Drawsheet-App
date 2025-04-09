@@ -125,11 +125,10 @@ function generateBrackets(players: string[], forcedByes: number | null = null, r
 
 // Pool Determination Logic Based on Bracket Size
 function determinePools(n: number): number {
-  if (n <= 32) return 2;
-  if (n <= 64) return 4;
-  if (n <= 128) return 8;
-  if (n <= 256) return 16;
-  return Math.pow(2, Math.ceil(Math.log2(n / 16)));
+  if (n <= 16) return 1;      // For small tournaments, use a single pool
+  if (n <= 32) return 2;      // For medium tournaments, use 2 pools
+  if (n <= 64) return 4;      // For large tournaments, use 4 pools
+  return 6;                   // For very large tournaments (>64), use 6 pools
 }
 
 // Group Matches Into Pools for Display
