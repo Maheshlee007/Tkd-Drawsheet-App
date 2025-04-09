@@ -164,8 +164,9 @@ export const useTournament = () => {
     // For multiple pools, we want to generate a multi-page PDF with one pool per page
     if (hasMultiplePools) {
       // Create PDF with landscape orientation
+      // Create PDF with user-selected orientation
       const pdf = new jsPDF({
-        orientation: "landscape",
+        orientation: document.querySelector('.bracket-display.portrait') ? 'portrait' : 'landscape',
         unit: "px",
       });
       
@@ -375,7 +376,7 @@ export const useTournament = () => {
       }).then((canvas) => {
         const imgData = canvas.toDataURL("image/png");
         const pdf = new jsPDF({
-          orientation: "landscape",
+          orientation: document.querySelector('.bracket-display.portrait') ? 'portrait' : 'landscape',
           unit: "px",
         });
         const imgProps = pdf.getImageProperties(imgData);

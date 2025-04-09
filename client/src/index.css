@@ -15,15 +15,34 @@
 /* Connecting lines for brackets */
 .bracket-connector {
   position: absolute;
-  border: 1.5px solid #cbd5e1;
+  border: 2px solid #94a3b8;
+  z-index: 10;
 }
 
 .connector-horizontal {
-  height: 1px;
+  height: 2px;
 }
 
 .connector-vertical {
-  width: 1px;
+  width: 2px;
+}
+
+/* Print orientation options */
+@media print {
+  .landscape {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+  
+  .portrait {
+    transform: rotate(90deg);
+    transform-origin: top left;
+    width: 210mm; /* A4 height */
+    margin-left: 5mm;
+    margin-top: 5mm;
+    position: absolute;
+  }
 }
 
 

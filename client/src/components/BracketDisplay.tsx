@@ -2,8 +2,10 @@ import React, { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { BracketMatch } from "@shared/schema";
 import { calculateBracketConnectors } from "@/lib/bracketUtils";
-import { Download, FileText, Printer } from "lucide-react";
+import { Download, FileText, Printer, Smartphone, Monitor } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 interface BracketDisplayProps {
   bracketData: BracketMatch[][] | null;
@@ -46,6 +48,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
   const [poolCount, setPoolCount] = useState<number>(1);
   const [activePool, setActivePool] = useState<number>(0);
   const [pooledBrackets, setPooledBrackets] = useState<BracketMatch[][][]>([]);
+  const [printOrientation, setPrintOrientation] = useState<"landscape" | "portrait">("landscape");
   const bracketContainerRef = useRef<HTMLDivElement>(null);
 
   // Calculate connector lines when the bracket data changes
@@ -218,6 +221,11 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
       : "border-l-4 border-red-400 bg-red-50";
   };
 
+  // Toggle print orientation
+  const togglePrintOrientation = () => {
+    setPrintOrientation(prev => prev === "landscape" ? "portrait" : "landscape");
+  };
+
   // Add print functionality
   const handlePrint = () => {
     window.print();
@@ -262,6 +270,25 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
           </div>
         </div>
       )}
+      
+      {/* Print orientation toggle */}
+      <div className="mb-4 flex items-center space-x-4 print:hidden">
+        <div className="flex items-center space-x-2">
+          <Label htmlFor="print-orientation" className="cursor-pointer">Print Orientation:</Label>
+          <div className="flex items-center space-x-2 bg-slate-100 p-2 rounded-md">
+            <Smartphone className={`h-4 w-4 ${printOrientation === "portrait" ? "text-primary" : "text-slate-400"}`} />
+            <Switch 
+              id="print-orientation" 
+              checked={printOrientation === "landscape"}
+              onCheckedChange={togglePrintOrientation}
+            />
+            <Monitor className={`h-4 w-4 ${printOrientation === "landscape" ? "text-primary" : "text-slate-400"}`} />
+          </div>
+          <span className="text-sm text-slate-600">
+            {printOrientation === "landscape" ? "Landscape" : "Portrait"}
+          </span>
+        </div>
+      </div>
 
       {/* For printing/exporting, we use the active pool */}
       <div className="hidden print:block">
@@ -270,7 +297,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
         </div>
         <div className="overflow-x-auto w-full" ref={bracketContainerRef}>
           <div
-            className="bracket-display relative pb-0 landscape mt-0 flex justify-start"
+            className={`bracket-display relative pb-0 ${printOrientation} mt-0 flex justify-start`}
             data-pool={activePool}
             style={{ minHeight: pooledBrackets[activePool]?.length > 2 ? 500 : 300 }}
           >
