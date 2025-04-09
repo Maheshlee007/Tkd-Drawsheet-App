@@ -208,18 +208,13 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
         </div>
       </div>
 
-      {/* Display Pool Headers if more than one pool */}
+      {/* Pool count information */}
       {poolCount > 1 && (
-        <div className="mb-6 space-y-2">
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            {Array.from({ length: poolCount }).map((_, index) => (
-              <div 
-                key={`pool-header-${index}`}
-                className="text-center bg-slate-100 rounded-md py-2 px-4 font-medium"
-              >
-                Pool {index + 1}
-              </div>
-            ))}
+        <div className="mb-6">
+          <div className="p-4 bg-slate-50 rounded-md border border-slate-200">
+            <p className="text-slate-700 font-medium">
+              Tournament divided into {poolCount} pools for better organization
+            </p>
           </div>
         </div>
       )}

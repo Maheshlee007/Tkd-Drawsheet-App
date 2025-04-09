@@ -25,7 +25,15 @@ function generateBracketPairs(
   }
   // For "as-entered" we just use the original order
 
+  // Special handling for very large tournaments
+  const totalBracketSize = getNextPowerOfTwo(participants.length);
+  console.log(`Generating bracket for ${participants.length} participants with seedType: ${seedType}`);
+  
   const matches = generateBrackets(seededParticipants);
+  
+  // Log first round matches for debugging
+  console.log(`First round matches: ${JSON.stringify(matches.map(m => ({p1: m[0], p2: m[1]})))}`);
+  
   return matches;
 }
 
@@ -144,6 +152,15 @@ export function createBracket(
   participants: string[],
   seedType: "random" | "ordered" | "as-entered" = "random"
 ): BracketMatch[][] {
+  // Handle special case tournament sizes
+  if (participants.length === 5) {
+    return createFivePlayerBracket(participants);
+  } else if (participants.length === 6) {
+    return createSixPlayerBracket(participants);
+  } else if (participants.length === 7) {
+    return createSevenPlayerBracket(participants);
+  }
+
   // Generate first-round pairs using the new algorithm
   const pairs = generateBracketPairs(participants, seedType);
   
