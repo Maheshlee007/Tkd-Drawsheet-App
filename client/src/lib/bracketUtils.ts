@@ -765,64 +765,83 @@ export function calculateBracketConnectors(
 ): Array<{ left: number; top: number; width?: number; height?: number; type: string }> {
   const connectors: Array<{ left: number; top: number; width?: number; height?: number; type: string }> = [];
   
-  // Get all match elements
-  const matchElements = containerElement.querySelectorAll('.bracket-match');
+  if (!bracketData || bracketData.length <= 1 || !containerElement) {
+    return connectors;
+  }
   
-  // Process each round except the final
-  for (let roundIndex = 0; roundIndex < bracketData.length - 1; roundIndex++) {
-    const currentRound = bracketData[roundIndex];
+  try {
+    // Get all match elements
+    const matchElements = containerElement.querySelectorAll('.bracket-match');
     
-    // For each match in the current round
-    for (let matchIndex = 0; matchIndex < currentRound.length; matchIndex++) {
-      const match = currentRound[matchIndex];
-      if (!match.nextMatchId) continue;
+    if (matchElements.length === 0) {
+      return connectors; // No matches to connect
+    }
+    
+    // Process each round except the final
+    for (let roundIndex = 0; roundIndex < bracketData.length - 1; roundIndex++) {
+      const currentRound = bracketData[roundIndex];
       
-      // Find the current match element
-      const matchElement = Array.from(matchElements).find(
-        (el) => el.getAttribute('data-match-id') === match.id
-      );
-      
-      // Find the next match element
-      const nextMatchElement = Array.from(matchElements).find(
-        (el) => el.getAttribute('data-match-id') === match.nextMatchId
-      );
-      
-      if (matchElement && nextMatchElement) {
-        const matchRect = matchElement.getBoundingClientRect();
-        const nextMatchRect = nextMatchElement.getBoundingClientRect();
-        const containerRect = containerElement.getBoundingClientRect();
+      // For each match in the current round
+      for (let matchIndex = 0; matchIndex < currentRound.length; matchIndex++) {
+        const match = currentRound[matchIndex];
+        if (!match.nextMatchId) continue;
         
-        // Calculate relative positions
-        const currentX = matchRect.right - containerRect.left;
-        const currentY = matchRect.top + matchRect.height / 2 - containerRect.top;
-        const nextX = nextMatchRect.left - containerRect.left;
-        const nextY = nextMatchRect.top + nextMatchRect.height / 2 - containerRect.top;
+        // Find the current match element
+        const matchElement = Array.from(matchElements).find(
+          (el) => el.getAttribute('data-match-id') === match.id
+        );
         
-        // Horizontal line
-        connectors.push({
-          left: currentX,
-          top: currentY,
-          width: (nextX - currentX) / 2,
-          type: "horizontal",
-        });
+        // Find the next match element
+        const nextMatchElement = Array.from(matchElements).find(
+          (el) => el.getAttribute('data-match-id') === match.nextMatchId
+        );
         
-        // Vertical line
-        connectors.push({
-          left: currentX + (nextX - currentX) / 2,
-          top: Math.min(currentY, nextY),
-          height: Math.abs(nextY - currentY),
-          type: "vertical",
-        });
-        
-        // Horizontal line to next match
-        connectors.push({
-          left: currentX + (nextX - currentX) / 2,
-          top: nextY,
-          width: (nextX - currentX) / 2,
-          type: "horizontal",
-        });
+        if (matchElement && nextMatchElement) {
+          try {
+            const matchRect = matchElement.getBoundingClientRect();
+            const nextMatchRect = nextMatchElement.getBoundingClientRect();
+            const containerRect = containerElement.getBoundingClientRect();
+            
+            // Calculate relative positions
+            const currentX = matchRect.right - containerRect.left;
+            const currentY = matchRect.top + matchRect.height / 2 - containerRect.top;
+            const nextX = nextMatchRect.left - containerRect.left;
+            const nextY = nextMatchRect.top + nextMatchRect.height / 2 - containerRect.top;
+            
+            // Only create connectors if elements are properly positioned
+            if (currentX >= 0 && currentY >= 0 && nextX >= 0 && nextY >= 0) {
+              // Horizontal line from current match
+              connectors.push({
+                left: currentX,
+                top: currentY,
+                width: (nextX - currentX) / 2,
+                type: "horizontal",
+              });
+              
+              // Vertical line connecting both
+              connectors.push({
+                left: currentX + (nextX - currentX) / 2,
+                top: Math.min(currentY, nextY),
+                height: Math.abs(nextY - currentY),
+                type: "vertical",
+              });
+              
+              // Horizontal line to next match
+              connectors.push({
+                left: currentX + (nextX - currentX) / 2,
+                top: nextY,
+                width: (nextX - currentX) / 2,
+                type: "horizontal",
+              });
+            }
+          } catch (err) {
+            console.error("Error calculating connector position:", err);
+          }
+        }
       }
     }
+  } catch (error) {
+    console.error("Error calculating bracket connectors:", error);
   }
   
   return connectors;

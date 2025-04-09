@@ -50,17 +50,61 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
 
   // Calculate connector lines when the bracket data changes
   useEffect(() => {
-    if (bracketData && bracketContainerRef.current) {
-      // Wait for the DOM to update before calculating connectors
-      setTimeout(() => {
+    if (!bracketData || !bracketContainerRef.current) return;
+    
+    // Wait for the DOM to update before calculating connectors
+    setTimeout(() => {
+      // For single pool view, calculate connectors directly
+      if (poolCount <= 1) {
         const newConnectors = calculateBracketConnectors(
           bracketData,
           bracketContainerRef.current!,
         );
         setConnectors(newConnectors);
-      }, 50);
-    }
-  }, [bracketData, activePool]);
+      } else {
+        // For multiple pools, we'll calculate connectors for each pool
+        const allConnectors: Array<{
+          left: number;
+          top: number;
+          width?: number;
+          height?: number;
+          type: string;
+        }> = [];
+        
+        // Calculate connectors for the active pool only when printing
+        if (window.matchMedia('print').matches) {
+          const activePoolContainer = bracketContainerRef.current!.querySelector(
+            `.bracket-display[data-pool="${activePool}"]`
+          ) as HTMLElement;
+          
+          if (activePoolContainer) {
+            const poolConnectors = calculateBracketConnectors(
+              pooledBrackets[activePool],
+              activePoolContainer
+            );
+            allConnectors.push(...poolConnectors);
+          }
+        } else {
+          // Calculate connectors for all pools
+          const poolContainers = bracketContainerRef.current!.querySelectorAll(
+            '.bracket-display[data-pool]'
+          );
+          
+          poolContainers.forEach((container, index) => {
+            if (index < pooledBrackets.length) {
+              const poolConnectors = calculateBracketConnectors(
+                pooledBrackets[index],
+                container as HTMLElement
+              );
+              allConnectors.push(...poolConnectors);
+            }
+          });
+        }
+        
+        setConnectors(allConnectors);
+      }
+    }, 100); // Increased timeout to ensure DOM is fully updated
+  }, [bracketData, pooledBrackets, poolCount, activePool]);
 
   // Organize brackets into pools
   useEffect(() => {
@@ -221,18 +265,23 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
 
       {/* For printing/exporting, we use the active pool */}
       <div className="hidden print:block">
+        <div className="print-header text-center mb-6">
+          <h2 className="text-xl font-bold text-black">Tournament Bracket - Pool {activePool + 1}</h2>
+        </div>
         <div className="overflow-x-auto w-full" ref={bracketContainerRef}>
           <div
             className="bracket-display relative pb-0 landscape mt-0 flex justify-start"
+            data-pool={activePool}
             style={{ minHeight: pooledBrackets[activePool]?.length > 2 ? 500 : 300 }}
           >
             {/* Render rounds for print/export */}
             {pooledBrackets[activePool]?.map((round, roundIndex) => (
               <div
                 key={`print-round-${roundIndex}`}
-                className="bracket-round pl-2 pt-2"
+                className="bracket-round"
                 style={{
                   width: "180px",
+                  marginLeft: roundIndex > 0 ? "20px" : "0"
                 }}
               >
                 {round.map((match, matchIndex) => {
@@ -249,18 +298,18 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                   return (
                     <div
                       key={`print-match-${match.id}`}
-                      className="bracket-match p-1 border border-slate-200 rounded-md bg-gray-50 relative mb-1"
+                      className="bracket-match border border-slate-200 rounded-md bg-gray-50 relative mb-1 p-0"
                       data-match-id={match.id}
                     >
                       <div
-                        className={`participant py-0.5 px-1 mb-1 text-sm rounded-r-sm ${
+                        className={`participant py-0 px-1 text-sm rounded-none ${
                           getParticipantStyle(match.participants[0], hasMatchByeTop, hasOpponentByeTop, true)
                         } ${match.winner === match.participants[0] ? "font-medium" : ""}`}
                       >
                         {match.participants[0] === "(bye)" ? "(bye)" : (match.participants[0] || "")}
                       </div>
                       <div
-                        className={`participant py-0.5 px-1 text-sm rounded-r-sm ${
+                        className={`participant py-0 px-1 text-sm rounded-none ${
                           getParticipantStyle(match.participants[1], hasMatchByeBottom, hasOpponentByeBottom, false)
                         } ${match.winner === match.participants[1] ? "font-medium" : ""}`}
                       >
@@ -271,6 +320,20 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                 })}
               </div>
             ))}
+            
+            {/* Render connector lines for print */}
+            {connectors.map((connector, index) => (
+              <div
+                key={`print-connector-${index}`}
+                className={`bracket-connector ${connector.type === "horizontal" ? "connector-horizontal" : "connector-vertical"} print:border-gray-400`}
+                style={{
+                  left: `${connector.left}px`,
+                  top: `${connector.top}px`,
+                  width: connector.width ? `${connector.width}px` : undefined,
+                  height: connector.height ? `${connector.height}px` : undefined,
+                }}
+              />
+            ))}
           </div>
         </div>
       </div>
@@ -278,71 +341,192 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
       {/* Display all pools together for normal view */}
       <div className="print:hidden">
         {poolCount > 1 ? (
-          // Multiple pools - display all pools in a grid
-          <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-            {pooledBrackets.map((poolBracket, poolIndex) => (
-              <div key={`pool-${poolIndex}`} className="space-y-4">
-                <h3 className="text-lg font-medium text-slate-800 mb-2">Pool {poolIndex + 1}</h3>
-                <div className="overflow-x-auto">
-                  <div
-                    className="bracket-display relative pb-8 flex justify-start"
-                    style={{ minHeight: poolBracket.length > 2 ? 400 : 250 }}
-                  >
-                    {/* Render rounds for this pool */}
-                    {poolBracket.map((round, roundIndex) => (
-                      <div
-                        key={`pool-${poolIndex}-round-${roundIndex}`}
-                        className="bracket-round"
-                        style={{
-                          width: "180px",
-                        }}
-                      >
-                        {round.map((match, matchIndex) => {
-                          const isFirstRound = roundIndex === 0;
-                          const hasOpponentByeTop = match.participants[0] !== null && match.participants[1] === "(bye)";
-                          const hasOpponentByeBottom = match.participants[1] !== null && match.participants[0] === "(bye)";
-                          const hasMatchByeTop = !isFirstRound && match.participants[0] !== null && 
-                                              match.participants[0] !== "(bye)" &&
-                                              previousRoundHadBye(match.participants[0], bracketData, roundIndex);
-                          const hasMatchByeBottom = !isFirstRound && match.participants[1] !== null && 
-                                                match.participants[1] !== "(bye)" &&
-                                                previousRoundHadBye(match.participants[1], bracketData, roundIndex);
+          // Multiple pools with full pool view option
+          <div>
+            {/* View selector - full view or grid view */}
+            <div className="mb-4">
+              <Tabs defaultValue="grid" className="mb-4">
+                <TabsList className="bg-slate-100">
+                  <TabsTrigger value="grid">Grid View</TabsTrigger>
+                  <TabsTrigger value="full">Full View</TabsTrigger>
+                </TabsList>
+                <TabsContent value="grid">
+                  {/* Grid View - Each pool is displayed in a grid */}
+                  <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
+                    {pooledBrackets.map((poolBracket, poolIndex) => (
+                      <div key={`pool-${poolIndex}`} className="space-y-4">
+                        <h3 className="text-lg font-medium text-slate-800 mb-2">Pool {poolIndex + 1}</h3>
+                        <div className="overflow-x-auto">
+                          <div
+                            className="bracket-display relative pb-8 flex justify-start"
+                            data-pool={poolIndex}
+                            style={{ minHeight: poolBracket.length > 2 ? 400 : 250 }}
+                          >
+                            {/* Render rounds for this pool */}
+                            {poolBracket.map((round, roundIndex) => (
+                              <div
+                                key={`pool-${poolIndex}-round-${roundIndex}`}
+                                className="bracket-round"
+                                style={{
+                                  width: "180px",
+                                  marginLeft: roundIndex > 0 ? "20px" : "0"
+                                }}
+                              >
+                                {round.map((match, matchIndex) => {
+                                  const isFirstRound = roundIndex === 0;
+                                  const hasOpponentByeTop = match.participants[0] !== null && match.participants[1] === "(bye)";
+                                  const hasOpponentByeBottom = match.participants[1] !== null && match.participants[0] === "(bye)";
+                                  const hasMatchByeTop = !isFirstRound && match.participants[0] !== null && 
+                                                      match.participants[0] !== "(bye)" &&
+                                                      previousRoundHadBye(match.participants[0], bracketData, roundIndex);
+                                  const hasMatchByeBottom = !isFirstRound && match.participants[1] !== null && 
+                                                        match.participants[1] !== "(bye)" &&
+                                                        previousRoundHadBye(match.participants[1], bracketData, roundIndex);
 
-                          return (
-                            <div
-                              key={`pool-${poolIndex}-match-${match.id}`}
-                              className="bracket-match p-2 border border-slate-200 rounded-md bg-white shadow-sm relative mb-3"
-                              data-match-id={match.id}
-                            >
-                              <div
-                                className={`participant py-1 px-2 mb-1 text-sm rounded-r-sm ${
-                                  getParticipantStyle(match.participants[0], hasMatchByeTop, hasOpponentByeTop, true)
-                                } ${match.winner === match.participants[0] ? "font-medium" : ""}`}
-                              >
-                                {match.participants[0] === "(bye)" ? "(bye)" : (match.participants[0] || "")}
+                                  return (
+                                    <div
+                                      key={`pool-${poolIndex}-match-${match.id}`}
+                                      className="bracket-match p-1 border border-slate-200 rounded-md bg-white shadow-sm relative mb-2"
+                                      data-match-id={match.id}
+                                    >
+                                      <div
+                                        className={`participant py-0.5 px-1 mb-0.5 text-sm rounded-r-sm ${
+                                          getParticipantStyle(match.participants[0], hasMatchByeTop, hasOpponentByeTop, true)
+                                        } ${match.winner === match.participants[0] ? "font-medium" : ""}`}
+                                      >
+                                        {match.participants[0] === "(bye)" ? "(bye)" : (match.participants[0] || "")}
+                                      </div>
+                                      <div
+                                        className={`participant py-0.5 px-1 text-sm rounded-r-sm ${
+                                          getParticipantStyle(match.participants[1], hasMatchByeBottom, hasOpponentByeBottom, false)
+                                        } ${match.winner === match.participants[1] ? "font-medium" : ""}`}
+                                      >
+                                        {match.participants[1] === "(bye)" ? "(bye)" : (match.participants[1] || "")}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
                               </div>
-                              <div
-                                className={`participant py-1 px-2 text-sm rounded-r-sm ${
-                                  getParticipantStyle(match.participants[1], hasMatchByeBottom, hasOpponentByeBottom, false)
-                                } ${match.winner === match.participants[1] ? "font-medium" : ""}`}
-                              >
-                                {match.participants[1] === "(bye)" ? "(bye)" : (match.participants[1] || "")}
-                              </div>
-                            </div>
-                          );
-                        })}
+                            ))}
+                            
+                            {/* Render connector lines for this pool */}
+                            {connectors
+                              .filter(conn => {
+                                // Only show connectors for this pool's container
+                                const poolContainer = document.querySelector(`.bracket-display[data-pool="${poolIndex}"]`);
+                                return poolContainer && poolContainer.contains(document.elementFromPoint(conn.left, conn.top));
+                              })
+                              .map((connector, index) => (
+                                <div
+                                  key={`pool-${poolIndex}-connector-${index}`}
+                                  className={`bracket-connector ${connector.type === "horizontal" ? "connector-horizontal" : "connector-vertical"}`}
+                                  style={{
+                                    left: `${connector.left}px`,
+                                    top: `${connector.top}px`,
+                                    width: connector.width ? `${connector.width}px` : undefined,
+                                    height: connector.height ? `${connector.height}px` : undefined,
+                                  }}
+                                />
+                              ))}
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
-                </div>
-              </div>
-            ))}
+                </TabsContent>
+                <TabsContent value="full">
+                  {/* Full View - All pools displayed vertically */}
+                  <div className="space-y-12">
+                    {pooledBrackets.map((poolBracket, poolIndex) => (
+                      <div key={`full-pool-${poolIndex}`} className="space-y-4 border-b pb-8 last:border-b-0">
+                        <h3 className="text-xl font-semibold text-slate-800 mb-4">Pool {poolIndex + 1}</h3>
+                        <div className="overflow-x-auto">
+                          <div
+                            className="bracket-display relative pb-8 flex justify-start"
+                            data-pool={poolIndex}
+                            style={{ minHeight: poolBracket.length > 2 ? 400 : 250 }}
+                          >
+                            {/* Render rounds for this pool */}
+                            {poolBracket.map((round, roundIndex) => (
+                              <div
+                                key={`full-pool-${poolIndex}-round-${roundIndex}`}
+                                className="bracket-round"
+                                style={{
+                                  width: "180px",
+                                  marginLeft: roundIndex > 0 ? "20px" : "0"
+                                }}
+                              >
+                                {round.map((match, matchIndex) => {
+                                  const isFirstRound = roundIndex === 0;
+                                  const hasOpponentByeTop = match.participants[0] !== null && match.participants[1] === "(bye)";
+                                  const hasOpponentByeBottom = match.participants[1] !== null && match.participants[0] === "(bye)";
+                                  const hasMatchByeTop = !isFirstRound && match.participants[0] !== null && 
+                                                      match.participants[0] !== "(bye)" &&
+                                                      previousRoundHadBye(match.participants[0], bracketData, roundIndex);
+                                  const hasMatchByeBottom = !isFirstRound && match.participants[1] !== null && 
+                                                        match.participants[1] !== "(bye)" &&
+                                                        previousRoundHadBye(match.participants[1], bracketData, roundIndex);
+                                  
+                                  return (
+                                    <div
+                                      key={`full-pool-${poolIndex}-match-${match.id}`}
+                                      className="bracket-match p-1 border border-slate-200 rounded-md bg-white shadow-sm relative mb-2"
+                                      data-match-id={match.id}
+                                    >
+                                      <div
+                                        className={`participant py-0.5 px-1 mb-0.5 text-sm rounded-r-sm ${
+                                          getParticipantStyle(match.participants[0], hasMatchByeTop, hasOpponentByeTop, true)
+                                        } ${match.winner === match.participants[0] ? "font-medium" : ""}`}
+                                      >
+                                        {match.participants[0] === "(bye)" ? "(bye)" : (match.participants[0] || "")}
+                                      </div>
+                                      <div
+                                        className={`participant py-0.5 px-1 text-sm rounded-r-sm ${
+                                          getParticipantStyle(match.participants[1], hasMatchByeBottom, hasOpponentByeBottom, false)
+                                        } ${match.winner === match.participants[1] ? "font-medium" : ""}`}
+                                      >
+                                        {match.participants[1] === "(bye)" ? "(bye)" : (match.participants[1] || "")}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ))}
+                            
+                            {/* Render connector lines for this pool */}
+                            {connectors
+                              .filter(conn => {
+                                // Only show connectors for this pool's container
+                                const poolContainer = document.querySelector(`.bracket-display[data-pool="${poolIndex}"]`);
+                                return poolContainer && poolContainer.contains(document.elementFromPoint(conn.left, conn.top));
+                              })
+                              .map((connector, index) => (
+                                <div
+                                  key={`full-pool-${poolIndex}-connector-${index}`}
+                                  className={`bracket-connector ${connector.type === "horizontal" ? "connector-horizontal" : "connector-vertical"}`}
+                                  style={{
+                                    left: `${connector.left}px`,
+                                    top: `${connector.top}px`,
+                                    width: connector.width ? `${connector.width}px` : undefined,
+                                    height: connector.height ? `${connector.height}px` : undefined,
+                                  }}
+                                />
+                              ))}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </div>
           </div>
         ) : (
           // Single pool - display full bracket
           <div className="overflow-x-auto">
             <div
               className="bracket-display relative pb-8 flex justify-start"
+              data-pool="0"
               style={{ minHeight: bracketData.length > 2 ? 500 : 300 }}
             >
               {/* Render rounds */}
@@ -352,6 +536,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                   className="bracket-round"
                   style={{
                     width: "180px", // Reduced width to use more horizontal space
+                    marginLeft: roundIndex > 0 ? "20px" : "0"
                   }}
                 >
                   {round.map((match, matchIndex) => {
@@ -377,12 +562,12 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                     return (
                       <div
                         key={`match-${match.id}`}
-                        className="bracket-match p-2 border border-slate-200 rounded-md bg-white shadow-sm relative mb-3"
+                        className="bracket-match p-1 border border-slate-200 rounded-md bg-white shadow-sm relative mb-2"
                         data-match-id={match.id}
                       >
                         {/* First participant */}
                         <div
-                          className={`participant py-1 px-2 mb-1 text-sm rounded-r-sm ${
+                          className={`participant py-0.5 px-1 mb-0.5 text-sm rounded-r-sm ${
                             getParticipantStyle(match.participants[0], hasMatchByeTop, hasOpponentByeTop, true)
                           } ${
                             match.winner === match.participants[0] ? "font-medium" : ""
@@ -393,7 +578,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
 
                         {/* Second participant */}
                         <div
-                          className={`participant py-1 px-2 text-sm rounded-r-sm ${
+                          className={`participant py-0.5 px-1 text-sm rounded-r-sm ${
                             getParticipantStyle(match.participants[1], hasMatchByeBottom, hasOpponentByeBottom, false)
                           } ${
                             match.winner === match.participants[1] ? "font-medium" : ""
@@ -412,6 +597,20 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                     );
                   })}
                 </div>
+              ))}
+              
+              {/* Render connector lines */}
+              {connectors.map((connector, index) => (
+                <div
+                  key={`connector-${index}`}
+                  className={`bracket-connector ${connector.type === "horizontal" ? "connector-horizontal" : "connector-vertical"}`}
+                  style={{
+                    left: `${connector.left}px`,
+                    top: `${connector.top}px`,
+                    width: connector.width ? `${connector.width}px` : undefined,
+                    height: connector.height ? `${connector.height}px` : undefined,
+                  }}
+                />
               ))}
             </div>
           </div>
@@ -446,29 +645,64 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
 
       {/* Print-specific styles - added to the page via style tag */}
       <style dangerouslySetInnerHTML={{ __html: `
+        /* Connector line styles */
+        .bracket-connector {
+          position: absolute;
+          border-color: #cbd5e1;
+          z-index: 1;
+        }
+        .connector-horizontal {
+          border-top: 1px solid;
+          border-right: 1px solid;
+        }
+        .connector-vertical {
+          border-right: 1px solid;
+        }
+        
+        /* Print styles */
         @media print {
           body * {
             visibility: hidden;
           }
-          .bracket-display, .bracket-display * {
+          .print-header, .bracket-display, .bracket-display *, .print-header * {
             visibility: visible;
+          }
+          .print-header {
+            position: absolute;
+            top: 10mm;
+            left: 0;
+            width: 100%;
           }
           .bracket-display {
             position: absolute;
-            top: 0;
+            top: 25mm;
             left: 0;
             width: 100%;
-            padding: 10mm !important;
+            padding: 0 10mm !important;
           }
-          .bracket-round {
-            page-break-after: always;
+          .bracket-match {
+            page-break-inside: avoid;
+            break-inside: avoid;
           }
           .bracket-connector {
-            border-color: #888 !important;
+            border-color: #666 !important;
           }
           @page {
             size: landscape;
             margin: 0.5cm;
+          }
+          /* Maximum of 8 matches per page in landscape mode */
+          @page {
+            margin-top: 1cm;
+            margin-bottom: 1cm;
+          }
+          /* Add page break between pools */
+          .print-pool-wrapper {
+            page-break-after: always;
+          }
+          /* PDF multi-page support */
+          .bracket-display[data-pool] {
+            page-break-after: always;
           }
         }
       `}} />
