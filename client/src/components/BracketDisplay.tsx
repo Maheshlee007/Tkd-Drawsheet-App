@@ -77,7 +77,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
 
     setPoolCount(pools);
 
-    // Split the first round into pools and generate separate brackets
+    // Split the first round into pools and generate separate brackets for export
     if (pools > 1 && bracketData.length > 0) {
       const poolBrackets: BracketMatch[][][] = [];
       const firstRound = bracketData[0];
@@ -87,8 +87,23 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
       for (let i = 0; i < pools; i++) {
         const poolMatches = firstRound.slice(i * matchesPerPool, (i + 1) * matchesPerPool);
         if (poolMatches.length > 0) {
-          // Each pool gets its own copy of the bracket structure
+          // Create a full bracket structure for each pool (for export)
+          // This doesn't affect the display - just used for printing/export
           const poolBracket: BracketMatch[][] = [poolMatches];
+          
+          // Add rest of the rounds for this pool (for complete export brackets)
+          for (let r = 1; r < bracketData.length; r++) {
+            // Filter matches in this round that are connected to this pool
+            const relevantMatches = bracketData[r].filter(match => {
+              // Check if any of the matches in the previous round from this pool
+              // lead to this match in the current round
+              const prevRoundPoolMatches = r === 1 ? poolMatches : poolBracket[r - 1];
+              return prevRoundPoolMatches.some(prevMatch => prevMatch.nextMatchId === match.id);
+            });
+            
+            poolBracket.push(relevantMatches);
+          }
+          
           poolBrackets.push(poolBracket);
         }
       }
@@ -193,116 +208,246 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
         </div>
       </div>
 
-      {/* Show pool tabs if more than one pool */}
+      {/* Display Pool Headers if more than one pool */}
       {poolCount > 1 && (
-        <Tabs 
-          defaultValue="0" 
-          className="mb-4"
-          onValueChange={(value) => setActivePool(parseInt(value))}
-        >
-          <TabsList className="mb-4 border-b w-full rounded-none bg-transparent justify-start">
+        <div className="mb-6 space-y-2">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             {Array.from({ length: poolCount }).map((_, index) => (
-              <TabsTrigger
-                key={`pool-${index}`}
-                value={index.toString()}
-                className="px-4 py-2 text-sm font-medium data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary rounded-none data-[state=inactive]:bg-transparent data-[state=inactive]:text-slate-600"
+              <div 
+                key={`pool-header-${index}`}
+                className="text-center bg-slate-100 rounded-md py-2 px-4 font-medium"
               >
                 Pool {index + 1}
-              </TabsTrigger>
+              </div>
             ))}
-          </TabsList>
-        </Tabs>
+          </div>
+        </div>
       )}
 
-      <div className="overflow-x-auto print:w-full" ref={bracketContainerRef}>
-        <div
-          className="bracket-display relative pb-8 print:pb-0 print:landscape print:mt-0 flex justify-start"
-          style={{ minHeight: currentBracket.length > 2 ? 500 : 300 }}
-        >
-          {/* Render rounds */}
-          {currentBracket.map((round, roundIndex) => (
-            <div
-              key={`round-${roundIndex}`}
-              className="bracket-round print:pl-2 print:pt-2"
-              style={{
-                width: "180px", // Reduced width to use more horizontal space
-              }}
-            >
-              {round.map((match, matchIndex) => {
-                // Get the previous round's match that led to this match
-                const isFirstRound = roundIndex === 0;
-                
-                // Check for opponent bye conditions
-                const hasOpponentByeTop = match.participants[0] !== null && 
-                                      match.participants[1] === "(bye)";
-                                      
-                const hasOpponentByeBottom = match.participants[1] !== null && 
-                                        match.participants[0] === "(bye)";
-                
-                // Check for byes in previous matches that led to this player
-                const hasMatchByeTop = !isFirstRound && match.participants[0] !== null && 
-                                    match.participants[0] !== "(bye)" &&
-                                    previousRoundHadBye(match.participants[0], bracketData, roundIndex);
-                                    
-                const hasMatchByeBottom = !isFirstRound && match.participants[1] !== null && 
-                                      match.participants[1] !== "(bye)" &&
-                                      previousRoundHadBye(match.participants[1], bracketData, roundIndex);
+      {/* For printing/exporting, we use the active pool */}
+      <div className="hidden print:block">
+        <div className="overflow-x-auto w-full" ref={bracketContainerRef}>
+          <div
+            className="bracket-display relative pb-0 landscape mt-0 flex justify-start"
+            style={{ minHeight: pooledBrackets[activePool]?.length > 2 ? 500 : 300 }}
+          >
+            {/* Render rounds for print/export */}
+            {pooledBrackets[activePool]?.map((round, roundIndex) => (
+              <div
+                key={`print-round-${roundIndex}`}
+                className="bracket-round pl-2 pt-2"
+                style={{
+                  width: "180px",
+                }}
+              >
+                {round.map((match, matchIndex) => {
+                  const isFirstRound = roundIndex === 0;
+                  const hasOpponentByeTop = match.participants[0] !== null && match.participants[1] === "(bye)";
+                  const hasOpponentByeBottom = match.participants[1] !== null && match.participants[0] === "(bye)";
+                  const hasMatchByeTop = !isFirstRound && match.participants[0] !== null && 
+                                      match.participants[0] !== "(bye)" &&
+                                      previousRoundHadBye(match.participants[0], bracketData, roundIndex);
+                  const hasMatchByeBottom = !isFirstRound && match.participants[1] !== null && 
+                                        match.participants[1] !== "(bye)" &&
+                                        previousRoundHadBye(match.participants[1], bracketData, roundIndex);
 
-                return (
-                  <div
-                    key={`match-${match.id}`}
-                    className="bracket-match p-2 border border-slate-200 rounded-md bg-white shadow-sm relative mb-3 print:mb-1 print:p-1 print:shadow-none print:bg-gray-50"
-                    data-match-id={match.id}
-                  >
-                    {/* First participant */}
+                  return (
                     <div
-                      className={`participant py-1 px-2 mb-1 text-sm rounded-r-sm print:py-0.5 print:px-1 ${
-                        getParticipantStyle(match.participants[0], hasMatchByeTop, hasOpponentByeTop, true)
-                      } ${
-                        match.winner === match.participants[0] ? "font-medium" : ""
-                      }`}
+                      key={`print-match-${match.id}`}
+                      className="bracket-match p-1 border border-slate-200 rounded-md bg-gray-50 relative mb-1"
+                      data-match-id={match.id}
                     >
-                      {match.participants[0] === "(bye)" ? "(bye)" : (match.participants[0] || "")}
-                    </div>
-
-                    {/* Second participant */}
-                    <div
-                      className={`participant py-1 px-2 text-sm rounded-r-sm print:py-0.5 print:px-1 ${
-                        getParticipantStyle(match.participants[1], hasMatchByeBottom, hasOpponentByeBottom, false)
-                      } ${
-                        match.winner === match.participants[1] ? "font-medium" : ""
-                      }`}
-                    >
-                      {match.participants[1] === "(bye)" ? "(bye)" : (match.participants[1] || "")}
-                    </div>
-
-                    {/* Show winner badge for final match */}
-                    {roundIndex === currentBracket.length - 1 && match.winner && (
-                      <div className="absolute -right-16 top-1/2 transform -translate-y-1/2 bg-primary text-white text-xs py-1 px-2 rounded-full print:hidden">
-                        Winner
+                      <div
+                        className={`participant py-0.5 px-1 mb-1 text-sm rounded-r-sm ${
+                          getParticipantStyle(match.participants[0], hasMatchByeTop, hasOpponentByeTop, true)
+                        } ${match.winner === match.participants[0] ? "font-medium" : ""}`}
+                      >
+                        {match.participants[0] === "(bye)" ? "(bye)" : (match.participants[0] || "")}
                       </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-
-          {/* Render connector lines */}
-          {connectors.map((connector, index) => (
-            <div
-              key={`connector-${index}`}
-              className={`bracket-connector ${connector.type === "horizontal" ? "connector-horizontal" : "connector-vertical"} print:border-gray-400`}
-              style={{
-                left: `${connector.left}px`,
-                top: `${connector.top}px`,
-                width: connector.width ? `${connector.width}px` : undefined,
-                height: connector.height ? `${connector.height}px` : undefined,
-              }}
-            />
-          ))}
+                      <div
+                        className={`participant py-0.5 px-1 text-sm rounded-r-sm ${
+                          getParticipantStyle(match.participants[1], hasMatchByeBottom, hasOpponentByeBottom, false)
+                        } ${match.winner === match.participants[1] ? "font-medium" : ""}`}
+                      >
+                        {match.participants[1] === "(bye)" ? "(bye)" : (match.participants[1] || "")}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
+
+      {/* Display all pools together for normal view */}
+      <div className="print:hidden">
+        {poolCount > 1 ? (
+          // Multiple pools - display all pools in a grid
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
+            {pooledBrackets.map((poolBracket, poolIndex) => (
+              <div key={`pool-${poolIndex}`} className="space-y-4">
+                <h3 className="text-lg font-medium text-slate-800 mb-2">Pool {poolIndex + 1}</h3>
+                <div className="overflow-x-auto">
+                  <div
+                    className="bracket-display relative pb-8 flex justify-start"
+                    style={{ minHeight: poolBracket.length > 2 ? 400 : 250 }}
+                  >
+                    {/* Render rounds for this pool */}
+                    {poolBracket.map((round, roundIndex) => (
+                      <div
+                        key={`pool-${poolIndex}-round-${roundIndex}`}
+                        className="bracket-round"
+                        style={{
+                          width: "180px",
+                        }}
+                      >
+                        {round.map((match, matchIndex) => {
+                          const isFirstRound = roundIndex === 0;
+                          const hasOpponentByeTop = match.participants[0] !== null && match.participants[1] === "(bye)";
+                          const hasOpponentByeBottom = match.participants[1] !== null && match.participants[0] === "(bye)";
+                          const hasMatchByeTop = !isFirstRound && match.participants[0] !== null && 
+                                              match.participants[0] !== "(bye)" &&
+                                              previousRoundHadBye(match.participants[0], bracketData, roundIndex);
+                          const hasMatchByeBottom = !isFirstRound && match.participants[1] !== null && 
+                                                match.participants[1] !== "(bye)" &&
+                                                previousRoundHadBye(match.participants[1], bracketData, roundIndex);
+
+                          return (
+                            <div
+                              key={`pool-${poolIndex}-match-${match.id}`}
+                              className="bracket-match p-2 border border-slate-200 rounded-md bg-white shadow-sm relative mb-3"
+                              data-match-id={match.id}
+                            >
+                              <div
+                                className={`participant py-1 px-2 mb-1 text-sm rounded-r-sm ${
+                                  getParticipantStyle(match.participants[0], hasMatchByeTop, hasOpponentByeTop, true)
+                                } ${match.winner === match.participants[0] ? "font-medium" : ""}`}
+                              >
+                                {match.participants[0] === "(bye)" ? "(bye)" : (match.participants[0] || "")}
+                              </div>
+                              <div
+                                className={`participant py-1 px-2 text-sm rounded-r-sm ${
+                                  getParticipantStyle(match.participants[1], hasMatchByeBottom, hasOpponentByeBottom, false)
+                                } ${match.winner === match.participants[1] ? "font-medium" : ""}`}
+                              >
+                                {match.participants[1] === "(bye)" ? "(bye)" : (match.participants[1] || "")}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          // Single pool - display full bracket
+          <div className="overflow-x-auto">
+            <div
+              className="bracket-display relative pb-8 flex justify-start"
+              style={{ minHeight: bracketData.length > 2 ? 500 : 300 }}
+            >
+              {/* Render rounds */}
+              {bracketData.map((round, roundIndex) => (
+                <div
+                  key={`round-${roundIndex}`}
+                  className="bracket-round"
+                  style={{
+                    width: "180px", // Reduced width to use more horizontal space
+                  }}
+                >
+                  {round.map((match, matchIndex) => {
+                    // Get the previous round's match that led to this match
+                    const isFirstRound = roundIndex === 0;
+                    
+                    // Check for opponent bye conditions
+                    const hasOpponentByeTop = match.participants[0] !== null && 
+                                          match.participants[1] === "(bye)";
+                                          
+                    const hasOpponentByeBottom = match.participants[1] !== null && 
+                                            match.participants[0] === "(bye)";
+                    
+                    // Check for byes in previous matches that led to this player
+                    const hasMatchByeTop = !isFirstRound && match.participants[0] !== null && 
+                                        match.participants[0] !== "(bye)" &&
+                                        previousRoundHadBye(match.participants[0], bracketData, roundIndex);
+                                        
+                    const hasMatchByeBottom = !isFirstRound && match.participants[1] !== null && 
+                                          match.participants[1] !== "(bye)" &&
+                                          previousRoundHadBye(match.participants[1], bracketData, roundIndex);
+
+                    return (
+                      <div
+                        key={`match-${match.id}`}
+                        className="bracket-match p-2 border border-slate-200 rounded-md bg-white shadow-sm relative mb-3"
+                        data-match-id={match.id}
+                      >
+                        {/* First participant */}
+                        <div
+                          className={`participant py-1 px-2 mb-1 text-sm rounded-r-sm ${
+                            getParticipantStyle(match.participants[0], hasMatchByeTop, hasOpponentByeTop, true)
+                          } ${
+                            match.winner === match.participants[0] ? "font-medium" : ""
+                          }`}
+                        >
+                          {match.participants[0] === "(bye)" ? "(bye)" : (match.participants[0] || "")}
+                        </div>
+
+                        {/* Second participant */}
+                        <div
+                          className={`participant py-1 px-2 text-sm rounded-r-sm ${
+                            getParticipantStyle(match.participants[1], hasMatchByeBottom, hasOpponentByeBottom, false)
+                          } ${
+                            match.winner === match.participants[1] ? "font-medium" : ""
+                          }`}
+                        >
+                          {match.participants[1] === "(bye)" ? "(bye)" : (match.participants[1] || "")}
+                        </div>
+
+                        {/* Show winner badge for final match */}
+                        {roundIndex === bracketData.length - 1 && match.winner && (
+                          <div className="absolute -right-16 top-1/2 transform -translate-y-1/2 bg-primary text-white text-xs py-1 px-2 rounded-full">
+                            Winner
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Tabs for selecting which pool to print/export */}
+      {poolCount > 1 && (
+        <div className="mt-6 border-t pt-4 print:hidden">
+          <h3 className="text-md font-medium text-slate-700 mb-3">Select pool for export/print:</h3>
+          <Tabs 
+            defaultValue="0" 
+            className="mb-4"
+            onValueChange={(value) => setActivePool(parseInt(value))}
+          >
+            <TabsList className="bg-slate-100">
+              {Array.from({ length: poolCount }).map((_, index) => (
+                <TabsTrigger
+                  key={`export-pool-${index}`}
+                  value={index.toString()}
+                >
+                  Pool {index + 1}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+          <p className="text-sm text-slate-500">
+            When exporting or printing, only the selected pool will be included.
+          </p>
+        </div>
+      )}
 
       {/* Print-specific styles - added to the page via style tag */}
       <style dangerouslySetInnerHTML={{ __html: `
