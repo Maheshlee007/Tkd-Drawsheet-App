@@ -6,6 +6,7 @@ import { Download, FileText, Printer, Smartphone, Monitor } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+// import"../index.css"
 
 interface BracketDisplayProps {
   bracketData: BracketMatch[][] | null;
@@ -50,7 +51,10 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
   const [pooledBrackets, setPooledBrackets] = useState<BracketMatch[][][]>([]);
   const [printOrientation, setPrintOrientation] = useState<"landscape" | "portrait">("landscape");
   const bracketContainerRef = useRef<HTMLDivElement>(null);
-
+   
+  console.log("Bracket Data:", bracketData);
+  
+  
   // Calculate connector lines when the bracket data changes
   useEffect(() => {
     if (!bracketData || !bracketContainerRef.current) return;
@@ -99,6 +103,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                 pooledBrackets[index],
                 container as HTMLElement
               );
+              console.log("Pool Connectors:", poolConnectors);
               allConnectors.push(...poolConnectors);
             }
           });
@@ -162,6 +167,35 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
     }
   }, [bracketData]);
 
+  // useEffect(() => {
+  //   const handleBeforePrint = () => {
+  //     if (!bracketContainerRef.current || !bracketData) return;
+  //     const newConnectors = calculateBracketConnectors(
+  //       bracketData,
+  //       bracketContainerRef.current
+  //     );
+  //     setConnectors(newConnectors);
+  //   };
+  
+  //   const handleAfterPrint = () => {
+  //     if (!bracketContainerRef.current  || !bracketData) return;
+  //     const newConnectors = calculateBracketConnectors(
+  //       bracketData,
+  //       bracketContainerRef.current
+  //     );
+  //     setConnectors(newConnectors);
+  //   };
+  
+  //   window.addEventListener('beforeprint', handleBeforePrint);
+  //   window.addEventListener('afterprint', handleAfterPrint);
+  
+  //   return () => {
+  //     window.removeEventListener('beforeprint', handleBeforePrint);
+  //     window.removeEventListener('afterprint', handleAfterPrint);
+  //   };
+  // }, [bracketData]);
+  
+  
   // If no bracket data is available, show empty state
   if (!bracketData) {
     return (
@@ -210,10 +244,10 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
       return "border-l-4 border-green-400 bg-green-50";
     }
     
-    if (hasMatchBye) {
-      // Style for player from a match that had a bye elsewhere
-      return "border-l-4 border-green-400 bg-green-50";
-    }
+    // if (hasMatchBye) {
+    //   // Style for player from a match that had a bye elsewhere
+    //   return "border-l-4 border-green-400 bg-green-50";
+    // }
     
     // Normal participant styling (blue for top, red for bottom)
     return isTop
@@ -227,56 +261,124 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
   };
 
   // Add print/preview functionality
+  // const handlePrint = () => {
+  //   // window.print();
+  //   // Show a preview of the print before actually printing
+  //   // const previewWindow = window.open('', '_blank');
+  //   if(!bracketContainerRef.current) return
+  //   const originalContents = document.body.innerHTML;
+  //   const printContents = bracketContainerRef.current.outerHTML;
+
+  //   document.body.innerHTML = printContents;
+  //   window.print();
+  //   document.body.innerHTML = originalContents;
+  //   window.location.reload(); // Optional: reload to fully restore
+  //   // window.print();
+  //   return;
+  //   // if (!previewWindow) {
+  //   //   alert('Please allow pop-ups to preview the bracket');
+  //   //   return;
+  //   // }
+    
+
+  //   // Add styles and content to the preview window
+  //   // previewWindow.document.write(`
+  //   //   <html>
+  //   //     <head>
+  //   //       <title>Print Preview - Tournament Bracket</title>
+  //   //       <style>
+  //   //         body { font-family: Arial, sans-serif; margin: 20px; }
+  //   //         .preview-header { text-align: center; margin-bottom: 20px; }
+  //   //         .preview-controls { text-align: center; margin-bottom: 20px; background: #f1f5f9; padding: 10px; border-radius: 8px; }
+  //   //         .print-button { background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
+  //   //         .cancel-button { background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-left: 10px; }
+  //   //         .bracket-connector { position: absolute; background-color: #64748b; height: 2px; z-index: 100; }
+  //   //         .connector-horizontal { height: 2px; }
+  //   //         .connector-vertical { width: 2px; transform: translateX(-1px); }
+  //   //         @media print {
+  //   //           .preview-controls { display: none; }
+  //   //         }
+  //   //          ${document.getElementById('bracket-print-styles')?.innerHTML || ''}
+  //   //       </style>
+  //   //     </head>
+  //   //     <body>
+  //   //       <div class="preview-header">
+  //   //         <h1>Tournament Bracket Preview</h1>
+  //   //       </div>
+  //   //       <div class="preview-controls">
+  //   //         <p>Preview your bracket before printing. Make any adjustments needed, then click Print.</p>
+  //   //         <button class="print-button" onclick="window.print(); return false;">Print</button>
+  //   //         <button class="cancel-button" onclick="window.close(); return false;">Cancel</button>
+  //   //       </div>
+  //   //       ${document.querySelector('.print\\:block')?.innerHTML || 'No bracket available'}
+  //   //     </body>
+  //   //   </html>
+  //   // `);
+    
+  //   // previewWindow.document.close();
+  // };
   const handlePrint = () => {
-    // Show a preview of the print before actually printing
-    const previewWindow = window.open('', '_blank');
-    if (!previewWindow) {
-      alert('Please allow pop-ups to preview the bracket');
+    if (!bracketContainerRef.current) return;
+  
+    const printContents = bracketContainerRef.current.outerHTML;
+    const printWindow = window.open('', '_blank');
+  
+    if (!printWindow) {
+      alert('Please allow popups for this website.');
       return;
     }
-
-    // Add styles and content to the preview window
-    previewWindow.document.write(`
+  
+    printWindow.document.open();
+  
+    // Copy all <style> and <link rel="stylesheet"> tags from original page
+    const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+      .map(style => style.outerHTML)
+      .join('\n');
+  
+    printWindow.document.write(`
       <html>
         <head>
-          <title>Print Preview - Tournament Bracket</title>
+          <title>Print Bracket</title>
+          ${styles}
           <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            .preview-header { text-align: center; margin-bottom: 20px; }
-            .preview-controls { text-align: center; margin-bottom: 20px; background: #f1f5f9; padding: 10px; border-radius: 8px; }
-            .print-button { background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
-            .cancel-button { background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-left: 10px; }
-            .bracket-connector { position: absolute; background-color: #64748b; height: 2px; z-index: 100; }
-            .connector-horizontal { height: 2px; }
-            .connector-vertical { width: 2px; transform: translateX(-1px); }
             @media print {
-              .preview-controls { display: none; }
+              body {
+                margin: 0;
+              }
+                
+              
+              @page {
+                size: ${printOrientation};
+                margin: ${printOrientation ?'0.7cm':'0.2cm'};
+              }
             }
-            ${document.getElementById('bracket-print-styles')?.innerHTML || ''}
           </style>
         </head>
         <body>
-          <div class="preview-header">
-            <h1>Tournament Bracket Preview</h1>
-          </div>
-          <div class="preview-controls">
-            <p>Preview your bracket before printing. Make any adjustments needed, then click Print.</p>
-            <button class="print-button" onclick="window.print(); return false;">Print</button>
-            <button class="cancel-button" onclick="window.close(); return false;">Cancel</button>
-          </div>
-          ${document.querySelector('.print\\:block')?.innerHTML || 'No bracket available'}
+          ${printContents}
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() {
+                window.close();
+              }, 2000);
+            };
+          </script>
         </body>
       </html>
     `);
-    
-    previewWindow.document.close();
+  
+    printWindow.document.close();
   };
+  
+
 
   // Display bracket for the selected pool
   const currentBracket = pooledBrackets[activePool] || bracketData;
 
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
+      {/* Header with title and export/print buttons */}
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-xl font-semibold text-slate-800">
           Tournament Bracket
@@ -336,7 +438,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
         <div className="print-header text-center mb-6">
           <h2 className="text-xl font-bold text-black">Tournament Bracket - Pool {activePool + 1}</h2>
         </div>
-        <div className="overflow-x-auto w-full" ref={bracketContainerRef}>
+        <div className="overflow-x-auto w-full "  ref={bracketContainerRef}>
           <div
             className={`bracket-display relative pb-0 ${printOrientation} mt-0 flex justify-start`}
             data-pool={activePool}
@@ -424,7 +526,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                     {pooledBrackets.map((poolBracket, poolIndex) => (
                       <div key={`pool-${poolIndex}`} className="space-y-4">
                         <h3 className="text-lg font-medium text-slate-800 mb-2">Pool {poolIndex + 1}</h3>
-                        <div className="overflow-x-auto">
+                        <div className="overflow-x-auto"  ref={bracketContainerRef}>
                           <div
                             className="bracket-display relative pb-8 flex justify-start"
                             data-pool={poolIndex}
@@ -519,7 +621,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                       {pooledBrackets.map((poolBracket, poolIndex) => (
                         <TabsContent key={`pool-content-${poolIndex}`} value={poolIndex.toString()}>
                           <div className="space-y-4">
-                            <div className="overflow-x-auto">
+                            <div className="overflow-x-auto"  ref={bracketContainerRef}>
                               <div
                                 className="bracket-display relative pb-8 flex justify-start"
                                 data-pool={poolIndex}
@@ -603,7 +705,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                           {pooledBrackets.map((poolBracket, poolIndex) => (
                             <div key={`all-pool-${poolIndex}`} className="space-y-2">
                               <h3 className="text-xl font-medium text-slate-800">Pool {poolIndex + 1}</h3>
-                              <div className="overflow-x-auto">
+                              <div className="overflow-x-auto"  ref={bracketContainerRef}>
                                 <div
                                   className="bracket-display relative pb-8 flex justify-start"
                                   data-pool={`all-${poolIndex}`}
@@ -689,14 +791,16 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
           </div>
         ) : (
           // Single pool - display full bracket
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto w-full"  ref={bracketContainerRef} >
             <div
               className="bracket-display relative pb-8 flex justify-start"
               data-pool="0"
               style={{ minHeight: bracketData.length > 2 ? 500 : 300 }}
+             
             >
               {/* Render rounds */}
-              {bracketData.map((round, roundIndex) => (
+              {bracketData.map((round, roundIndex) => (               
+                
                 <div
                   key={`round-${roundIndex}`}
                   className="bracket-round"
@@ -811,67 +915,40 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
 
       {/* Print-specific styles - added to the page via style tag */}
       <style id="bracket-print-styles" dangerouslySetInnerHTML={{ __html: `
-        /* Connector line styles */
-        .bracket-connector {
-          position: absolute;
-          border-color: #cbd5e1;
-          z-index: 1;
-        }
-        .connector-horizontal {
-          border-top: 1px solid;
-          border-right: 1px solid;
-        }
-        .connector-vertical {
-          border-right: 1px solid;
-        }
-        
-        /* Print styles */
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-          .print-header, .bracket-display, .bracket-display *, .print-header * {
-            visibility: visible;
-          }
-          .print-header {
-            position: absolute;
-            top: 10mm;
-            left: 0;
-            width: 100%;
-          }
-          .bracket-display {
-            position: absolute;
-            top: 25mm;
-            left: 0;
-            width: 100%;
-            padding: 0 10mm !important;
-          }
-          .bracket-match {
-            page-break-inside: avoid;
-            break-inside: avoid;
-          }
-          .bracket-connector {
-            border-color: #666 !important;
-          }
-          @page {
-            size: landscape;
-            margin: 0.5cm;
-          }
-          /* Maximum of 8 matches per page in landscape mode */
-          @page {
-            margin-top: 1cm;
-            margin-bottom: 1cm;
-          }
-          /* Add page break between pools */
-          .print-pool-wrapper {
-            page-break-after: always;
-          }
-          /* PDF multi-page support */
-          .bracket-display[data-pool] {
-            page-break-after: always;
-          }
-        }
-      `}} />
+  /* Hide everything when printing */
+  @media print {
+    body * {
+      visibility: hidden;
+    }
+    .print-header, .bracket-display, .bracket-display * {
+      visibility: visible;
+    }
+    .print-header {
+      position: absolute;
+      top: 10mm;
+      left: 0;
+      width: 100%;
+    }
+  .bracket-display {
+  width: 1000px !important;
+  min-width: 1000px !important;
+  max-width: 1000px !important;
+  transform: scale(0.8); /* Optional, you can adjust */
+  transform-origin: top left;
+}
+
+    .bracket-match {
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    @page {
+      size: ${printOrientation}; /* dynamic print orientation */
+      margin: 0.9cm;
+    }
+  }
+`}} />
+
+     
     </div>
   );
 };

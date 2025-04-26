@@ -4,10 +4,12 @@ import BracketDisplay from "@/components/BracketDisplay";
 import ExportModal from "@/components/ExportModal";
 import { useTournament } from "@/hooks/useTournament";
 import { Button } from "@/components/ui/button";
-import { RefreshCw } from "lucide-react";
+import { ArrowBigUpDash, RefreshCw } from "lucide-react";
+// import "../index.css"
 
 const Home: React.FC = () => {
   const {
+    participantCount,
     bracketData,
     isExportModalOpen,
     isPending,
@@ -37,19 +39,19 @@ const Home: React.FC = () => {
     if (!bracketData) return null;
     
     const totalRounds = bracketData.length;
-    const totalMatches = bracketData.flat().length;
+    const totalMatches =participantCount-1 // bracketData.flat().length;//this includes byes 
     
     // Count participants
-    const matches = bracketData[0];
-    let participantCount = 0;
-    let byeCount = 0;
+    // const matches = bracketData[0];
+    // let participantCount = 0;
+    // let byeCount = 0;
     
-    matches.forEach(match => {
-      if (match.participants[0] && match.participants[0] !== "(bye)") participantCount++;
-      if (match.participants[1] && match.participants[1] !== "(bye)") participantCount++;
-      if (match.participants[0] === "(bye)") byeCount++;
-      if (match.participants[1] === "(bye)") byeCount++;
-    });
+    // matches.forEach(match => {
+    //   if (match.participants[0] && match.participants[0] !== "(bye)") participantCount++;
+    //   if (match.participants[1] && match.participants[1] !== "(bye)") participantCount++;
+    //   if (match.participants[0] === "(bye)") byeCount++;
+    //   if (match.participants[1] === "(bye)") byeCount++;
+    // });
     
     // Calculate pools (if more than 16 participants)
     let poolCount = 1;
@@ -61,45 +63,45 @@ const Home: React.FC = () => {
       participants: participantCount,
       rounds: totalRounds,
       matches: totalMatches,
-      byes: byeCount,
+      // byes: byeCount,
       pools: poolCount
     };
   };
   
   const stats = calculateStats();
 
-  return (
-    <div className="container mx-auto px-4 py-8 max-w-6xl">
+  return (<>
+    <div className="container mx-auto px-8 py-8 max-w-full " id="">
       {/* Header */}
       <header className="mb-8">
         <h1 className="text-3xl font-bold text-slate-800 text-center">Tournament Bracket Generator</h1>
         <p className="text-center text-slate-600 mt-2">Create single elimination tournament brackets with ease</p>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Input Panel or Stats Panel */}
-        <div className="lg:col-span-1">
+        <div className="lg:col-span-1  ">
           {showInputPanel ? (
             <InputPanel onGenerateBracket={handleGenerateBracket} />
           ) : (
-            <div className="bg-white rounded-lg shadow-md p-6">
+            <div className="bg-white rounded-lg shadow-md p-4 sticky top-0">
               <h2 className="text-xl font-semibold text-slate-800 mb-4">Tournament Statistics</h2>
               
               {stats && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex flex-col p-3 border rounded-md border-slate-200 bg-slate-50">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex flex-col w-32 p-3 border rounded-md border-slate-200 bg-slate-50">
                     <span className="text-slate-600 text-sm">Participants</span>
                     <span className="font-medium text-lg">{stats.participants}</span>
                   </div>
-                  <div className="flex flex-col p-3 border rounded-md border-slate-200 bg-slate-50">
+                  <div className="flex flex-col w-32 p-3 border rounded-md border-slate-200 bg-slate-50">
                     <span className="text-slate-600 text-sm">Pools</span>
                     <span className="font-medium text-lg">{stats.pools}</span>
                   </div>
-                  <div className="flex flex-col p-3 border rounded-md border-slate-200 bg-slate-50">
+                  <div className="flex flex-col w-32 p-3 border rounded-md border-slate-200 bg-slate-50">
                     <span className="text-slate-600 text-sm">Total Matches</span>
                     <span className="font-medium text-lg">{stats.matches}</span>
                   </div>
-                  <div className="flex flex-col p-3 border rounded-md border-slate-200 bg-slate-50">
+                  <div className="flex flex-col w-32 p-3 border rounded-md border-slate-200 bg-slate-50">
                     <span className="text-slate-600 text-sm">Rounds</span>
                     <span className="font-medium text-lg">{stats.rounds}</span>
                   </div>
@@ -118,9 +120,12 @@ const Home: React.FC = () => {
         </div>
 
         {/* Bracket Display */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-3 ">
+          {/* <div className="sticky top-0 "> */}
           <BracketDisplay bracketData={bracketData} onExport={openExportModal} />
+          {/* </div> */}
         </div>
+      
       </div>
 
       {/* Export Modal */}
@@ -131,7 +136,12 @@ const Home: React.FC = () => {
         onExportAsPDF={exportAsPDF}
         onCopyToClipboard={copyToClipboard}
       />
+    
     </div>
+    <div className="fixed bottom-0 right-0 bg-blue-700 text-white rounded-full p-2 z-1  mx-2" >
+    <a href="#"  ><ArrowBigUpDash size={32} fill="white"/></a></div>
+    
+    </>
   );
 };
 

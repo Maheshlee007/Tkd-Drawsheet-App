@@ -14,19 +14,22 @@
 
 /* Connecting lines for brackets */
 .bracket-connector {
-  position: absolute !important; 
-  background-color: #64748b !important;
-  height: 2px !important;
-  z-index: 100 !important;
+  position: absolute !important;
+  border-color: #cbd5e1 !important;
+  /* height: 2px !important; */
+  border-top: 2px solid;
+  border-right: 2px solid;
+  z-index: 1 !important;
 }
 
 .connector-horizontal {
-  height: 2px !important;
+  /* height: 2px !important; */
 }
 
 .connector-vertical {
-  width: 2px !important;
-  transform: translateX(-1px) !important; /* Center the vertical line */
+  /* width: 2px !important; */
+  transform: translateX(-1px) !important;
+  /* Center the vertical line */
 }
 
 /* Print orientation options */
@@ -36,11 +39,12 @@
     margin: 0;
     padding: 0;
   }
-  
+
   .portrait {
     transform: rotate(90deg);
     transform-origin: top left;
-    width: 210mm; /* A4 height */
+    width: 210mm;
+    /* A4 height */
     margin-left: 5mm;
     margin-top: 5mm;
     position: absolute;
@@ -79,7 +83,8 @@
 }
 
 .winner {
-  color: #22c55e; /* Adjust the color as needed */
+  color: #22c55e;
+  /* Adjust the color as needed */
   font-weight: bold;
 }
 

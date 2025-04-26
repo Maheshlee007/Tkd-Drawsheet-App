@@ -121,37 +121,38 @@ const InputPanel = ({ onGenerateBracket }: InputPanelProps) => {
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
+    <div className="bg-white rounded-lg shadow-md p-6 sticky top-0">
       <h2 className="text-xl font-semibold text-slate-800 mb-4">
         Participants
       </h2>
 
       <Tabs value={inputMethod} onValueChange={setInputMethod}>
-        <TabsList className="mb-4 border-b w-full rounded-none bg-transparent justify-start">
+        <TabsList className="mb-2 overflow-auto border-b w-fit flex-wrap rounded-none bg-transparent justify-start ">
+        <TabsTrigger
+            value="blank"
+            className="px-2 py-2 text-sm font-medium data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary rounded-none data-[state=inactive]:bg-transparent data-[state=inactive]:text-slate-600"
+          >
+            Blank Bracket
+          </TabsTrigger>
           <TabsTrigger
             value="bulk"
-            className="px-4 py-2 text-sm font-medium data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary rounded-none data-[state=inactive]:bg-transparent data-[state=inactive]:text-slate-600"
+            className="px-2 py-2 text-sm font-medium data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary rounded-none data-[state=inactive]:bg-transparent data-[state=inactive]:text-slate-600"
           >
             Bulk Input
           </TabsTrigger>
           <TabsTrigger
             value="individual"
-            className="px-4 py-2 text-sm font-medium data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary rounded-none data-[state=inactive]:bg-transparent data-[state=inactive]:text-slate-600"
+            className="px-2 py-2 text-sm font-medium data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary rounded-none data-[state=inactive]:bg-transparent data-[state=inactive]:text-slate-600"
           >
             Individual
           </TabsTrigger>
           <TabsTrigger
             value="file"
-            className="px-4 py-2 text-sm font-medium data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary rounded-none data-[state=inactive]:bg-transparent data-[state=inactive]:text-slate-600"
+            className="px-2 py-2 text-sm font-medium data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary rounded-none data-[state=inactive]:bg-transparent data-[state=inactive]:text-slate-600"
           >
             File Upload
           </TabsTrigger>
-          <TabsTrigger
-            value="blank"
-            className="px-4 py-2 text-sm font-medium data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary rounded-none data-[state=inactive]:bg-transparent data-[state=inactive]:text-slate-600"
-          >
-            Blank Bracket
-          </TabsTrigger>
+          
         </TabsList>
 
         <TabsContent value="bulk" className="mb-6">

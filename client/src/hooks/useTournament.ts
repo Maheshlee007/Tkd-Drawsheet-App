@@ -6,11 +6,14 @@ import { useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
+import { createBracket } from "@/lib/bracketUtils";
+
 
 export const useTournament = () => {
   const [bracketData, setBracketData] = useState<BracketMatch[][] | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const { toast } = useToast();
+  const [participantCount, setParticipantCount] = useState(0);
 
   // Generate tournament bracket mutation
   const generateBracketMutation = useMutation({
@@ -21,11 +24,19 @@ export const useTournament = () => {
       participants: string[];
       seedType: "random" | "ordered" | "as-entered";
     }) => {
-      const response = await apiRequest("POST", "/api/tournaments/generate", {
-        participants,
-        seedType,
-      });
-      return response.json();
+      // try{
+
+      // }
+      // const response = await apiRequest("POST", "/api/tournaments/generate", {
+      //   participants,
+      //   seedType,
+      // });
+      setParticipantCount(participants.length || 0);
+       const bracketData = createBracket(participants, seedType);
+      // return response?.json() || {bracketData, tournamentId: 1 };
+      // console.log("Bracket Data:", bracketData);
+      
+      return  {bracketData, tournamentId: 1 };
     },
     onSuccess: (data) => {
       setBracketData(data.bracketData);
@@ -515,6 +526,7 @@ export const useTournament = () => {
   }, [closeExportModal, toast]);
 
   return {
+    participantCount,
     bracketData,
     isExportModalOpen,
     isPending: generateBracketMutation.isPending,

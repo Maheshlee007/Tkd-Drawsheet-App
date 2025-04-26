@@ -32,7 +32,7 @@ function generateBracketPairs(
   const matches = generateBrackets(seededParticipants);
   
   // Log first round matches for debugging
-  console.log(`First round matches: ${JSON.stringify(matches.map(m => ({p1: m[0], p2: m[1]})))}`);
+  // console.log(`First round matches: ${JSON.stringify(matches.map(m => ({p1: m[0], p2: m[1]})))}`);
   
   return matches;
 }
@@ -108,9 +108,9 @@ function generateBrackets(players: string[], forcedByes: number | null = null, r
   let totalBrackets = determineBracketSize(n);
   let byes = totalBrackets - n;
 
-  if (byes === 0) {
-    return assignByes(players, []);
-  }
+  // if (byes === 0) {
+  //   return assignByes(players, []);
+  // }
 
   let { upper, lower, upperByes, lowerByes } = splitIntoUpperLower(n, byes, reversed);
 
@@ -125,10 +125,11 @@ function generateBrackets(players: string[], forcedByes: number | null = null, r
 
 // Pool Determination Logic Based on Bracket Size
 function determinePools(n: number): number {
-  if (n <= 16) return 1;      // For small tournaments, use a single pool
-  if (n <= 32) return 2;      // For medium tournaments, use 2 pools
-  if (n <= 64) return 4;      // For large tournaments, use 4 pools
-  return 6;                   // For very large tournaments (>64), use 6 pools
+    if (n <= 32) return 2;
+    if (n <= 64) return 4;
+    if (n <= 128) return 8;
+    if (n <= 256) return 16;
+    return Math.pow(2, Math.ceil(Math.log2(n / 16)));                  // For very large tournaments (>64), use 6 pools
 }
 
 // Group Matches Into Pools for Display
@@ -173,7 +174,7 @@ export function createBracket(
   // Create bracket data structure
   const bracket: BracketMatch[][] = Array(numRounds)
     .fill(null)
-    .map(() => []);
+    .map(() => []);//[[],[],[],[]....]);
   
   // First round: fill in participants according to seeding with byes
   const firstRoundMatchCount = pairs.length;
@@ -252,7 +253,7 @@ function createSixPlayerBracket(participants: string[]): BracketMatch[][] {
   const round1: BracketMatch[] = [
     {
       id: "match-r1-1",
-      participants: [participants[0] + "(bye)", ""],
+      participants: [participants[0] ,"(bye)"],
       winner: participants[0],
       nextMatchId: "match-r2-1",
       position: 0
@@ -273,7 +274,7 @@ function createSixPlayerBracket(participants: string[]): BracketMatch[][] {
     },
     {
       id: "match-r1-4",
-      participants: [participants[5] + "(bye)", ""],
+      participants: [participants[5] ,"(bye)"],
       winner: participants[5],
       nextMatchId: "match-r2-2",
       position: 3
@@ -321,29 +322,29 @@ function createFivePlayerBracket(participants: string[]): BracketMatch[][] {
   const round1: BracketMatch[] = [
     {
       id: "match-r1-1",
-      participants: [participants[2] + "(bye)", ""],
-      winner: participants[2],
+      participants: [participants[0] ,"(bye)"],
+      winner: participants[0],
       nextMatchId: "match-r2-1",
       position: 0
     },
     {
       id: "match-r1-2",
-      participants: [participants[0] + "(bye)", ""],
-      winner: participants[0],
+      participants: [participants[1], participants[2]],
+      winner: null,
       nextMatchId: "match-r2-1",
       position: 1
     },
     {
       id: "match-r1-3",
-      participants: [participants[1], participants[4]],
-      winner: null,
+      participants: [participants[3] ,"(bye)"],
+      winner: participants[3],
       nextMatchId: "match-r2-2",
       position: 2
     },
     {
       id: "match-r1-4",
-      participants: [participants[3] + "(bye)", ""],
-      winner: participants[3],
+      participants: [participants[4] ,"(bye)"],
+      winner: participants[4],
       nextMatchId: "match-r2-2",
       position: 3
     }
@@ -353,14 +354,14 @@ function createFivePlayerBracket(participants: string[]): BracketMatch[][] {
   const round2: BracketMatch[] = [
     {
       id: "match-r2-1",
-      participants: [participants[2], participants[0]],
+      participants:[participants[0],null],
       winner: null,
       nextMatchId: "match-r3-1",
       position: 0
     },
     {
       id: "match-r2-2",
-      participants: [null, participants[3]],
+      participants:  [participants[3], participants[4]],
       winner: null,
       nextMatchId: "match-r3-1",
       position: 1
@@ -390,7 +391,7 @@ function createSevenPlayerBracket(participants: string[]): BracketMatch[][] {
   const round1: BracketMatch[] = [
     {
       id: "match-r1-1",
-      participants: [participants[0] + "(bye)", ""],
+      participants: [participants[0] ,"(bye)"],
       winner: participants[0],
       nextMatchId: "match-r2-1",
       position: 0
@@ -456,6 +457,7 @@ function createSevenPlayerBracket(participants: string[]): BracketMatch[][] {
  * @param numByes Number of byes needed
  * @returns Array of pairs, each containing two participants or byes
  */
+// old code
 function createPairsWithByes(
   participants: string[],
   numByes: number
@@ -478,10 +480,10 @@ function createPairsWithByes(
     // - A receives bye in first round
     // - F receives bye in fourth match
     return [
-      [participants[0] + "(bye)", ""],       // A gets a bye
+      [participants[0] , "(bye)"],       // A gets a bye
       [participants[1], participants[4]],    // B vs E
       [participants[2], participants[3]],    // C vs D  
-      [participants[5] + "(bye)", ""]        // F gets a bye
+      [participants[5] ,"(bye)"]        // F gets a bye
     ];
   }
   
@@ -493,10 +495,10 @@ function createPairsWithByes(
     // - A gets a bye in upper half (first seed in upper half)
     // - D gets a bye in lower half (first seed in lower half)
     return [
-      [participants[2] + "(bye)", ""],       // C gets a bye (last in upper half) 
-      [participants[0] + "(bye)", ""],       // A gets a bye (first in upper half)
+      [participants[2] , "(bye)"],       // C gets a bye (last in upper half) 
+      [participants[0] , "(bye)"],       // A gets a bye (first in upper half)
       [participants[1], participants[4]],    // B vs E
-      [participants[3] + "(bye)", ""]        // D gets a bye (first in lower half)
+      [participants[3] , "(bye)"]        // D gets a bye (first in lower half)
     ];
   }
   
@@ -504,7 +506,7 @@ function createPairsWithByes(
   if (n === 7 && numByes === 1) {
     // For 7 players, the bye goes to the highest seed (A)
     return [
-      [participants[0] + "(bye)", ""],       // A gets a bye
+      [participants[0] ,"(bye)"],       // A gets a bye
       [participants[1], participants[6]],    // B vs G
       [participants[2], participants[5]],    // C vs F
       [participants[3], participants[4]]     // D vs E
@@ -800,13 +802,14 @@ export function calculateBracketConnectors(
             const matchRect = matchElement.getBoundingClientRect();
             const nextMatchRect = nextMatchElement.getBoundingClientRect();
             const containerRect = containerElement.getBoundingClientRect();
+            console.log(`Match Rect: ${JSON.stringify(matchRect)}, Next Match Rect: ${JSON.stringify(nextMatchRect)}`,containerRect);
             
             // Calculate relative positions
             const currentX = matchRect.right - containerRect.left;
             const currentY = matchRect.top + matchRect.height / 2 - containerRect.top;
             const nextX = nextMatchRect.left - containerRect.left;
             const nextY = nextMatchRect.top + nextMatchRect.height / 2 - containerRect.top;
-            
+            console.log(`Current Position: (${currentX}, ${currentY}), Next Position: (${nextX}, ${nextY})`);
             // Only create connectors if elements are properly positioned
             if (currentX >= 0 && currentY >= 0 && nextX >= 0 && nextY >= 0) {
               // Horizontal line from current match

@@ -23,9 +23,9 @@ const ExportModal: React.FC<ExportModalProps> = ({
       <DialogContent className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
         <DialogHeader className="flex justify-between items-center">
           <DialogTitle className="text-lg font-semibold text-slate-800">Export Bracket</DialogTitle>
-          <Button variant="ghost" size="icon" className="text-slate-400 hover:text-slate-500" onClick={onClose}>
+          {/* <Button variant="ghost" size="icon" className="text-slate-400 hover:text-slate-500" onClick={onClose}>
             <X className="h-5 w-5" />
-          </Button>
+          </Button> */}
         </DialogHeader>
 
         <div className="space-y-4 mt-4">
