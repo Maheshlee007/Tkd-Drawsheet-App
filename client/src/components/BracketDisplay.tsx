@@ -364,7 +364,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
               window.print();
               setTimeout(function() {
                 window.close();
-              }, 2000);
+              }, 100);
             };
           </script>
         </body>
