@@ -167,33 +167,33 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
     }
   }, [bracketData]);
 
-  // useEffect(() => {
-  //   const handleBeforePrint = () => {
-  //     if (!bracketContainerRef.current || !bracketData) return;
-  //     const newConnectors = calculateBracketConnectors(
-  //       bracketData,
-  //       bracketContainerRef.current
-  //     );
-  //     setConnectors(newConnectors);
-  //   };
+  useEffect(() => {
+    const handleBeforePrint = () => {
+      if (!bracketContainerRef.current || !bracketData) return;
+      const newConnectors = calculateBracketConnectors(
+        bracketData,
+        bracketContainerRef.current
+      );
+      setConnectors(newConnectors);
+    };
   
-  //   const handleAfterPrint = () => {
-  //     if (!bracketContainerRef.current  || !bracketData) return;
-  //     const newConnectors = calculateBracketConnectors(
-  //       bracketData,
-  //       bracketContainerRef.current
-  //     );
-  //     setConnectors(newConnectors);
-  //   };
+    const handleAfterPrint = () => {
+      if (!bracketContainerRef.current  || !bracketData) return;
+      const newConnectors = calculateBracketConnectors(
+        bracketData,
+        bracketContainerRef.current
+      );
+      setConnectors(newConnectors);
+    };
   
-  //   window.addEventListener('beforeprint', handleBeforePrint);
-  //   window.addEventListener('afterprint', handleAfterPrint);
+    window.addEventListener('beforeprint', handleBeforePrint);
+    window.addEventListener('afterprint', handleAfterPrint);
   
-  //   return () => {
-  //     window.removeEventListener('beforeprint', handleBeforePrint);
-  //     window.removeEventListener('afterprint', handleAfterPrint);
-  //   };
-  // }, [bracketData]);
+    return () => {
+      window.removeEventListener('beforeprint', handleBeforePrint);
+      window.removeEventListener('afterprint', handleAfterPrint);
+    };
+  }, [bracketData]);
   
   
   // If no bracket data is available, show empty state
@@ -341,20 +341,23 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
           <title>Print Bracket</title>
           ${styles}
           <style>
+          
             @media print {
               body {
                 margin: 0;
               }
-                
+              h1{text-align:center}
               
               @page {
                 size: ${printOrientation};
-                margin: ${printOrientation ?'0.7cm':'0.2cm'};
+                margin: ${printOrientation ?'0.7cm':'0.5cm'};
               }
             }
           </style>
+          
         </head>
         <body>
+        <h1>KDTA Tournament Tie sheet under 54kg</h1>
           ${printContents}
           <script>
             window.onload = function() {
@@ -516,10 +519,10 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
             {/* View selector - full view or grid view */}
             <div className="mb-4">
               <Tabs defaultValue="full" className="mb-4">
-                <TabsList className="bg-slate-100">
+                {/* <TabsList className="bg-slate-100">
                   <TabsTrigger value="full">Full View</TabsTrigger>
                   <TabsTrigger value="grid">Grid View</TabsTrigger>
-                </TabsList>
+                </TabsList> */}
                 <TabsContent value="grid">
                   {/* Grid View - Each pool is displayed in a grid */}
                   <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
@@ -609,12 +612,13 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                   <div className="mb-6">
                     <Tabs defaultValue="all" className="mb-6">
                       <TabsList className="bg-slate-100 inline-flex flex-wrap">
+                      <TabsTrigger value="all" className="text-sm">All Pools</TabsTrigger>
                         {pooledBrackets.map((_, poolIndex) => (
                           <TabsTrigger key={`pool-tab-${poolIndex}`} value={poolIndex.toString()} className="text-sm">
                             Pool {poolIndex + 1}
                           </TabsTrigger>
                         ))}
-                        <TabsTrigger value="all" className="text-sm">All Pools</TabsTrigger>
+                       
                       </TabsList>
                       
                       {/* Individual pool tabs */}
@@ -705,7 +709,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                           {pooledBrackets.map((poolBracket, poolIndex) => (
                             <div key={`all-pool-${poolIndex}`} className="space-y-2">
                               <h3 className="text-xl font-medium text-slate-800">Pool {poolIndex + 1}</h3>
-                              <div className="overflow-x-auto"  ref={bracketContainerRef}>
+                              <div className="overflow-x-auto w-full"  ref={bracketContainerRef}>
                                 <div
                                   className="bracket-display relative pb-8 flex justify-start"
                                   data-pool={`all-${poolIndex}`}

@@ -282,12 +282,19 @@ const InputPanel = ({ onGenerateBracket }: InputPanelProps) => {
               max="128"
               className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary text-sm"
               value={participants.blank}
+              autoFocus
               onChange={(e) => {
                 // Clear the field and set the new value
                 const value = e.target.value.replace(/\D/g, "");
                 const numValue = parseInt(value);
                 setParticipants((prev) => ({ ...prev, blank: numValue }));
               }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && participants.blank >= 2) {
+                  e.preventDefault();
+                  handleGenerateBracket();
+                }}}
+                
             />
           </div>
           {(!Boolean(participants.blank) || participants?.blank < 2) && (
@@ -344,6 +351,7 @@ const InputPanel = ({ onGenerateBracket }: InputPanelProps) => {
         <Button
           className="flex-1 bg-primary hover:bg-blue-600 text-white"
           onClick={handleGenerateBracket}
+          
         >
           Generate Bracket
         </Button>

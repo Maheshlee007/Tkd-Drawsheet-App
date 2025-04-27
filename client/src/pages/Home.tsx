@@ -111,6 +111,10 @@ const Home: React.FC = () => {
               <Button 
                 className="w-full mt-6 flex items-center justify-center"
                 onClick={handleReset}
+                // onKeyDown={(e => {
+                //   if (e.key === "Enter") handleReset();
+                // })}
+                // disabled={isPending}
               >
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Generate New Bracket
