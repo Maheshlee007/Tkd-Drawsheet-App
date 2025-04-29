@@ -5,7 +5,7 @@ import ExportModal from "@/components/ExportModal";
 import { useTournament } from "@/hooks/useTournament";
 import { useBracketPDF, PDFOrientation } from "@/hooks/useBracketPDF";
 import { Button } from "@/components/ui/button";
-import { ArrowBigUpDash, RefreshCw, FileText, Minimize, Maximize } from "lucide-react";
+import { ArrowBigUpDash, RefreshCw, FileText, Minimize, Maximize, Eye } from "lucide-react";
 // import "../index.css"
 
 const Home: React.FC = () => {
@@ -22,8 +22,8 @@ const Home: React.FC = () => {
     copyToClipboard,
   } = useTournament();
   
-  // Import the enhanced PDF generation functionality with orientation control
-  const { generateBracketPDF, orientation, toggleOrientation } = useBracketPDF();
+  // Import both the standard and preview PDF generation functionality
+  const { generateBracketPDF, previewBracketPDF, orientation, toggleOrientation } = useBracketPDF();
   
   const [showInputPanel, setShowInputPanel] = useState<boolean>(true);
   
@@ -38,10 +38,17 @@ const Home: React.FC = () => {
     setShowInputPanel(true);
   };
   
-  // Handler for direct PDF export with current orientation
+  // Handler for direct PDF generation
   const handleDirectPDFExport = () => {
     if (bracketData) {
       generateBracketPDF(bracketData, "Tournament Bracket", participantCount);
+    }
+  };
+  
+  // Handler for PDF preview
+  const handlePreviewPDF = () => {
+    if (bracketData) {
+      previewBracketPDF(bracketData, "Tournament Bracket", participantCount);
     }
   };
   
@@ -153,13 +160,23 @@ const Home: React.FC = () => {
                       </Button>
                     </div>
                     
-                    <Button
-                      className="w-full mt-2 flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white"
-                      onClick={handleDirectPDFExport}
-                    >
-                      <FileText className="h-4 w-4 mr-2" />
-                      Export as PDF
-                    </Button>
+                    <div className="grid grid-cols-2 gap-2 mt-3">
+                      <Button
+                        className="flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white"
+                        onClick={handlePreviewPDF}
+                      >
+                        <Eye className="h-4 w-4 mr-1" />
+                        Preview
+                      </Button>
+                      
+                      <Button
+                        className="flex items-center justify-center bg-green-600 hover:bg-green-700 text-white"
+                        onClick={handleDirectPDFExport}
+                      >
+                        <FileText className="h-4 w-4 mr-1" />
+                        Save PDF
+                      </Button>
+                    </div>
                   </div>
                 </>
               )}

@@ -2,9 +2,28 @@ import { useCallback, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { BracketMatch } from "@shared/schema";
 import { jsPDF } from "jspdf";
-import "jspdf-autotable";
 
 export type PDFOrientation = "landscape" | "portrait";
+
+// Function to determine if a player had a bye in the previous round (copied from BracketDisplay)
+function previousRoundHadBye(playerName: string, bracketData: BracketMatch[][], currentRound: number): boolean {
+  if (currentRound <= 0 || !bracketData[currentRound - 1]) return false;
+  
+  // Find the player in the previous round
+  const prevRound = bracketData[currentRound - 1];
+  
+  for (const match of prevRound) {
+    // If this player faced a bye in the previous round
+    if (
+      (match.participants[0] === playerName && match.participants[1] === "(bye)") ||
+      (match.participants[1] === playerName && match.participants[0] === "(bye)")
+    ) {
+      return true;
+    }
+  }
+  
+  return false;
+}
 
 export const useBracketPDF = () => {
   const { toast } = useToast();
@@ -45,17 +64,8 @@ export const useBracketPDF = () => {
       pdf.setFont("helvetica", "normal");
       pdf.text(`Participants: ${participantCount}`, pageWidth / 2, margin + 12, { align: "center" });
       
-      // Calculate rounds
-      const roundCount = bracketData.length;
-      
-      // Handle the bracket rendering based on size
-      if (participantCount > 32 || roundCount > 5) {
-        // For large brackets, use a different approach - we'll render as a table with proper pages
-        renderLargeBracket(pdf, bracketData, margin, contentWidth, contentHeight, participantCount, finalOrientation);
-      } else {
-        // For smaller brackets, render a visual bracket diagram
-        renderVisualBracket(pdf, bracketData, margin, contentWidth, contentHeight, finalOrientation);
-      }
+      // Draw the bracket with visual style matching BracketDisplay component
+      renderBracket(pdf, bracketData, margin, contentWidth, contentHeight, finalOrientation);
       
       // Save the PDF
       pdf.save(`${title.replace(/\s+/g, '_')}.pdf`);
@@ -79,111 +89,100 @@ export const useBracketPDF = () => {
   }, [toast, orientation]);
 
   /**
-   * Render a large bracket as a structured table
+   * Pre-calculate the match positions for all rounds
+   * This ensures matches in later rounds are properly positioned between their parent matches
    */
-  const renderLargeBracket = (
-    pdf: jsPDF, 
-    bracketData: BracketMatch[][], 
-    margin: number, 
-    contentWidth: number, 
-    contentHeight: number,
-    participantCount: number,
-    orientation: PDFOrientation
+  const calculateMatchPositions = (
+    bracketData: BracketMatch[][],
+    startY: number,
+    matchHeight: number,
+    roundWidth: number,
+    margin: number
   ) => {
-    // Set up header for the bracket table
-    const headers = bracketData.map((_, i) => `Round ${i + 1}`);
+    const positions: Record<string, { x: number, y: number, height: number }> = {};
+    const roundPositions: Array<Array<{x: number, y: number, nextMatchId: string | null, id: string, height: number}>> = [];
     
-    // Prepare the table data structure
-    const matchesInFirstRound = bracketData[0].length;
-    const tableRows: any[] = [];
+    // First calculate all positions for the first round (evenly spaced)
+    const firstRound = bracketData[0];
+    const firstRoundPositions: Array<{x: number, y: number, nextMatchId: string | null, id: string, height: number}> = [];
+    roundPositions.push(firstRoundPositions);
     
-    // Generate rows for the table
-    for (let i = 0; i < matchesInFirstRound; i++) {
-      const row: any[] = [];
+    // Calculate spacing for first round
+    const baseSpacing = matchHeight * 1.5;
+    const firstRoundX = margin;
+    
+    // Position first round matches
+    firstRound.forEach((match, idx) => {
+      const matchY = startY + (idx * baseSpacing);
+      positions[match.id] = { x: firstRoundX, y: matchY, height: matchHeight };
+      firstRoundPositions.push({
+        x: firstRoundX,
+        y: matchY,
+        nextMatchId: match.nextMatchId,
+        id: match.id,
+        height: matchHeight
+      });
+    });
+    
+    // Process subsequent rounds
+    for (let roundIdx = 1; roundIdx < bracketData.length; roundIdx++) {
+      const round = bracketData[roundIdx];
+      const roundPositionArr: Array<{x: number, y: number, nextMatchId: string | null, id: string, height: number}> = [];
+      roundPositions.push(roundPositionArr);
       
-      // Add cells for each round
-      bracketData.forEach((round, roundIndex) => {
-        // Calculate which match from this round belongs in this row
-        // For round 0, it's straightforward
-        if (roundIndex === 0) {
-          const match = round[i];
-          // Display participants
-          const participant1 = match.participants[0] || "TBD";
-          const participant2 = match.participants[1] || "TBD";
-          const winner = match.winner ? `Winner: ${match.winner}` : "";
-          
-          row.push({
-            content: `${participant1}\nvs\n${participant2}${winner ? `\n${winner}` : ""}`,
-            styles: {
-              fontSize: 8,
-              cellPadding: 2,
-              cellWidth: contentWidth / bracketData.length
+      // Position for this round's matches
+      const roundX = margin + (roundIdx * roundWidth);
+      
+      // For each match in this round, find its source matches and position it between them
+      round.forEach((match) => {
+        // Find the previous round's matches that feed into this match
+        const prevRound = bracketData[roundIdx - 1];
+        const sourceMatches = prevRound.filter(m => m.nextMatchId === match.id);
+        
+        // Position this match between its source matches
+        if (sourceMatches.length > 0) {
+          let totalY = 0;
+          sourceMatches.forEach(sourceMatch => {
+            const sourcePos = positions[sourceMatch.id];
+            if (sourcePos) {
+              totalY += sourcePos.y + (sourcePos.height / 2);
             }
           });
-        } else {
-          // For later rounds, we need to determine if a match should be shown in this row
-          // The pattern repeats based on powers of 2
-          const matchesInThisRound = round.length;
-          const matchesPerRow = matchesInFirstRound / matchesInThisRound;
           
-          // Check if this row should contain a match from this round
-          if (i % matchesPerRow === 0) {
-            const matchIndex = i / matchesPerRow;
-            if (matchIndex < matchesInThisRound) {
-              const match = round[matchIndex];
-              const participant1 = match.participants[0] || "TBD";
-              const participant2 = match.participants[1] || "TBD";
-              const winner = match.winner ? `Winner: ${match.winner}` : "";
-              
-              row.push({
-                content: `${participant1}\nvs\n${participant2}${winner ? `\n${winner}` : ""}`,
-                styles: {
-                  fontSize: 8,
-                  cellPadding: 2,
-                  rowSpan: matchesPerRow,
-                  valign: 'middle',
-                  halign: 'center',
-                  cellWidth: contentWidth / bracketData.length
-                }
-              });
-            } else {
-              row.push({ content: "", styles: { cellWidth: contentWidth / bracketData.length } });
-            }
-          } else {
-            // Skip cells that are part of a rowspan
-            row.push({ content: "", styles: { cellWidth: contentWidth / bracketData.length } });
-          }
+          // Calculate average Y position of source matches
+          const avgY = totalY / sourceMatches.length - (matchHeight / 2);
+          
+          // Store position
+          positions[match.id] = { x: roundX, y: avgY, height: matchHeight };
+          roundPositionArr.push({
+            x: roundX,
+            y: avgY,
+            nextMatchId: match.nextMatchId,
+            id: match.id,
+            height: matchHeight
+          });
+        } else {
+          // If no source matches (shouldn't happen but just in case), just position somewhere
+          const matchY = startY + (matchHeight * 2);
+          positions[match.id] = { x: roundX, y: matchY, height: matchHeight };
+          roundPositionArr.push({
+            x: roundX,
+            y: matchY,
+            nextMatchId: match.nextMatchId,
+            id: match.id,
+            height: matchHeight
+          });
         }
       });
-      
-      tableRows.push(row);
     }
     
-    // Add the table to the PDF
-    (pdf as any).autoTable({
-      head: [headers],
-      body: tableRows,
-      startY: margin + 20,
-      styles: {
-        overflow: 'linebreak',
-        cellWidth: 'wrap',
-        fontSize: 8,
-        cellPadding: 2,
-        valign: 'middle',
-        halign: 'center'
-      },
-      columnStyles: {
-        0: { cellWidth: contentWidth / bracketData.length }
-      },
-      margin: { top: margin, right: margin, bottom: margin, left: margin },
-      theme: 'grid'
-    });
+    return roundPositions;
   };
-  
+
   /**
-   * Render a visual bracket diagram for smaller tournaments
+   * Render a bracket with style matching the BracketDisplay component
    */
-  const renderVisualBracket = (
+  const renderBracket = (
     pdf: jsPDF, 
     bracketData: BracketMatch[][], 
     margin: number, 
@@ -191,127 +190,241 @@ export const useBracketPDF = () => {
     contentHeight: number,
     orientation: PDFOrientation
   ) => {
-    // Calculate bracket layout dimensions
+    // Calculate dimensions
     const roundCount = bracketData.length;
+    
+    // Calculate the round width based on available space (match BracketDisplay styling)
     const roundWidth = contentWidth / roundCount;
     
-    // Calculate the highest number of matches in a single round (first round)
-    const matchesInFirstRound = bracketData[0].length;
+    // Calculate match dimensions
+    const matchWidth = Math.min(40, roundWidth * 0.8); // Similar to BracketDisplay's 180px
+    const matchHeight = 8; // Similar to BracketDisplay's match height
     
-    // Calculate match dimensions and spacing
-    const totalMatches = Math.pow(2, roundCount - 1);
-    const maxMatchHeight = contentHeight / matchesInFirstRound;
-    const matchHeight = Math.min(10, maxMatchHeight * 0.7); // Limit match height
-    const matchWidth = roundWidth * 0.7; // Leave space for connectors
-    
-    // Start drawing position
+    // Starting position
     const startY = margin + 20;
+    
+    // Pre-calculate match positions to ensure proper alignment
+    const matchPositions = calculateMatchPositions(
+      bracketData,
+      startY,
+      matchHeight,
+      roundWidth,
+      margin
+    );
     
     // Draw each round
     bracketData.forEach((round, roundIndex) => {
-      // Calculate x position for this round
-      const roundX = margin + (roundIndex * roundWidth);
-      
-      // Calculate the spacing multiplier for this round
-      // First round has matches evenly spaced
-      // Each subsequent round doubles the spacing
-      const spacingMultiplier = Math.pow(2, roundIndex);
-      const baseSpacing = contentHeight / matchesInFirstRound;
-      
       // Draw each match in this round
       round.forEach((match, matchIndex) => {
-        // Calculate vertical position
-        // In later rounds, matches need to be centered between the positions of their "child" matches
-        const matchY = startY + (matchIndex * spacingMultiplier * baseSpacing);
+        // Get the pre-calculated position for this match
+        const matchPosition = matchPositions[roundIndex].find(m => m.id === match.id);
+        if (!matchPosition) return;
         
-        // Draw match box with slight rounded corners
-        pdf.setDrawColor(100, 100, 100);
-        pdf.setFillColor(250, 250, 250);
-        pdf.roundedRect(roundX, matchY, matchWidth, matchHeight, 1, 1, 'F');
-        pdf.roundedRect(roundX, matchY, matchWidth, matchHeight, 1, 1, 'S');
+        const roundX = matchPosition.x;
+        const matchY = matchPosition.y;
         
-        // Draw divider line between participants
-        pdf.setDrawColor(180, 180, 180);
-        pdf.line(roundX, matchY + (matchHeight / 2), roundX + matchWidth, matchY + (matchHeight / 2));
+        // Get participant styling info (similar to BracketDisplay getParticipantStyle)
+        const isFirstRound = roundIndex === 0;
+        const hasOpponentByeTop = match.participants[0] !== null && match.participants[1] === "(bye)";
+        const hasOpponentByeBottom = match.participants[1] !== null && match.participants[0] === "(bye)";
+        const hasMatchByeTop = !isFirstRound && match.participants[0] !== null && 
+                          match.participants[0] !== "(bye)" &&
+                          previousRoundHadBye(match.participants[0], bracketData, roundIndex);
+        const hasMatchByeBottom = !isFirstRound && match.participants[1] !== null && 
+                              match.participants[1] !== "(bye)" &&
+                              previousRoundHadBye(match.participants[1], bracketData, roundIndex);
         
-        // Get participants
+        // Draw match box
+        pdf.setDrawColor(200, 200, 200);
+        pdf.setFillColor(255, 255, 255);
+        pdf.roundedRect(roundX, matchY, matchWidth, matchHeight, 1, 1, 'FD');
+        
+        // Draw participant 1
         const participant1 = match.participants[0] || "";
-        const participant2 = match.participants[1] || "";
+        const text1 = participant1 === "(bye)" ? "(bye)" : participant1;
+        // Set appropriate background color (similar to BracketDisplay colors)
+        if (participant1 === "(bye)") {
+          // Gray with green border for bye
+          pdf.setFillColor(240, 240, 240);
+          pdf.rect(roundX, matchY, matchWidth, matchHeight/2, 'F');
+          pdf.setDrawColor(0, 180, 0);
+          pdf.line(roundX, matchY, roundX, matchY + matchHeight/2);
+          pdf.setDrawColor(200, 200, 200);
+        } else if (hasOpponentByeTop) {
+          // Light green for player with bye
+          pdf.setFillColor(240, 255, 240);
+          pdf.rect(roundX, matchY, matchWidth, matchHeight/2, 'F');
+          pdf.setDrawColor(0, 180, 0);
+          pdf.line(roundX, matchY, roundX, matchY + matchHeight/2);
+          pdf.setDrawColor(200, 200, 200);
+        } else if (hasMatchByeTop) {
+          // Light green for player from match with bye
+          pdf.setFillColor(240, 255, 240);
+          pdf.rect(roundX, matchY, matchWidth, matchHeight/2, 'F');
+          pdf.setDrawColor(0, 180, 0);
+          pdf.line(roundX, matchY, roundX, matchY + matchHeight/2);
+          pdf.setDrawColor(200, 200, 200);
+        } else {
+          // Blue for top participant
+          pdf.setFillColor(240, 245, 255);
+          pdf.rect(roundX, matchY, matchWidth, matchHeight/2, 'F');
+          pdf.setDrawColor(30, 120, 255);
+          pdf.line(roundX, matchY, roundX, matchY + matchHeight/2);
+          pdf.setDrawColor(200, 200, 200);
+        }
         
-        // Format participant names
-        const text1 = participant1 === "(bye)" ? "— bye —" : participant1;
-        const text2 = participant2 === "(bye)" ? "— bye —" : participant2;
-        
-        // Draw participant names - adjust font size based on available space
-        // Choose font size based on match height
-        pdf.setFontSize(matchHeight > 8 ? 8 : 6);
-        
-        // First participant
+        // Draw text for participant 1
+        pdf.setFontSize(6.5);
         if (match.winner === participant1) {
-          // Highlight winner
-          pdf.setFillColor(235, 245, 235);
-          pdf.rect(roundX, matchY, matchWidth, matchHeight / 2, 'F');
           pdf.setFont("helvetica", "bold");
         } else {
           pdf.setFont("helvetica", "normal");
         }
         
-        // Ensure text fits in the match box
-        const maxTextWidth = matchWidth - 4;
+        // Truncate text if needed
         let displayText1 = text1;
+        pdf.setTextColor(30, 30, 30);
+        const maxTextWidth = matchWidth - 4;
         if (pdf.getTextWidth(displayText1) > maxTextWidth) {
-          displayText1 = displayText1.substring(0, 10) + "...";
+          displayText1 = displayText1.substring(0, 15) + "...";
         }
         
         pdf.text(displayText1, roundX + 2, matchY + (matchHeight / 4) + 1);
         
-        // Second participant
-        pdf.setFont("helvetica", "normal");
-        if (match.winner === participant2) {
-          // Highlight winner
-          pdf.setFillColor(235, 245, 235);
-          pdf.rect(roundX, matchY + (matchHeight / 2), matchWidth, matchHeight / 2, 'F');
-          pdf.setFont("helvetica", "bold");
+        // Draw divider line
+        pdf.setDrawColor(200, 200, 200);
+        pdf.line(roundX, matchY + matchHeight/2, roundX + matchWidth, matchY + matchHeight/2);
+        
+        // Draw participant 2
+        const participant2 = match.participants[1] || "";
+        const text2 = participant2 === "(bye)" ? "(bye)" : participant2;
+        
+        // Set appropriate background color (similar to BracketDisplay colors)
+        if (participant2 === "(bye)") {
+          // Gray with green border for bye
+          pdf.setFillColor(240, 240, 240);
+          pdf.rect(roundX, matchY + matchHeight/2, matchWidth, matchHeight/2, 'F');
+          pdf.setDrawColor(0, 180, 0);
+          pdf.line(roundX, matchY + matchHeight/2, roundX, matchY + matchHeight);
+          pdf.setDrawColor(200, 200, 200);
+        } else if (hasOpponentByeBottom) {
+          // Light green for player with bye
+          pdf.setFillColor(240, 255, 240);
+          pdf.rect(roundX, matchY + matchHeight/2, matchWidth, matchHeight/2, 'F');
+          pdf.setDrawColor(0, 180, 0);
+          pdf.line(roundX, matchY + matchHeight/2, roundX, matchY + matchHeight);
+          pdf.setDrawColor(200, 200, 200);
+        } else if (hasMatchByeBottom) {
+          // Light green for player from match with bye
+          pdf.setFillColor(240, 255, 240);
+          pdf.rect(roundX, matchY + matchHeight/2, matchWidth, matchHeight/2, 'F');
+          pdf.setDrawColor(0, 180, 0);
+          pdf.line(roundX, matchY + matchHeight/2, roundX, matchY + matchHeight);
+          pdf.setDrawColor(200, 200, 200);
+        } else {
+          // Red for bottom participant
+          pdf.setFillColor(255, 245, 245);
+          pdf.rect(roundX, matchY + matchHeight/2, matchWidth, matchHeight/2, 'F');
+          pdf.setDrawColor(255, 70, 70);
+          pdf.line(roundX, matchY + matchHeight/2, roundX, matchY + matchHeight);
+          pdf.setDrawColor(200, 200, 200);
         }
         
+        // Draw text for participant 2
+        pdf.setFontSize(6.5);
+        if (match.winner === participant2) {
+          pdf.setFont("helvetica", "bold");
+        } else {
+          pdf.setFont("helvetica", "normal");
+        }
+        
+        // Truncate text if needed
         let displayText2 = text2;
+        pdf.setTextColor(30, 30, 30);
         if (pdf.getTextWidth(displayText2) > maxTextWidth) {
-          displayText2 = displayText2.substring(0, 10) + "...";
+          displayText2 = displayText2.substring(0, 15) + "...";
         }
         
         pdf.text(displayText2, roundX + 2, matchY + (matchHeight * 3/4) + 1);
-        
-        // Draw connectors to the next match
-        if (match.nextMatchId && roundIndex < bracketData.length - 1) {
-          // Find the next match
-          const nextRound = bracketData[roundIndex + 1];
+      });
+    });
+    
+    // Draw connectors (similar to how BracketDisplay calculates its connectors)
+    // Process all rounds except the last one
+    for (let roundIndex = 0; roundIndex < matchPositions.length - 1; roundIndex++) {
+      const round = matchPositions[roundIndex];
+      
+      // Process each match in the round
+      round.forEach(match => {
+        if (match.nextMatchId) {
+          // Find the next match this one connects to
+          const nextRound = matchPositions[roundIndex + 1];
           const nextMatch = nextRound.find(m => m.id === match.nextMatchId);
           
           if (nextMatch) {
-            const nextMatchIndex = nextRound.findIndex(m => m.id === match.nextMatchId);
-            const nextMatchY = startY + (nextMatchIndex * spacingMultiplier * 2 * baseSpacing);
+            // Calculate connector points
+            // Start point (from current match)
+            const startX = match.x + matchWidth;
+            const startY = match.y + (match.height / 2);
             
-            // Draw connector lines
+            // End point (to next match)
+            const endX = nextMatch.x;
+            const endY = nextMatch.y + (nextMatch.height / 2);
+            
+            // Calculate midpoint for drawing the vertical connector
+            const midX = startX + ((endX - startX) / 2);
+            
+            // Draw connector lines with lighter color (similar to BracketDisplay)
             pdf.setDrawColor(150, 150, 150);
-            pdf.setLineWidth(0.3);
+            pdf.setLineWidth(0.2);
             
             // Horizontal line from current match
-            const connectorStartX = roundX + matchWidth;
-            const connectorStartY = matchY + (matchHeight / 2);
-            const horizontalEndX = connectorStartX + ((roundWidth - matchWidth) / 2);
+            pdf.line(startX, startY, midX, startY);
             
-            pdf.line(connectorStartX, connectorStartY, horizontalEndX, connectorStartY);
-            
-            // Vertical connector line
-            const verticalEndY = nextMatchY + (matchHeight / 2);
-            pdf.line(horizontalEndX, connectorStartY, horizontalEndX, verticalEndY);
+            // Vertical connector
+            pdf.line(midX, startY, midX, endY);
             
             // Horizontal line to next match
-            pdf.line(horizontalEndX, verticalEndY, roundX + roundWidth, verticalEndY);
+            pdf.line(midX, endY, endX, endY);
           }
         }
       });
-    });
+    }
+    
+    // If this is the final round, add Winner label to the champion
+    const finalRound = bracketData[bracketData.length - 1];
+    if (finalRound && finalRound.length === 1 && finalRound[0].winner) {
+      const finalMatch = finalRound[0];
+      const winner = finalMatch.winner;
+      
+      // Find the position of the final match
+      const finalMatchPos = matchPositions[matchPositions.length - 1][0];
+      
+      if (finalMatchPos) {
+        // Add winner badge
+        pdf.setFillColor(100, 100, 255);
+        pdf.setDrawColor(80, 80, 200);
+        pdf.roundedRect(
+          finalMatchPos.x + matchWidth + 2, 
+          finalMatchPos.y + (finalMatchPos.height / 2) - 3, 
+          20, 
+          6, 
+          2, 
+          2, 
+          'FD'
+        );
+        
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFontSize(7);
+        pdf.setFont("helvetica", "bold");
+        pdf.text(
+          "WINNER", 
+          finalMatchPos.x + matchWidth + 12, 
+          finalMatchPos.y + (finalMatchPos.height / 2) + 1, 
+          { align: "center" }
+        );
+      }
+    }
   };
 
   // Function to toggle orientation
@@ -319,8 +432,146 @@ export const useBracketPDF = () => {
     setOrientation(prev => prev === "landscape" ? "portrait" : "landscape");
   }, []);
 
+  // Function to preview the PDF before downloading
+  const previewBracketPDF = useCallback((
+    bracketData: BracketMatch[][],
+    title = "Tournament Bracket",
+    participantCount: number = 0
+  ) => {
+    try {
+      // Create the PDF
+      const pdf = new jsPDF({
+        orientation: orientation,
+        unit: "mm",
+        format: "a4"
+      });
+      
+      // Define page dimensions and layout settings
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 10;
+      const contentWidth = pageWidth - (margin * 2);
+      const contentHeight = pageHeight - (margin * 2);
+      
+      // Add title to the document
+      pdf.setFontSize(16);
+      pdf.setFont("helvetica", "bold");
+      pdf.text(title, pageWidth / 2, margin + 5, { align: "center" });
+      pdf.setFontSize(10);
+      pdf.setFont("helvetica", "normal");
+      pdf.text(`Participants: ${participantCount}`, pageWidth / 2, margin + 12, { align: "center" });
+      
+      // Draw the bracket
+      renderBracket(pdf, bracketData, margin, contentWidth, contentHeight, orientation);
+      
+      // Generate PDF as data URL for preview
+      const pdfOutput = pdf.output('datauristring');
+      
+      // Open PDF in a new window (better browser compatibility than new tab)
+      const previewWindow = window.open('', '_blank');
+      if (!previewWindow) {
+        // If popup is blocked, show error message
+        toast({
+          variant: "destructive",
+          title: "Preview Blocked",
+          description: "Please allow popups to preview the bracket.",
+        });
+        return false;
+      }
+      
+      // Write PDF viewer HTML to the new window
+      previewWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Tournament Bracket Preview</title>
+          <style>
+            body {
+              margin: 0;
+              padding: 0;
+              display: flex;
+              flex-direction: column;
+              height: 100vh;
+            }
+            .toolbar {
+              background: #f5f5f5;
+              border-bottom: 1px solid #ddd;
+              padding: 10px;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+            }
+            .preview {
+              flex: 1;
+              width: 100%;
+              height: 100%;
+              border: none;
+            }
+            button {
+              padding: 6px 12px;
+              background: #0284c7;
+              color: white;
+              border: none;
+              border-radius: 4px;
+              cursor: pointer;
+              margin-left: 10px;
+            }
+            button:hover {
+              background: #0369a1;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="toolbar">
+            <h3>Tournament Bracket Preview</h3>
+            <div>
+              <button id="print-btn">Print</button>
+              <button id="download-btn">Download</button>
+              <button id="close-btn">Close</button>
+            </div>
+          </div>
+          <iframe class="preview" src="${pdfOutput}"></iframe>
+          <script>
+            document.getElementById('print-btn').addEventListener('click', function() {
+              document.querySelector('iframe').contentWindow.print();
+            });
+            document.getElementById('download-btn').addEventListener('click', function() {
+              const link = document.createElement('a');
+              link.href = "${pdfOutput}";
+              link.download = "${title.replace(/\s+/g, '_')}.pdf";
+              link.click();
+            });
+            document.getElementById('close-btn').addEventListener('click', function() {
+              window.close();
+            });
+          </script>
+        </body>
+        </html>
+      `);
+      
+      previewWindow.document.close();
+      
+      // Show success message
+      toast({
+        title: "Preview Ready",
+        description: "The bracket preview has been opened in a new window.",
+      });
+      
+      return true;
+    } catch (error) {
+      console.error("Error generating bracket PDF preview:", error);
+      toast({
+        variant: "destructive",
+        title: "PDF Preview Error",
+        description: "Failed to generate the bracket PDF preview.",
+      });
+      return false;
+    }
+  }, [toast, orientation]);
+
   return { 
     generateBracketPDF,
+    previewBracketPDF,
     orientation,
     setOrientation,
     toggleOrientation
