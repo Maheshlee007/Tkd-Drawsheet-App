@@ -733,8 +733,8 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                                                             match.participants[0] !== "(bye)" &&
                                                             previousRoundHadBye(match.participants[0], bracketData, roundIndex);
                                         const hasMatchByeBottom = !isFirstRound && match.participants[1] !== null && 
-                                                              match.participants[1] !== "(bye)" &&
-                                                              previousRoundHadBye(match.participants[1], bracketData, roundIndex);
+                                                                  match.participants[1] !== "(bye)" &&
+                                                                  previousRoundHadBye(match.participants[1], bracketData, roundIndex);
                                         
                                         return (
                                           <div
@@ -841,7 +841,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                       >
                         {/* First participant */}
                         <div
-                          className={`participant py-0.5 px-1 mb-0.5 text-sm rounded-r-sm ${
+                          className={`participant py-0.5 px-1 mb-0.5 text-sm rounded-r-sm print:border-b print:border-b-slate-700 ${
                             getParticipantStyle(match.participants[0], hasMatchByeTop, hasOpponentByeTop, true)
                           } ${
                             match.winner === match.participants[0] ? "font-medium" : ""

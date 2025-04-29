@@ -3,8 +3,9 @@ import InputPanel from "@/components/InputPanel";
 import BracketDisplay from "@/components/BracketDisplay";
 import ExportModal from "@/components/ExportModal";
 import { useTournament } from "@/hooks/useTournament";
+import { useBracketPDF, PDFOrientation } from "@/hooks/useBracketPDF";
 import { Button } from "@/components/ui/button";
-import { ArrowBigUpDash, RefreshCw } from "lucide-react";
+import { ArrowBigUpDash, RefreshCw, FileText, Minimize, Maximize } from "lucide-react";
 // import "../index.css"
 
 const Home: React.FC = () => {
@@ -21,6 +22,9 @@ const Home: React.FC = () => {
     copyToClipboard,
   } = useTournament();
   
+  // Import the enhanced PDF generation functionality with orientation control
+  const { generateBracketPDF, orientation, toggleOrientation } = useBracketPDF();
+  
   const [showInputPanel, setShowInputPanel] = useState<boolean>(true);
   
   // Handler to generate bracket and hide input panel
@@ -32,6 +36,13 @@ const Home: React.FC = () => {
   // Reset function to show input panel again
   const handleReset = () => {
     setShowInputPanel(true);
+  };
+  
+  // Handler for direct PDF export with current orientation
+  const handleDirectPDFExport = () => {
+    if (bracketData) {
+      generateBracketPDF(bracketData, "Tournament Bracket", participantCount);
+    }
   };
   
   // Calculate tournament statistics
@@ -111,23 +122,54 @@ const Home: React.FC = () => {
               <Button 
                 className="w-full mt-6 flex items-center justify-center"
                 onClick={handleReset}
-                // onKeyDown={(e => {
-                //   if (e.key === "Enter") handleReset();
-                // })}
-                // disabled={isPending}
               >
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Generate New Bracket
               </Button>
+              
+              {bracketData && (
+                <>
+                  <div className="mt-4 bg-slate-100 p-3 rounded-md">
+                    <h3 className="text-sm font-medium text-slate-700 mb-2">PDF Export Options</h3>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-slate-600">Orientation:</span>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        className="flex items-center gap-1"
+                        onClick={toggleOrientation}
+                      >
+                        {orientation === "landscape" ? (
+                          <>
+                            <Maximize className="h-3 w-3" />
+                            <span>Landscape</span>
+                          </>
+                        ) : (
+                          <>
+                            <Minimize className="h-3 w-3 rotate-90" />
+                            <span>Portrait</span>
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    
+                    <Button
+                      className="w-full mt-2 flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white"
+                      onClick={handleDirectPDFExport}
+                    >
+                      <FileText className="h-4 w-4 mr-2" />
+                      Export as PDF
+                    </Button>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
 
         {/* Bracket Display */}
         <div className="lg:col-span-3 ">
-          {/* <div className="sticky top-0 "> */}
-          <BracketDisplay bracketData={bracketData} onExport={openExportModal} />
-          {/* </div> */}
+          <BracketDisplay bracketData={bracketData} onExport={exportAsPDF} />
         </div>
       
       </div>

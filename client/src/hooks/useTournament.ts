@@ -169,7 +169,7 @@ export const useTournament = () => {
   // Export as PDF
   const exportAsPDF = useCallback(() => {
     // Create a self-contained document for PDF generation
-    const documentTitle = "Taekwondo Tournament Tie sheet "
+    const documentTitle = "Taekwondo Tournament Tie sheet";
     const printWindow = window.open('', '_blank');
     
     if (!printWindow) {
@@ -182,7 +182,7 @@ export const useTournament = () => {
     }
     
     // Find the actual bracket display element that we want to clone
-    const bracketElement = document.querySelector(".bracket-display");
+    const bracketElement = document.querySelector(".bracket-display") as HTMLElement;
     if (!bracketElement) {
       console.error("Could not find bracket display element");
       return;
@@ -241,12 +241,43 @@ export const useTournament = () => {
         background: white !important;
         overflow: hidden !important;
       }
+      /* Enhanced participant styling for better differentiation */
       .participant {
-        padding: 3px 6px !important;
+        padding: 4px 6px !important;
         margin: 0 !important;
         font-size: 12px !important;
+        border-left-width: 4px !important;
+      }/*
+      .participant:first-child {
+        border-bottom: 2px solid #f8fafc !important;
+        background-color: #f8fafc !important;
       }
-      
+      .participant:last-child {
+        border-top: 2px solid #f8fafc !important;
+        background-color: #f1f5f9 !important;
+      }*/
+      /* Better styling for byes */
+      .participant.text-gray-500 {
+        color: #94a3b8 !important;
+        font-style: italic !important;
+      }
+      /* Winner highlight */
+      .font-medium {
+        font-weight: 600 !important;
+        background-color: #eff6ff !important;
+      }
+      /* Always ensure separation is visible in print */
+      @media print {
+    
+        .participant:first-child {
+        border-bottom: 1px solid #d2d5da !important;
+        background-color: #f8fafc !important;
+      }
+      .participant:last-child {
+        border-top: 1px solid #d2d5da !important;
+        background-color: #f1f5f9 !important;
+      }
+      }
       .bracket-connector {
         position: absolute !important;
         background-color: #64748b !important;
@@ -303,7 +334,6 @@ export const useTournament = () => {
           size: ${document.querySelector('.bracket-display.portrait') ? 'portrait' : 'landscape'};
           margin: 1cm;
         }
-       
       }
     `;
     
@@ -353,8 +383,8 @@ export const useTournament = () => {
     `);
     
     // Function to clone the bracket structure completely
-    const cloneBracket = (sourceElement:any) => {
-      const clone = sourceElement.cloneNode(true);
+    const cloneBracket = (sourceElement: HTMLElement): HTMLElement => {
+      const clone = sourceElement.cloneNode(true) as HTMLElement;
       
       // Ensure all data attributes are copied
       Array.from(sourceElement.attributes).forEach(attr => {
@@ -367,7 +397,7 @@ export const useTournament = () => {
       const sourceMatches = sourceElement.querySelectorAll('.bracket-match');
       const cloneMatches = clone.querySelectorAll('.bracket-match');
       
-      sourceMatches.forEach((sourceMatch:any, index:number) => {
+      sourceMatches.forEach((sourceMatch, index) => {
         if (index < cloneMatches.length) {
           const matchId = sourceMatch.getAttribute('data-match-id');
           if (matchId) {
@@ -381,13 +411,18 @@ export const useTournament = () => {
     
     // Clone the bracket element
     const bracketContainer = printWindow.document.getElementById('bracket-container');
+    if (!bracketContainer) {
+      printWindow.document.close();
+      return;
+    }
+    
     const bracketClone = cloneBracket(bracketElement);
     
     // Remove any existing connectors from the clone
     bracketClone.querySelectorAll('.bracket-connector').forEach(el => el.remove());
     
     // Append clone to the print window
-    bracketContainer?.appendChild(bracketClone);
+    bracketContainer.appendChild(bracketClone);
     
     // Wait for DOM to be fully rendered before calculating connectors
     setTimeout(() => {
@@ -397,8 +432,14 @@ export const useTournament = () => {
         let bracketToUse = bracketData;
         
         // Create a function to calculate connectors in the print window context
-        printWindow.calculateBracketConnectors = function(bracketData, container) {
-          const connectors = [];
+        printWindow.calculateBracketConnectors = function(bracketData: BracketMatch[][], container: HTMLElement) {
+          const connectors: Array<{ 
+            left: number; 
+            top: number; 
+            width?: number; 
+            height?: number; 
+            type: string 
+          }> = [];
           
           if (!bracketData || bracketData.length <= 1 || !container) {
             return connectors;

@@ -1,13 +1,14 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { X, FileImage, FileText, Copy } from "lucide-react";
+import { X, FileImage, FileText, Copy, Printer } from "lucide-react";
 
 interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
   onExportAsPNG: () => void;
   onExportAsPDF: () => void;
+  onExportAsAdvancedPDF?: () => void;
   onCopyToClipboard: () => void;
 }
 
@@ -16,6 +17,7 @@ const ExportModal: React.FC<ExportModalProps> = ({
   onClose,
   onExportAsPNG,
   onExportAsPDF,
+  onExportAsAdvancedPDF,
   onCopyToClipboard,
 }) => {
   return (
@@ -44,8 +46,19 @@ const ExportModal: React.FC<ExportModalProps> = ({
             onClick={onExportAsPDF}
           >
             <FileText className="h-5 w-5 mr-2 text-slate-500" />
-            Save as PDF
+            PDF Preview
           </Button>
+          
+          {onExportAsAdvancedPDF && (
+            <Button
+              variant="outline"
+              className="flex items-center justify-center w-full px-4 py-2 border border-slate-300 rounded-md shadow-sm bg-white hover:bg-slate-50 text-slate-700 font-medium transition-colors"
+              onClick={onExportAsAdvancedPDF}
+            >
+              <Printer className="h-5 w-5 mr-2 text-slate-500" />
+              Direct PDF Export
+            </Button>
+          )}
 
           <Button
             variant="outline"
