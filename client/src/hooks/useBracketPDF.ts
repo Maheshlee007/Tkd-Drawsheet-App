@@ -25,6 +25,119 @@ function previousRoundHadBye(playerName: string, bracketData: BracketMatch[][], 
   return false;
 }
 
+/**
+ * Format a date as DD-MM-YYYY
+ */
+function formatDate(date: Date): string {
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}-${month}-${year}`;
+}
+
+/**
+ * Get round name based on the round index and total rounds
+ */
+function getRoundName(roundIndex: number, totalRounds: number): string {
+  // Calculate rounds from the end (final, semi, etc.)
+  const roundsFromEnd = totalRounds - roundIndex - 1;
+  
+  switch (roundsFromEnd) {
+    case 0:
+      return "Final";
+    case 1:
+      return "Semi Finals";
+    case 2:
+      return "Quarter Finals";
+    default:
+      return `Round ${roundIndex + 1}`;
+  }
+}
+
+/**
+ * Get background color for round labels
+ */
+function getRoundLabelColor(roundIndex: number, totalRounds: number): { bg: number[], text: number[] } {
+  // Calculate rounds from the end (final, semi, etc.)
+  const roundsFromEnd = totalRounds - roundIndex - 1;
+  
+  switch (roundsFromEnd) {
+    case 0: // Final - blue
+      return { 
+        bg: [230, 242, 255], 
+        text: [30, 70, 150] 
+      };
+    case 1: // Semi Finals - green
+      return { 
+        bg: [230, 255, 240], 
+        text: [30, 120, 60] 
+      };
+    case 2: // Quarter Finals - purple
+      return { 
+        bg: [242, 230, 255], 
+        text: [120, 30, 150] 
+      };
+    default: // Regular rounds - gray
+      return { 
+        bg: [240, 240, 240], 
+        text: [80, 80, 80] 
+      };
+  }
+}
+
+/**
+ * Split large brackets into pages of 16 brackets each
+ * This allows us to fit 32 players per page
+ */
+function splitBracketForPagination(bracketData: BracketMatch[][]): BracketMatch[][][] {
+  // For brackets with >16 matches in the first round, split into pages
+  const firstRoundMatches = bracketData[0].length;
+  
+  // If the first round has 16 or fewer matches (32 or fewer players), keep as one page
+  if (firstRoundMatches <= 16) {
+    return [bracketData];
+  }
+  
+  // Split the bracket into chunks of 16 brackets per page
+  const pages: BracketMatch[][][] = [];
+  const bracketCopy = [...bracketData];
+  
+  // For each page, create a subset of the bracket with 16 first-round matches
+  for (let i = 0; i < firstRoundMatches; i += 16) {
+    // Take up to 16 matches from each round for this page
+    const pageData: BracketMatch[][] = [];
+    
+    // Process each round
+    for (let roundIdx = 0; roundIdx < bracketCopy.length; roundIdx++) {
+      const round = bracketCopy[roundIdx];
+      
+      // For the first round, take 16 matches
+      if (roundIdx === 0) {
+        const matchGroup = round.slice(i, Math.min(i + 16, round.length));
+        pageData.push(matchGroup);
+      } else {
+        // For subsequent rounds, find corresponding matches
+        const prevRoundMatches = pageData[roundIdx - 1];
+        const matchIds = prevRoundMatches.map(m => m.nextMatchId).filter(id => id !== null);
+        
+        // Get matches from this round that are connected to the previous round
+        const connectedMatches = round.filter(m => matchIds.includes(m.id));
+        
+        if (connectedMatches.length > 0) {
+          pageData.push(connectedMatches);
+        }
+      }
+    }
+    
+    // Only add the page if it contains matches
+    if (pageData.length > 0 && pageData[0].length > 0) {
+      pages.push(pageData);
+    }
+  }
+  
+  return pages;
+}
+
 export const useBracketPDF = () => {
   const { toast } = useToast();
   const [orientation, setOrientation] = useState<PDFOrientation>("landscape");
@@ -42,6 +155,12 @@ export const useBracketPDF = () => {
       // Use provided orientation or fall back to state
       const finalOrientation = pdfOrientation || orientation;
       
+      // Get the current date
+      const currentDate = formatDate(new Date());
+      
+      // Split brackets into pages of 16 brackets each
+      const bracketPages = splitBracketForPagination(bracketData);
+      
       // Set up PDF with proper orientation
       const pdf = new jsPDF({
         orientation: finalOrientation,
@@ -56,16 +175,44 @@ export const useBracketPDF = () => {
       const contentWidth = pageWidth - (margin * 2);
       const contentHeight = pageHeight - (margin * 2);
       
-      // Add title to the document
-      pdf.setFontSize(16);
-      pdf.setFont("helvetica", "bold");
-      pdf.text(title, pageWidth / 2, margin + 5, { align: "center" });
-      pdf.setFontSize(10);
-      pdf.setFont("helvetica", "normal");
-      pdf.text(`Participants: ${participantCount}`, pageWidth / 2, margin + 12, { align: "center" });
-      
-      // Draw the bracket with visual style matching BracketDisplay component
-      renderBracket(pdf, bracketData, margin, contentWidth, contentHeight, finalOrientation);
+      // Generate each page
+      bracketPages.forEach((pageBracket, pageIndex) => {
+        // Add a new page for all pages except the first
+        if (pageIndex > 0) {
+          pdf.addPage();
+        }
+        
+        // Add title, participant count, and date on the same line
+        pdf.setFontSize(16);
+        pdf.setFont("helvetica", "bold");
+        pdf.text(title, pageWidth / 2, margin + 5, { align: "center" });
+        
+        pdf.setFontSize(10);
+        pdf.setFont("helvetica", "normal");
+        
+        // Add participant count on right side
+        pdf.text(`Participants: ${participantCount}`, pageWidth - margin, margin + 5, { align: "right" });
+        
+        // Add date on left side
+        pdf.text(`Date: ${currentDate}`, margin, margin + 5);
+        
+        // Add page indicator if multiple pages
+        if (bracketPages.length > 1) {
+          pdf.setFontSize(9);
+          pdf.text(`Page ${pageIndex + 1} of ${bracketPages.length}`, pageWidth / 2, margin + 12, { align: "center" });
+          
+          // Add bracket range description
+          const startBracket = pageIndex * 16 + 1;
+          const endBracket = Math.min(startBracket + 15, bracketData[0].length);
+          
+          pdf.setFont("helvetica", "italic");
+          pdf.text(`Brackets ${startBracket}-${endBracket}`, pageWidth / 2, margin + 17, { align: "center" });
+          pdf.setFont("helvetica", "normal");
+        }
+        
+        // Draw the bracket with visual style matching BracketDisplay component
+        renderBracket(pdf, pageBracket, margin, contentWidth, contentHeight, finalOrientation);
+      });
       
       // Save the PDF
       pdf.save(`${title.replace(/\s+/g, '_')}.pdf`);
@@ -107,8 +254,9 @@ export const useBracketPDF = () => {
     const firstRoundPositions: Array<{x: number, y: number, nextMatchId: string | null, id: string, height: number}> = [];
     roundPositions.push(firstRoundPositions);
     
-    // Calculate spacing for first round
-    const baseSpacing = matchHeight * 1.5;
+    // Calculate spacing for first round - REDUCED spacing to fit 32 players
+    // We need to fit 16 brackets on a page, so reduce the spacing
+    const baseSpacing = matchHeight * 1.2; // Reduced from 1.5 to fit more brackets
     const firstRoundX = margin;
     
     // Position first round matches
@@ -190,18 +338,55 @@ export const useBracketPDF = () => {
     contentHeight: number,
     orientation: PDFOrientation
   ) => {
+    // Get page dimensions
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    
     // Calculate dimensions
     const roundCount = bracketData.length;
     
-    // Calculate the round width based on available space (match BracketDisplay styling)
+    // Calculate the round width based on available space
+    // Updated: adjust round width calculation to account for connectors
+    const matchWidthProportion = 0.65; // Match takes 65% of round width, connectors take 35%
     const roundWidth = contentWidth / roundCount;
     
     // Calculate match dimensions
-    const matchWidth = Math.min(40, roundWidth * 0.8); // Similar to BracketDisplay's 180px
-    const matchHeight = 8; // Similar to BracketDisplay's match height
+    const matchWidth = Math.min(40, roundWidth * matchWidthProportion);
+    const matchHeight = 7; // Slightly reduced match height to fit more
     
-    // Starting position
-    const startY = margin + 20;
+    // Starting position with room for round labels
+    const startY = margin + 25; // Increased for round labels
+    
+    // Draw round labels with background colors
+    pdf.setFontSize(9);
+    
+    // Add round labels in a row at the top
+    bracketData.forEach((round, roundIndex) => {
+      const roundX = margin + (roundIndex * roundWidth) + (matchWidth / 2);
+      const roundName = getRoundName(roundIndex, roundCount);
+      
+      // Get round label colors
+      const colors = getRoundLabelColor(roundIndex, roundCount);
+      
+      // Draw round label with colored background
+      const labelWidth = 32;
+      const labelHeight = 8;
+      const labelX = roundX - (labelWidth / 2);
+      const labelY = startY - 15;
+      
+      // Draw rounded rectangle background
+      pdf.setFillColor(colors.bg[0], colors.bg[1], colors.bg[2]);
+      pdf.setDrawColor(colors.text[0], colors.text[1], colors.text[2]);
+      pdf.roundedRect(labelX, labelY, labelWidth, labelHeight, 2, 2, 'FD');
+      
+      // Draw round name text
+      pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+      pdf.setFont("helvetica", "bold");
+      pdf.text(roundName, roundX, startY - 9, { align: "center" });
+    });
+    
+    // Reset text color
+    pdf.setTextColor(30, 30, 30);
     
     // Pre-calculate match positions to ensure proper alignment
     const matchPositions = calculateMatchPositions(
@@ -425,6 +610,19 @@ export const useBracketPDF = () => {
         );
       }
     }
+    
+    // Add footer if this bracket is part of a multi-page document
+    if (bracketData[0].length >= 16) {
+      pdf.setFontSize(8);
+      pdf.setFont("helvetica", "italic");
+      pdf.setTextColor(100, 100, 100);
+      pdf.text(
+        "Large tournament bracket - continues on next page(s)", 
+        pageWidth / 2, 
+        pageHeight - 5, 
+        { align: "center" }
+      );
+    }
   };
 
   // Function to toggle orientation
@@ -439,6 +637,12 @@ export const useBracketPDF = () => {
     participantCount: number = 0
   ) => {
     try {
+      // Get the current date
+      const currentDate = formatDate(new Date());
+      
+      // Split brackets into pages of 16 brackets each
+      const bracketPages = splitBracketForPagination(bracketData);
+      
       // Create the PDF
       const pdf = new jsPDF({
         orientation: orientation,
@@ -453,16 +657,44 @@ export const useBracketPDF = () => {
       const contentWidth = pageWidth - (margin * 2);
       const contentHeight = pageHeight - (margin * 2);
       
-      // Add title to the document
-      pdf.setFontSize(16);
-      pdf.setFont("helvetica", "bold");
-      pdf.text(title, pageWidth / 2, margin + 5, { align: "center" });
-      pdf.setFontSize(10);
-      pdf.setFont("helvetica", "normal");
-      pdf.text(`Participants: ${participantCount}`, pageWidth / 2, margin + 12, { align: "center" });
-      
-      // Draw the bracket
-      renderBracket(pdf, bracketData, margin, contentWidth, contentHeight, orientation);
+      // Generate each page
+      bracketPages.forEach((pageBracket, pageIndex) => {
+        // Add a new page for all pages except the first
+        if (pageIndex > 0) {
+          pdf.addPage();
+        }
+        
+        // Add title, participant count, and date on the same line
+        pdf.setFontSize(16);
+        pdf.setFont("helvetica", "bold");
+        pdf.text(title, pageWidth / 2, margin + 5, { align: "center" });
+        
+        pdf.setFontSize(10);
+        pdf.setFont("helvetica", "normal");
+        
+        // Add participant count on right side
+        pdf.text(`Participants: ${participantCount}`, pageWidth - margin, margin + 5, { align: "right" });
+        
+        // Add date on left side
+        pdf.text(`Date: ${currentDate}`, margin, margin + 5);
+        
+        // Add page indicator if multiple pages
+        if (bracketPages.length > 1) {
+          pdf.setFontSize(9);
+          pdf.text(`Page ${pageIndex + 1} of ${bracketPages.length}`, pageWidth / 2, margin + 12, { align: "center" });
+          
+          // Add bracket range description
+          const startBracket = pageIndex * 16 + 1;
+          const endBracket = Math.min(startBracket + 15, bracketData[0].length);
+          
+          pdf.setFont("helvetica", "italic");
+          pdf.text(`Brackets ${startBracket}-${endBracket}`, pageWidth / 2, margin + 17, { align: "center" });
+          pdf.setFont("helvetica", "normal");
+        }
+        
+        // Draw the bracket
+        renderBracket(pdf, pageBracket, margin, contentWidth, contentHeight, orientation);
+      });
       
       // Generate PDF as data URL for preview
       const pdfOutput = pdf.output('datauristring');
@@ -519,12 +751,26 @@ export const useBracketPDF = () => {
             button:hover {
               background: #0369a1;
             }
+            .page-controls {
+              display: ${bracketPages.length > 1 ? 'flex' : 'none'};
+              align-items: center;
+              margin-right: 20px;
+            }
+            .page-info {
+              margin: 0 10px;
+              font-size: 14px;
+            }
           </style>
         </head>
         <body>
           <div class="toolbar">
             <h3>Tournament Bracket Preview</h3>
-            <div>
+            <div style="display: flex; align-items: center;">
+              <div class="page-controls">
+                <button id="prev-btn" ${bracketPages.length <= 1 ? 'disabled' : ''}>Previous Page</button>
+                <span class="page-info">Page <span id="current-page">1</span> of ${bracketPages.length}</span>
+                <button id="next-btn" ${bracketPages.length <= 1 ? 'disabled' : ''}>Next Page</button>
+              </div>
               <button id="print-btn">Print</button>
               <button id="download-btn">Download</button>
               <button id="close-btn">Close</button>
@@ -532,18 +778,50 @@ export const useBracketPDF = () => {
           </div>
           <iframe class="preview" src="${pdfOutput}"></iframe>
           <script>
+            const iframe = document.querySelector('iframe');
+            let currentPage = 0;
+            const totalPages = ${bracketPages.length};
+            
             document.getElementById('print-btn').addEventListener('click', function() {
-              document.querySelector('iframe').contentWindow.print();
+              iframe.contentWindow.print();
             });
+            
             document.getElementById('download-btn').addEventListener('click', function() {
               const link = document.createElement('a');
               link.href = "${pdfOutput}";
               link.download = "${title.replace(/\s+/g, '_')}.pdf";
               link.click();
             });
+            
             document.getElementById('close-btn').addEventListener('click', function() {
               window.close();
             });
+            
+            // Page controls for multi-page PDFs
+            if (totalPages > 1) {
+              const pdfDoc = iframe.contentWindow;
+              const currentPageEl = document.getElementById('current-page');
+              
+              document.getElementById('prev-btn').addEventListener('click', function() {
+                if (currentPage > 0) {
+                  currentPage--;
+                  if (pdfDoc.PDFViewerApplication) {
+                    pdfDoc.PDFViewerApplication.page = currentPage + 1;
+                  }
+                  currentPageEl.textContent = currentPage + 1;
+                }
+              });
+              
+              document.getElementById('next-btn').addEventListener('click', function() {
+                if (currentPage < totalPages - 1) {
+                  currentPage++;
+                  if (pdfDoc.PDFViewerApplication) {
+                    pdfDoc.PDFViewerApplication.page = currentPage + 1;
+                  }
+                  currentPageEl.textContent = currentPage + 1;
+                }
+              });
+            }
           </script>
         </body>
         </html>
