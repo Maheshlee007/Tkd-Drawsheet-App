@@ -9,6 +9,7 @@ import { Plus } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface InputPanelProps {
+  isPending: boolean;
   onGenerateBracket: (
     participants: string[],
     seedType: "random" | "ordered" | "as-entered",
