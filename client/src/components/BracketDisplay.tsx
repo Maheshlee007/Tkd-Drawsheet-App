@@ -473,7 +473,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
     return (
       <div className="bg-white rounded-lg shadow-md p-6">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold text-slate-800">
+          <h2 className="text-xs sm:text-xl font-semibold text-slate-800">
             Tournament Bracket
           </h2>
         </div>
@@ -528,25 +528,41 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
       {/* Header with title and export/print buttons */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-6 ">
         <h2 className="text-xl font-semibold text-slate-800">
           Tournament Bracket
         </h2>
         <div className="flex space-x-2">
-          <Button
+          <div className="flex items-center space-x-2 mr-4">
+          {/* <Label htmlFor="render-mode" className="cursor-pointer">Rendering:</Label> */}
+          <div className="flex items-center space-x-2 bg-slate-100 p-2 rounded-md ">
+            <Grid className={`h-4 w-4  ${renderMode === "dom" ? "text-primary" : "text-slate-400"}`} />
+            <Switch 
+              id="render-mode" 
+              checked={renderMode === "canvas"}
+              onCheckedChange={toggleRenderMode}
+              // className="w-5 h-5"
+            />
+            <Layers className={`h-4 w-4 ${renderMode === "canvas" ? "text-primary" : "text-slate-400"}`} />
+          </div>
+          <span className="text-sm text-slate-600">
+            {renderMode === "dom" ? "DOM" : "Canvas"}
+          </span>
+        </div>
+          {/* <Button
             onClick={onExport}
             variant="outline"
             className="inline-flex items-center bg-white hover:bg-slate-50 text-slate-700 border border-slate-300"
           >
             <Download className="h-4 w-4 mr-1" />
             Export
-          </Button>
+          </Button> */}
           
           {renderMode === "dom" ? (
             <Button
               onClick={handlePrint}
               variant="outline"
-              className="inline-flex items-center bg-white hover:bg-slate-50 text-slate-700 border border-slate-300"
+              className="sm:inline-flex hidden items-center bg-white hover:bg-slate-50 text-slate-700 border border-slate-300"
             >
               <Printer className="h-4 w-4 mr-1" />
               Print DOM
@@ -555,7 +571,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
             <Button
               onClick={handleCanvasPrint}
               variant="outline"
-              className="inline-flex items-center bg-white hover:bg-slate-50 text-slate-700 border border-slate-300"
+              className="sm:inline-flex hidden items-center bg-white hover:bg-slate-50 text-slate-700 border border-slate-300"
             >
               <Printer className="h-4 w-4 mr-1" />
               Print Canvas
@@ -565,7 +581,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
       </div>
 
       {/* Pool count information */}
-      {poolCount > 1 && (
+      {/* {poolCount > 1 && (
         <div className="mb-6">
           <div className="p-4 bg-slate-50 rounded-md border border-slate-200">
             <p className="text-slate-700 font-medium">
@@ -573,12 +589,12 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
             </p>
           </div>
         </div>
-      )}
-      
+      )} */}
+
       {/* Display controls */}
-      <div className="mb-4 flex items-center justify-between print:hidden">
-        <div className="flex items-center space-x-4">
-          {/* Print orientation toggle */}
+      {/* <div className="mb-2 flex items-center justify-between print:hidden">
+        <div className="flex items-center space-x-4"> 
+          
           <div className="flex items-center space-x-2">
             <Label htmlFor="print-orientation" className="cursor-pointer">Print:</Label>
             <div className="flex items-center space-x-2 bg-slate-100 p-2 rounded-md">
@@ -596,23 +612,9 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
           </div>
         </div>
         
-        {/* Render mode toggle (DOM vs Canvas) */}
-        <div className="flex items-center space-x-2">
-          <Label htmlFor="render-mode" className="cursor-pointer">Rendering:</Label>
-          <div className="flex items-center space-x-2 bg-slate-100 p-2 rounded-md">
-            <Grid className={`h-4 w-4 ${renderMode === "dom" ? "text-primary" : "text-slate-400"}`} />
-            <Switch 
-              id="render-mode" 
-              checked={renderMode === "canvas"}
-              onCheckedChange={toggleRenderMode}
-            />
-            <Layers className={`h-4 w-4 ${renderMode === "canvas" ? "text-primary" : "text-slate-400"}`} />
-          </div>
-          <span className="text-sm text-slate-600">
-            {renderMode === "dom" ? "DOM" : "Canvas"}
-          </span>
-        </div>
-      </div>
+        
+        <hr className="w-full bg-slate-500 h-1/2 border-slate-500"/>
+      </div> */}
 
       {/* For printing/exporting, we use the active pool */}
       <div className="hidden print:block">

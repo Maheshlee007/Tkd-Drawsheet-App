@@ -13,11 +13,13 @@ interface InputPanelProps {
   onGenerateBracket: (
     participants: string[],
     seedType: "random" | "ordered" | "as-entered",
+    tournamentName: string
   ) => void;
 }
 
-const InputPanel = ({ onGenerateBracket }: InputPanelProps) => {
+const InputPanel = ({ isPending, onGenerateBracket }: InputPanelProps) => {
   const [inputMethod, setInputMethod] = useState<string>("blank");
+  const [tournamentName, setTournamentName] = useState<string>("Tournament Draw Sheet");
   const [participants, setParticipants] = useState<{
     bulk: string;
     individual: string[];
@@ -103,11 +105,17 @@ const InputPanel = ({ onGenerateBracket }: InputPanelProps) => {
     // Our enhanced bracket logic with byes handles odd numbers properly
 
     setError(null);
-    onGenerateBracket(participantsList, seedType);
+    // Pass the tournament name to the onGenerateBracket function
+    onGenerateBracket(
+      participantsList, 
+      seedType, 
+      tournamentName
+    );
   };
 
   // Clear all form data
   const handleClearForm = () => {
+    setTournamentName("Tournament Draw Sheet");
     setParticipants({
       bulk: "",
       individual: ["", ""],
@@ -127,8 +135,10 @@ const InputPanel = ({ onGenerateBracket }: InputPanelProps) => {
         Participants
       </h2>
 
+      
+
       <Tabs value={inputMethod} onValueChange={setInputMethod}>
-        <TabsList className="mb-2 overflow-auto border-b w-fit flex-wrap rounded-none bg-transparent justify-start ">
+        <TabsList className="mb-2 overflow-auto border-b w-fit flex-wrap rounded-none bg-transparent justify-start">
         <TabsTrigger
             value="blank"
             className="px-2 py-2 text-sm font-medium data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary rounded-none data-[state=inactive]:bg-transparent data-[state=inactive]:text-slate-600"
@@ -300,7 +310,7 @@ const InputPanel = ({ onGenerateBracket }: InputPanelProps) => {
           </div>
           {(!Boolean(participants.blank) || participants?.blank < 2) && (
             <p className="text-sm text-red-500">
-              ** minumum 2 players are reuired
+              ** minimum 2 players are required
             </p>
           )}
           <div className="mt-2 text-sm text-slate-600">
@@ -310,36 +320,56 @@ const InputPanel = ({ onGenerateBracket }: InputPanelProps) => {
         </TabsContent>
       </Tabs>
 
-      <div className="mb-4">
-        <Label className="block text-sm font-medium text-slate-700 mb-2">
-          Seeding Options
-        </Label>
-        <RadioGroup
-          value={seedType}
-          onValueChange={(value: "random" | "ordered" | "as-entered") =>
-            setSeedType(value)
-          }
-          className="mt-2 flex flex-wrap gap-4"
-        >
-          <div className="flex items-center">
-            <RadioGroupItem id="random" value="random" />
-            <Label htmlFor="random" className="ml-2 text-sm text-slate-700">
-              Random Seeding
-            </Label>
-          </div>
-          <div className="flex items-center">
-            <RadioGroupItem id="ordered" value="ordered" />
-            <Label htmlFor="ordered" className="ml-2 text-sm text-slate-700">
-              Use Order as Seeding
-            </Label>
-          </div>
-          <div className="flex items-center">
-            <RadioGroupItem id="as-entered" value="as-entered" />
-            <Label htmlFor="as-entered" className="ml-2 text-sm text-slate-700">
-              As Entered (No Seeding)
-            </Label>
-          </div>
-        </RadioGroup>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        {/* Tournament Name Field - Now beside participants as a column */}
+        <div>
+          <Label
+            htmlFor="tournament-name"
+            className="block text-sm font-medium text-slate-700 mb-2"
+          >
+            Tournament Name
+          </Label>
+          <Input
+            id="tournament-name"
+            value={tournamentName}
+            onChange={(e) => setTournamentName(e.target.value)}
+            className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary text-sm"
+          />
+        </div>
+
+        {/* Seeding Options */}
+        <div>
+          <Label className="block text-sm font-medium text-slate-700 mb-2">
+            Seeding Options
+          </Label>
+          <RadioGroup
+            value={seedType}
+            onValueChange={(value: "random" | "ordered" | "as-entered") =>
+              setSeedType(value)
+            }
+            className="mt-2 flex flex-wrap gap-4"
+          >
+             <div className="flex items-center">
+              <RadioGroupItem id="as-entered" value="as-entered" />
+              <Label htmlFor="as-entered" className="ml-2 text-sm text-slate-700">
+                As Entered (No Seeding)
+              </Label>
+            </div>
+            <div className="flex items-center">
+              <RadioGroupItem id="random" value="random" />
+              <Label htmlFor="random" className="ml-2 text-sm text-slate-700">
+                Random Seeding
+              </Label>
+            </div>
+            <div className="flex items-center">
+              <RadioGroupItem id="ordered" value="ordered" />
+              <Label htmlFor="ordered" className="ml-2 text-sm text-slate-700">
+                Use Order as Seeding
+              </Label>
+            </div>
+           
+          </RadioGroup>
+        </div>
       </div>
 
       {error && (
@@ -352,14 +382,15 @@ const InputPanel = ({ onGenerateBracket }: InputPanelProps) => {
         <Button
           className="flex-1 bg-primary hover:bg-blue-600 text-white"
           onClick={handleGenerateBracket}
-          
+          disabled={isPending}
         >
-          Generate Bracket
+          {isPending ? "Generating..." : "Generate Bracket"}
         </Button>
         <Button
           variant="outline"
           className="flex-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700"
           onClick={handleClearForm}
+          disabled={isPending}
         >
           Clear Form
         </Button>
