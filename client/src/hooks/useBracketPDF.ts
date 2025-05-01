@@ -55,32 +55,36 @@ function getRoundName(roundIndex: number, totalRounds: number): string {
 }
 
 /**
- * Get background color for round labels
+ * Get background color for round labels - Using Indian flag color scheme
  */
-function getRoundLabelColor(roundIndex: number, totalRounds: number): { bg: number[], text: number[] } {
+function getRoundLabelColor(roundIndex: number, totalRounds: number): { bg: number[], text: number[], border: number[] } {
   // Calculate rounds from the end (final, semi, etc.)
   const roundsFromEnd = totalRounds - roundIndex - 1;
   
   switch (roundsFromEnd) {
-    case 0: // Final - blue
+    case 0:
       return { 
-        bg: [230, 242, 255], 
-        text: [30, 70, 150] 
+        bg: [144, 248, 144],       // Light green background
+    text: [4, 106, 56],        // India green text
+    border: [0, 100, 0],       // Dark green border
       };
-    case 1: // Semi Finals - green
+    case 1:
       return { 
-        bg: [230, 255, 240], 
-        text: [30, 120, 60] 
+        bg: [255, 255, 255],      // Smoky white background
+    text: [0, 0, 128],        // Navy blue text (for Ashoka Chakra)
+    border: [200, 200, 200],  // Light gray border
       };
-    case 2: // Quarter Finals - purple
+    case 2:
       return { 
-        bg: [242, 230, 255], 
-        text: [120, 30, 150] 
+        bg: [255, 231, 171],       // Light saffron background
+        text: [255, 103, 31],      // Deep saffron text
+        border: [204, 82, 0],      // Darker saffron border
       };
-    default: // Regular rounds - gray
+    default:
       return { 
         bg: [240, 240, 240], 
-        text: [80, 80, 80] 
+        text: [80, 80, 80],
+        border: [200, 200, 200]
       };
   }
 }
@@ -138,20 +142,201 @@ function splitBracketForPagination(bracketData: BracketMatch[][]): BracketMatch[
   return pages;
 }
 
+/**
+ * Adds footer with organization info, copyright, and judge signature to the PDF
+ */
+function addPDFFooter(pdf: jsPDF, pageWidth: number, pageHeight: number, margin: number, pageNumber: number, totalPages: number, tkdLogoBase64?: string) {
+  // Move the divider even lower to prevent collision with the last bracket
+  const footerTop = pageHeight - 16; // Moved 10px lower from previous position (was 22)
+  pdf.setDrawColor(150, 150, 150);
+  pdf.setLineWidth(0.5);
+  pdf.line(margin, footerTop, pageWidth - margin, footerTop);
+  
+  // Logo placement (left side) - Adjusted for the new footer position
+  const logoHeight = 12;
+  const logoWidth = 15;
+  const logoX = margin;
+  const logoY = pageHeight - 15; // Adjusted for the new footer position
+  
+  // If logo is available, use it, otherwise use text
+  if (tkdLogoBase64) {
+    try {
+      pdf.addImage(tkdLogoBase64, 'PNG', logoX, logoY, logoWidth, logoHeight);
+    } catch (error) {
+      console.error("Error adding logo:", error);
+      // Fallback to text if image fails
+      pdf.setFontSize(10);
+      pdf.setFont("helvetica", "bold");
+      pdf.text("WTF", logoX, logoY + 8);
+    }
+  } else {
+    // Text-only logo fallback
+    pdf.setFontSize(10);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("WTF", logoX, logoY + 8);
+  }
+  
+  // Organization info (left side)
+  pdf.setFontSize(7);
+  pdf.setFont("helvetica", "normal");
+  pdf.text("Professional TKD Academy", logoX + logoWidth + 3, logoY + 5);
+  
+  // Copyright (center)
+  pdf.setFontSize(7);
+  pdf.setFont("helvetica", "italic");
+  pdf.text("© All Rights Reserved by Mahesh", pageWidth / 2, pageHeight - 10, { align: "center" });
+  
+  // Add page numbers below the copyright text
+  pdf.setFontSize(6);
+  pdf.setFont("helvetica", "normal");
+  pdf.text(`Page ${pageNumber} of ${totalPages}`, pageWidth / 2, pageHeight - 5, { align: "center" });
+  
+  // Judge signature (right side) - Made into single line
+  pdf.setFontSize(7);
+  pdf.setFont("helvetica", "normal");
+  pdf.setDrawColor(100, 100, 100);
+  
+  const signatureWidth = 60;
+  const signatureX = pageWidth - margin - signatureWidth;
+  pdf.text("Judge Signature: ", signatureX, pageHeight - 10);
+  pdf.line(signatureX + 23, pageHeight - 8, pageWidth - margin, pageHeight - 8);
+}
+
+/**
+ * Adds a placement box for noting 1st, 2nd, 3rd, 4th positions
+ */
+function addPlacementBox(pdf: jsPDF, pageWidth: number, pageHeight: number, margin: number) {
+  // Position box at bottom of page above the separator line
+  const boxWidth = 60; // Increased width for noting names
+  const boxHeight = 40;
+  const boxY = pageHeight - 18 - boxHeight; // Place above footer area
+  const boxX = pageWidth - margin - boxWidth;
+  
+  // Draw the main box with rounded corners
+  pdf.setDrawColor(100, 100, 100);
+  pdf.setFillColor(250, 250, 250);
+  pdf.roundedRect(boxX, boxY, boxWidth, boxHeight, 2, 2, 'FD');
+  
+  // Title
+  pdf.setFontSize(7);
+  pdf.setFont("helvetica", "bold");
+  pdf.setTextColor(80, 80, 80);
+  pdf.text("PLACEMENTS", boxX + (boxWidth / 2), boxY + 5, { align: "center" });
+  
+  // Create 4 sections inside the box
+  const sectionHeight = 8;
+  const textX = boxX + 4;
+  
+  // Gold - 1st Place
+  pdf.setFillColor(255, 240, 180); // Gold color
+  pdf.rect(boxX + 1, boxY + 7, boxWidth - 2, sectionHeight, 'F');
+  pdf.setFontSize(6);
+  pdf.setFont("helvetica", "bold");
+  pdf.setTextColor(150, 120, 0);
+  pdf.text("1st (Gold):", textX, boxY + 12);
+  
+  // Silver - 2nd Place
+  pdf.setFillColor(230, 230, 230); // Silver color
+  pdf.rect(boxX + 1, boxY + 7 + sectionHeight, boxWidth - 2, sectionHeight, 'F');
+  pdf.setFontSize(6);
+  pdf.setTextColor(100, 100, 100);
+  pdf.text("2nd (Silver):", textX, boxY + 12 + sectionHeight);
+  
+  // Bronze - 3rd Place
+  pdf.setFillColor(230, 200, 170); // Bronze color
+  pdf.rect(boxX + 1, boxY + 7 + (sectionHeight * 2), boxWidth - 2, sectionHeight, 'F');
+  pdf.setFontSize(6);
+  pdf.setTextColor(150, 90, 50);
+  pdf.text("3rd (Bronze):", textX, boxY + 12 + (sectionHeight * 2));
+  
+  // 2nd Bronze - 4th Place
+  pdf.setFillColor(230, 200, 170); // Bronze color
+  pdf.rect(boxX + 1, boxY + 7 + (sectionHeight * 3), boxWidth - 2, sectionHeight, 'F');
+  pdf.setFontSize(6);
+  pdf.setTextColor(150, 90, 50);
+  pdf.text("4th (Bronze):", textX, boxY + 12 + (sectionHeight * 3));
+  
+  // Lines for writing names - make longer for more space
+  pdf.setDrawColor(150, 150, 150);
+  pdf.setLineWidth(0.1);
+  
+  for (let i = 0; i < 4; i++) {
+    const lineY = boxY + 14 + (sectionHeight * i);
+    pdf.line(textX + 18, lineY, boxX + boxWidth - 2, lineY);
+  }
+}
+
 export const useBracketPDF = () => {
   const { toast } = useToast();
   const [orientation, setOrientation] = useState<PDFOrientation>("landscape");
+  const [tkdLogoBase64, setTkdLogoBase64] = useState<string | null>(null);
+
+  // Load the TKD logo when needed
+  const loadTkdLogo = useCallback(() => {
+    // Only load if not already loaded
+    if (tkdLogoBase64) return Promise.resolve(tkdLogoBase64);
+    
+    return new Promise<string | null>((resolve) => {
+      // Create image object
+      const img = new Image();
+      
+      // Handle image load
+      img.onload = () => {
+        // Create canvas to convert image to base64
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        
+        // Draw image to canvas
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0);
+          
+          // Convert to base64
+          try {
+            const dataUrl = canvas.toDataURL('image/png');
+            setTkdLogoBase64(dataUrl);
+            resolve(dataUrl);
+          } catch (error) {
+            console.error("Error converting logo to base64:", error);
+            resolve(null);
+          }
+        } else {
+          resolve(null);
+        }
+      };
+      
+      // Handle image error
+      img.onerror = () => {
+        console.error("Error loading TKD logo");
+        resolve(null);
+      };
+      
+      // Set source and start loading
+      img.src = '/src/assets/tkd_logo.png';
+      
+      // Try alternate path if the first one fails
+      setTimeout(() => {
+        if (!img.complete) {
+          img.src = './src/assets/tkd_logo.png';
+        }
+      }, 500);
+    });
+  }, [tkdLogoBase64]);
 
   /**
    * Generate a PDF with a visual tournament bracket
    */
-  const generateBracketPDF = useCallback((
+  const generateBracketPDF = useCallback(async (
     bracketData: BracketMatch[][],
     title = "Tournament Bracket",
     participantCount: number = 0,
     pdfOrientation?: PDFOrientation
   ) => {
     try {
+      // Attempt to load the TKD logo
+      const logoData = await loadTkdLogo();
+      
       // Use provided orientation or fall back to state
       const finalOrientation = pdfOrientation || orientation;
       
@@ -191,13 +376,13 @@ export const useBracketPDF = () => {
         pdf.setFont("helvetica", "normal");
         
         // Add participant count on right side
-        pdf.text(`Participants: ${participantCount}`, pageWidth - margin, margin + 5, { align: "right" });
+        pdf.text(`Participants: ${participantCount}`, pageWidth - margin - 40, margin + 5, { align: "right" });
         
         // Add date on left side
         pdf.text(`Date: ${currentDate}`, margin, margin + 5);
         
         // Add page indicator if multiple pages
-        if (bracketPages.length > 1) {
+        if (bracketPages.length > 1 && false) { //later change based on requirement
           pdf.setFontSize(9);
           pdf.text(`Page ${pageIndex + 1} of ${bracketPages.length}`, pageWidth / 2, margin + 12, { align: "center" });
           
@@ -210,8 +395,14 @@ export const useBracketPDF = () => {
           pdf.setFont("helvetica", "normal");
         }
         
+        // Add placement box to every page
+        addPlacementBox(pdf, pageWidth, pageHeight, margin);
+        
         // Draw the bracket with visual style matching BracketDisplay component
         renderBracket(pdf, pageBracket, margin, contentWidth, contentHeight, finalOrientation);
+        
+        // Add footer with organization info and signature line
+        addPDFFooter(pdf, pageWidth, pageHeight, margin, pageIndex + 1, bracketPages.length, logoData || undefined);
       });
       
       // Save the PDF
@@ -233,7 +424,7 @@ export const useBracketPDF = () => {
       });
       return false;
     }
-  }, [toast, orientation]);
+  }, [toast, orientation, loadTkdLogo]);
 
   /**
    * Pre-calculate the match positions for all rounds
@@ -244,7 +435,8 @@ export const useBracketPDF = () => {
     startY: number,
     matchHeight: number,
     roundWidth: number,
-    margin: number
+    margin: number,
+    orientation: PDFOrientation
   ) => {
     const positions: Record<string, { x: number, y: number, height: number }> = {};
     const roundPositions: Array<Array<{x: number, y: number, nextMatchId: string | null, id: string, height: number}>> = [];
@@ -254,9 +446,13 @@ export const useBracketPDF = () => {
     const firstRoundPositions: Array<{x: number, y: number, nextMatchId: string | null, id: string, height: number}> = [];
     roundPositions.push(firstRoundPositions);
     
-    // Calculate spacing for first round - REDUCED spacing to fit 32 players
-    // We need to fit 16 brackets on a page, so reduce the spacing
-    const baseSpacing = matchHeight * 1.2; // Reduced from 1.5 to fit more brackets
+    // Calculate spacing based on orientation
+    // For portrait, increase spacing between brackets as there's more vertical space
+    // For landscape, keep spacing tight to fit 16 brackets horizontally
+    const baseSpacing = orientation === 'portrait' 
+      ? matchHeight * 1.8  // Increased spacing for portrait mode
+      : matchHeight * 1.3; // Reduced spacing for landscape to fit all 16 brackets
+    
     const firstRoundX = margin;
     
     // Position first round matches
@@ -307,7 +503,7 @@ export const useBracketPDF = () => {
             y: avgY,
             nextMatchId: match.nextMatchId,
             id: match.id,
-            height: matchHeight
+            height: matchHeight // Fix connector alignment - don't divide by 2 here
           });
         } else {
           // If no source matches (shouldn't happen but just in case), just position somewhere
@@ -345,22 +541,35 @@ export const useBracketPDF = () => {
     // Calculate dimensions
     const roundCount = bracketData.length;
     
-    // Calculate the round width based on available space
-    // Updated: adjust round width calculation to account for connectors
-    const matchWidthProportion = 0.65; // Match takes 65% of round width, connectors take 35%
+    // Calculate the round width based on available space and orientation
+    // Increase match proportion to make brackets wider
+    const matchWidthProportion = 0.75; // Increased to 75% for bracket, 25% for connector
     const roundWidth = contentWidth / roundCount;
     
-    // Calculate match dimensions
-    const matchWidth = Math.min(40, roundWidth * matchWidthProportion);
-    const matchHeight = 7; // Slightly reduced match height to fit more
+    // Calculate match dimensions - increase sizes for both orientations
+    // For landscape mode: wider brackets than portrait
+    const matchWidth = orientation === 'landscape' 
+      ? Math.min(55, roundWidth * matchWidthProportion) // Significantly wider in landscape
+      : Math.min(50, roundWidth * matchWidthProportion); // Wider in portrait too
     
-    // Starting position with room for round labels
-    const startY = margin + 25; // Increased for round labels
+    // Increase match height for better readability in both modes
+    // But keep smaller in landscape to fit 16 brackets on page
+    const matchHeight = orientation === 'landscape' ? 8 : 8; // Same height for consistency
+    
+    // Starting position with room for round labels - Start higher on the page
+    const startY = orientation === 'portrait' 
+      ? margin + 23  // Higher start in portrait
+      : margin + 25; // Higher start in landscape
+    
+    // Add separator line above round labels
+    pdf.setDrawColor(150, 150, 150);
+    pdf.setLineWidth(0.5);
+    pdf.line(margin, startY - 18, pageWidth - margin, startY - 18);
     
     // Draw round labels with background colors
-    pdf.setFontSize(9);
+    pdf.setFontSize(orientation === 'portrait' ? 8 : 9); // Smaller font in portrait mode
     
-    // Add round labels in a row at the top
+    // Add round labels in a row at the top - moved higher to give more space for brackets
     bracketData.forEach((round, roundIndex) => {
       const roundX = margin + (roundIndex * roundWidth) + (matchWidth / 2);
       const roundName = getRoundName(roundIndex, roundCount);
@@ -368,21 +577,21 @@ export const useBracketPDF = () => {
       // Get round label colors
       const colors = getRoundLabelColor(roundIndex, roundCount);
       
-      // Draw round label with colored background
-      const labelWidth = 32;
-      const labelHeight = 8;
+      // Draw round label with colored background - reduced height and centered
+      const labelWidth = orientation === 'portrait' ? 28 : 32; // Smaller in portrait
+      const labelHeight = orientation === 'portrait' ? 6 : 7;  // Reduced height for both orientations
       const labelX = roundX - (labelWidth / 2);
-      const labelY = startY - 15;
+      const labelY = startY - 16; // Moved higher to give more space for brackets
       
       // Draw rounded rectangle background
       pdf.setFillColor(colors.bg[0], colors.bg[1], colors.bg[2]);
-      pdf.setDrawColor(colors.text[0], colors.text[1], colors.text[2]);
+      pdf.setDrawColor(colors.border[0], colors.border[1], colors.border[2]);
       pdf.roundedRect(labelX, labelY, labelWidth, labelHeight, 2, 2, 'FD');
       
-      // Draw round name text
+      // Draw round name text - centered vertically in the smaller label
       pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
       pdf.setFont("helvetica", "bold");
-      pdf.text(roundName, roundX, startY - 9, { align: "center" });
+      pdf.text(roundName, roundX, startY - 11.5, { align: "center" }); // Adjusted text position
     });
     
     // Reset text color
@@ -391,10 +600,11 @@ export const useBracketPDF = () => {
     // Pre-calculate match positions to ensure proper alignment
     const matchPositions = calculateMatchPositions(
       bracketData,
-      startY,
+      startY-7,
       matchHeight,
       roundWidth,
-      margin
+      margin,
+      orientation
     );
     
     // Draw each round
@@ -612,17 +822,17 @@ export const useBracketPDF = () => {
     }
     
     // Add footer if this bracket is part of a multi-page document
-    if (bracketData[0].length >= 16) {
-      pdf.setFontSize(8);
-      pdf.setFont("helvetica", "italic");
-      pdf.setTextColor(100, 100, 100);
-      pdf.text(
-        "Large tournament bracket - continues on next page(s)", 
-        pageWidth / 2, 
-        pageHeight - 5, 
-        { align: "center" }
-      );
-    }
+    // if (bracketData[0].length >= 16) {
+    //   pdf.setFontSize(8);
+    //   pdf.setFont("helvetica", "italic");
+    //   pdf.setTextColor(100, 100, 100);
+    //   pdf.text(
+    //     "Large tournament bracket - continues on next page(s)", 
+    //     pageWidth / 2, 
+    //     pageHeight - 5, 
+    //     { align: "center" }
+    //   );
+    // }
   };
 
   // Function to toggle orientation
@@ -630,13 +840,18 @@ export const useBracketPDF = () => {
     setOrientation(prev => prev === "landscape" ? "portrait" : "landscape");
   }, []);
 
-  // Function to preview the PDF before downloading
-  const previewBracketPDF = useCallback((
+  /**
+   * Preview the PDF before downloading
+   */
+  const previewBracketPDF = useCallback(async (
     bracketData: BracketMatch[][],
     title = "Tournament Bracket",
     participantCount: number = 0
   ) => {
     try {
+      // Attempt to load the TKD logo
+      const logoData = await loadTkdLogo();
+      
       // Get the current date
       const currentDate = formatDate(new Date());
       
@@ -673,27 +888,33 @@ export const useBracketPDF = () => {
         pdf.setFont("helvetica", "normal");
         
         // Add participant count on right side
-        pdf.text(`Participants: ${participantCount}`, pageWidth - margin, margin + 5, { align: "right" });
+        pdf.text(`Participants: ${participantCount}`, pageWidth - margin - 40, margin + 5, { align: "right" });
         
         // Add date on left side
         pdf.text(`Date: ${currentDate}`, margin, margin + 5);
         
         // Add page indicator if multiple pages
-        if (bracketPages.length > 1) {
+        if (bracketPages.length > 1 ) { //later change based on requirement
           pdf.setFontSize(9);
-          pdf.text(`Page ${pageIndex + 1} of ${bracketPages.length}`, pageWidth / 2, margin + 12, { align: "center" });
+          // pdf.text(`Page ${pageIndex + 1} of ${bracketPages.length}`, pageWidth / 2, margin + 12, { align: "center" });
           
           // Add bracket range description
           const startBracket = pageIndex * 16 + 1;
           const endBracket = Math.min(startBracket + 15, bracketData[0].length);
           
           pdf.setFont("helvetica", "italic");
-          pdf.text(`Brackets ${startBracket}-${endBracket}`, pageWidth / 2, margin + 17, { align: "center" });
+          pdf.text(`Matches ${startBracket}-${endBracket}`, pageWidth - margin - 15, margin + 5, { align: "right" });
           pdf.setFont("helvetica", "normal");
         }
         
-        // Draw the bracket
+        // Add placement box to every page
+        addPlacementBox(pdf, pageWidth, pageHeight, margin);
+        
+        // Draw the bracket with visual style matching BracketDisplay component
         renderBracket(pdf, pageBracket, margin, contentWidth, contentHeight, orientation);
+        
+        // Add footer with organization info and signature line
+        addPDFFooter(pdf, pageWidth, pageHeight, margin, pageIndex + 1, bracketPages.length,logoData || undefined);
       });
       
       // Generate PDF as data URL for preview
@@ -845,7 +1066,7 @@ export const useBracketPDF = () => {
       });
       return false;
     }
-  }, [toast, orientation]);
+  }, [toast, orientation, loadTkdLogo]);
 
   return { 
     generateBracketPDF,
