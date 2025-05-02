@@ -56,6 +56,11 @@ const Home: React.FC = () => {
     // Open details panel by default after generation
     setIsDetailsPanelOpen(true);
     setTournamentheader(name);
+    
+    // Auto-close the details panel after 2.5 seconds
+    setTimeout(() => {
+      setIsDetailsPanelOpen(false);
+    }, 2500);
   };
   
   // Reset function to show input panel again
@@ -103,6 +108,8 @@ const Home: React.FC = () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
     };
   }, []);
+
+
   
   // Calculate tournament statistics
   const calculateStats = () => {
@@ -289,14 +296,14 @@ const Home: React.FC = () => {
                   )}
                   
                   <div className="pt-6 space-y-3">
-                    <Button 
+                    {/* <Button 
                       onClick={openExportModal}
                       variant="outline" 
                       className="w-full justify-start"
                     >
                       <FileText className="mr-2 h-4 w-4" />
                       Export Options
-                    </Button>
+                    </Button> */}
                     
                     <Button 
                       onClick={handlePreviewPDF}
