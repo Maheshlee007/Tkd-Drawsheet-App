@@ -1,5 +1,10 @@
 {
-  "include": ["client/src/**/*", "shared/**/*", "server/**/*"],
+  // "files": [],
+  // "references": [
+  //   { "path": "./tsconfig.app.json" },
+  //   { "path": "./tsconfig.node.json" }
+  // ],
+  "include": ["src/**/*", "shared/**/*"],
   "exclude": ["node_modules", "build", "dist", "**/*.test.ts"],
   "compilerOptions": {
     "incremental": true,
@@ -14,10 +19,10 @@
     "allowImportingTsExtensions": true,
     "moduleResolution": "bundler",
     "baseUrl": ".",
-    "types": ["node", "vite/client"],
+    "types": ["node"],
     "paths": {
-      "@/*": ["./client/src/*"],
-      "@shared/*": ["./shared/*"]
+      "@/*": ["src/*"],
+      "@shared/*": ["shared/*"]
     }
   }
 }
