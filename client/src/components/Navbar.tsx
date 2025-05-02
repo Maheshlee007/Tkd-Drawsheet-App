@@ -44,7 +44,31 @@ const Navbar: React.FC<NavbarProps> = ({
   return (
     <div className="w-full bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-slate-800">Tournament Bracket Generator</h1>
+        <div className="flex items-center">
+          {/* Simple ML Logo with silver outer circle and white inner circle */}
+          <div className="relative mr-2">
+            {/* Outer silver circle */}
+            <div className="h-11 w-11 rounded-full flex items-center justify-center bg-gradient-to-br from-slate-400 via-slate-200 to-slate-500">
+              {/* Inner white circle */}
+              <div className="h-9 w-9 rounded-full bg-white flex items-center justify-center">
+                {/* ML text with silver gradient */}
+                <span 
+                  className="font-bold text-lg"
+                  style={{
+                    background: 'linear-gradient(135deg, #7d8491, #e8e9eb, #70798a)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    letterSpacing: '0.1em',
+                    textShadow: '0px 1px 1px rgba(0,0,0,0.1)'
+                  }}
+                >
+                  ML
+                </span>
+              </div>
+            </div>
+          </div>
+          <h1 className="text-xl font-bold text-slate-800">Tournament Bracket Generator</h1>
+        </div>
         
         {/* Desktop actions */}
         <div className="hidden md:flex items-center space-x-3">

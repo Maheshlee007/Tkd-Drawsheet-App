@@ -24,6 +24,7 @@ interface BracketDisplayProps {
   bracketData: BracketMatch[][] | null;
   onExport: () => void;
   onUpdateMatch?: (matchId: string, winnerId: string) => void;
+  header: string;
 }
 
 // Function to determine if a player had a bye in the previous round
@@ -50,6 +51,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
   bracketData,
   onExport,
   onUpdateMatch,
+  header
 }) => {
   const [connectors, setConnectors] = useState<
     Array<{
@@ -467,6 +469,8 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
       }, 500);
     }, 200);
   };
+  console.log(header);
+  
 
   // If no bracket data is available, show empty state
   if (!bracketData) {
@@ -474,7 +478,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
       <div className="bg-white rounded-lg shadow-md p-6">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xs sm:text-xl font-semibold text-slate-800">
-            Tournament Bracket
+           { header?header:"Tournament Bracket"}
           </h2>
         </div>
         <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -530,7 +534,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
       {/* Header with title and export/print buttons */}
       <div className="flex justify-between items-center mb-6 ">
         <h2 className="text-xl font-semibold text-slate-800">
-          Tournament Bracket
+        { header?header:"Tournament Bracket"}
         </h2>
         <div className="flex space-x-2">
           <div className="flex items-center space-x-2 mr-4">

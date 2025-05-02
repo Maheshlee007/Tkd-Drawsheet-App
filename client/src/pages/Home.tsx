@@ -47,13 +47,15 @@ const Home: React.FC = () => {
   const [showInputPanel, setShowInputPanel] = useState<boolean>(true);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState<boolean>(true);
+  const [tournamentheader, setTournamentheader] = useState("");
   
   // Handler to generate bracket and hide input panel
-  const handleGenerateBracket = (participants: string[], seedType: "random" | "ordered" | "as-entered") => {
+  const handleGenerateBracket = (participants: string[], seedType: "random" | "ordered" | "as-entered",name:string) => {
     generateBracket(participants, seedType);
     setShowInputPanel(false);
     // Open details panel by default after generation
     setIsDetailsPanelOpen(true);
+    setTournamentheader(name);
   };
   
   // Reset function to show input panel again
@@ -357,6 +359,7 @@ const Home: React.FC = () => {
                   bracketData={bracketData}
                   onExport={openExportModal}
                   onUpdateMatch={updateTournamentMatch}
+                  header={tournamentheader}
                 />
               </div>
             </div>
