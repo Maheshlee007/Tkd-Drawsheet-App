@@ -45,6 +45,7 @@ export const useTournament = (): UseTournamentReturn => {
     onSuccess: (data) => {
       setBracketData(data.bracketData);
       toast({
+        variant:'success',
         title: "Success",
         description: "Tournament bracket generated successfully!",
       });
