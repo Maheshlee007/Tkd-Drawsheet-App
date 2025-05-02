@@ -86,11 +86,11 @@ const CanvasBracket: React.FC<CanvasBracketProps> = ({
       if (firstRoundMatches > 8) {
         if (roundIndex === 0) {
           // First round needs tighter spacing for large brackets
-          spacing = Math.max(70, Math.min(50, availableHeight / (firstRoundMatches + 1)));
+          spacing = Math.max(60, Math.min(40, availableHeight / (firstRoundMatches + 1)));
         } else {
           // Later rounds can have more space
           const matchesInThisRound = bracketData[roundIndex].length;
-          spacing = Math.max(80, Math.min(60, availableHeight / (matchesInThisRound + 1)));
+          spacing = Math.max(70, Math.min(50, availableHeight / (matchesInThisRound + 1)));
         }
       } else {
         // For smaller brackets, use more generous spacing
@@ -261,21 +261,56 @@ const CanvasBracket: React.FC<CanvasBracketProps> = ({
           
           ctx.beginPath();
           ctx.lineWidth = 1.5;
-          ctx.strokeStyle = "#94a3b8";
           
-          // Horizontal line from source match
+          // Use different color for connectors based on whether the match has a winner
+          ctx.strokeStyle = match.winner ? "#22c55e" : "#94a3b8";
+          
+          // Draw connector line with smoother corners
           ctx.moveTo(startX, startY);
-          ctx.lineTo(midX, startY);
           
-          // Vertical connector
-          ctx.moveTo(midX, startY);
-          ctx.lineTo(midX, endY);
-          
-          // Horizontal line to target match
-          ctx.moveTo(midX, endY);
-          ctx.lineTo(endX, endY);
+          // Handle vertical differences for better visual appearance
+          if (Math.abs(startY - endY) > 10) {
+            // Horizontal line from source match
+            ctx.lineTo(midX, startY);
+            
+            // Vertical connector - smoother for larger gaps
+            if (Math.abs(startY - endY) > 40) {
+              const controlY = startY < endY ? 
+                startY + Math.min(20, (endY - startY) / 2) : 
+                startY - Math.min(20, (startY - endY) / 2);
+              
+              ctx.quadraticCurveTo(midX, controlY, midX, endY);
+            } else {
+              // Direct line for smaller gaps
+              ctx.lineTo(midX, endY);
+            }
+            
+            // Horizontal line to target match
+            ctx.lineTo(endX, endY);
+          } else {
+            // If matches are nearly level, just draw a straight line
+            ctx.lineTo(endX, endY);
+          }
           
           ctx.stroke();
+          
+          // Add arrow indicator if the match has a winner
+          if (match.winner) {
+            // Draw small arrow on the line to indicate direction of advancement
+            const arrowSize = 4;
+            const arrowX = midX + 5;
+            const arrowY = Math.abs(startY - endY) < 10 ? startY : 
+                          startY < endY ? Math.min(startY + 15, endY - 10) : 
+                                         Math.max(startY - 15, endY + 10);
+            
+            ctx.beginPath();
+            ctx.fillStyle = "#22c55e";
+            ctx.moveTo(arrowX + arrowSize, arrowY);
+            ctx.lineTo(arrowX - arrowSize, arrowY - arrowSize);
+            ctx.lineTo(arrowX - arrowSize, arrowY + arrowSize);
+            ctx.closePath();
+            ctx.fill();
+          }
         }
       });
     }
@@ -569,12 +604,26 @@ const CanvasBracket: React.FC<CanvasBracketProps> = ({
     const firstRoundMatches = bracketData[0]?.length || 0;
     let calculatedHeight = height;
     
-    // For larger brackets, estimate height needed
+    // For larger brackets, estimate height needed - improved calculation
     if (firstRoundMatches > 8) {
-      calculatedHeight = Math.max(
-        height,
-        firstRoundMatches * 100 + 100 // 100px per match plus margin
-      );
+      // More aggressive height scaling for very large brackets
+      if (firstRoundMatches > 32) {
+        // Fix for large brackets (>32 participants) to ensure full display
+        calculatedHeight = Math.max(
+          height,
+          firstRoundMatches * 90 + 150 // Reduced spacing for very large brackets but ensure all are visible
+        );
+      } else if (firstRoundMatches > 16) {
+        calculatedHeight = Math.max(
+          height,
+          firstRoundMatches * 110 + 120 // Adequate spacing for large brackets
+        );
+      } else {
+        calculatedHeight = Math.max(
+          height,
+          firstRoundMatches * 80 + 100 // Standard spacing for medium brackets
+        );
+      }
     }
     
     return {

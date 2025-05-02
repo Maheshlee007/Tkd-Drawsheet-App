@@ -110,7 +110,7 @@
 }
 
 .bracket-match {
-  width: 180px;
+  width: 220px !important;
   margin-bottom: 15px;
 }
 

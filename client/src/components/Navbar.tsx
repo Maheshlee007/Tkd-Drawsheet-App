@@ -43,7 +43,7 @@ const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <div className="w-full bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
-      <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+      <div className=" w-11/12 mx-auto px-2 h-16 flex items-center justify-between">
         <div className="flex items-center">
           {/* Simple ML Logo with silver outer circle and white inner circle */}
           <div className="relative mr-2">

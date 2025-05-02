@@ -156,7 +156,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
     setPoolCount(pools);
 
     // Split the first round into pools and generate separate brackets for export
-    if (pools > 1 && bracketData.length > 0) {
+    if (pools > 1 && bracketData.length > 0&&false) {
       const poolBrackets: BracketMatch[][][] = [];
       const firstRound = bracketData[0];
       const matchesPerPool = Math.ceil(firstRound.length / pools);
@@ -723,7 +723,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                     key={`round-${roundIndex}`}
                     className="bracket-round"
                     style={{
-                      width: "180px",
+                      width: "240px",
                       marginLeft: roundIndex > 0 ? "20px" : "0"
                     }}
                   >
@@ -755,7 +755,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                         >
                           {/* First participant */}
                           <div
-                            className={`participant py-0.5 px-1 mb-0.5 text-sm rounded-r-sm print:border-b print:border-b-slate-700 ${
+                            className={`participant py-0.5 px-2 mb-0.5 text-sm rounded-r-sm print:border-b print:border-b-slate-700 ${
                               getParticipantStyle(match.participants[0], hasMatchByeTop, hasOpponentByeTop, true)
                             } ${
                               match.winner === match.participants[0] ? "font-medium" : ""
@@ -769,7 +769,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
 
                           {/* Second participant */}
                           <div
-                            className={`participant py-0.5 px-1 text-sm rounded-r-sm ${
+                            className={`participant py-0.5 px-2 text-sm rounded-r-sm ${
                               getParticipantStyle(match.participants[1], hasMatchByeBottom, hasOpponentByeBottom, false)
                             } ${
                               match.winner === match.participants[1] ? "font-medium" : ""
