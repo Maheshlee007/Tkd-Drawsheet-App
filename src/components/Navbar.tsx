@@ -1,6 +1,6 @@
-import React from "react";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Download, Maximize, Minimize, Menu } from "lucide-react";
+import { FileText, Home as HomeIcon, Download, Maximize, Minimize, Menu, Plus, RefreshCw } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -9,44 +9,47 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { useTournamentStore } from "@/store/useTournamentStore";
+import { useState, useEffect } from "react";
 
-interface NavbarProps {
-  showNewButton?: boolean;
-  onNewTournament?: () => void;
-  onDownloadPDF?: () => void;
-  isFullscreen?: boolean;
-  onToggleFullscreen?: () => void;
-}
+const Navbar = () => {
+  const [location, navigate] = useLocation();
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const { bracketData, exportAsPDF, tournamentName } = useTournamentStore();
 
-const Navbar: React.FC<NavbarProps> = ({
-  showNewButton = false,
-  onNewTournament,
-  onDownloadPDF,
-  isFullscreen = false,
-  onToggleFullscreen,
-}) => {
+  // Update fullscreen state when user uses F11 or Esc
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
   const handleFullscreenToggle = () => {
-    if (onToggleFullscreen) {
-      onToggleFullscreen();
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(err => {
+        console.log(`Error attempting to enable fullscreen: ${err.message}`);
+      });
     } else {
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(err => {
-          console.log(`Error attempting to enable fullscreen: ${err.message}`);
-        });
-      } else {
-        if (document.exitFullscreen) {
-          document.exitFullscreen();
-        }
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
       }
     }
+  };
+  const handleNewTournament = () => {
+    navigate("/create");
   };
 
   return (
     <div className="w-full bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
-      <div className=" w-11/12 mx-auto px-2 h-16 flex items-center justify-between">
+      <div className="w-[98%] mx-4 pr-2 h-16 flex items-center justify-between">
         <div className="flex items-center">
-          {/* Simple ML Logo with silver outer circle and white inner circle */}
-          <div className="relative mr-2">
+          {/* Logo */}
+          <div className="relative mr-2 cursor-pointer" onClick={() => navigate("/")}>
             {/* Outer silver circle */}
             <div className="h-11 w-11 rounded-full flex items-center justify-center bg-gradient-to-br from-slate-400 via-slate-200 to-slate-500">
               {/* Inner white circle */}
@@ -67,14 +70,19 @@ const Navbar: React.FC<NavbarProps> = ({
               </div>
             </div>
           </div>
-          <h1 className="text-xl font-bold text-slate-800">Tournament Bracket Generator</h1>
+          <h1 
+            className="text-xl font-bold text-slate-800 cursor-pointer" 
+            onClick={() => navigate("/")}
+          >
+            {bracketData ? tournamentName || "Tournament Bracket" : "Tournament Bracket Generator"}
+          </h1>
         </div>
         
         {/* Desktop actions */}
-        <div className="hidden md:flex items-center space-x-3">
-          {showNewButton && (
+        <div className="hidden md:flex items-end space-x-3">
+          {location !== "/" && bracketData && (
             <Button 
-              onClick={onNewTournament}
+              onClick={handleNewTournament}
               variant="outline" 
               size="sm"
               className="text-slate-600"
@@ -103,9 +111,9 @@ const Navbar: React.FC<NavbarProps> = ({
             )}
           </Button>
           
-          {onDownloadPDF && (
+          {bracketData && (
             <Button 
-              onClick={onDownloadPDF}
+              onClick={exportAsPDF}
               variant="outline" 
               size="sm"
               className="text-slate-600"
@@ -116,7 +124,7 @@ const Navbar: React.FC<NavbarProps> = ({
           )}
         </div>
         
-        {/* Mobile menu */}
+        {/* Mobile menu - now on the right side */}
         <div className="md:hidden">
           <Sheet>
             <SheetTrigger asChild>
@@ -133,9 +141,9 @@ const Navbar: React.FC<NavbarProps> = ({
                 </SheetDescription>
               </SheetHeader>
               <div className="mt-6 space-y-3">
-                {showNewButton && (
+                {location !== "/" && bracketData && (
                   <Button 
-                    onClick={onNewTournament}
+                    onClick={handleNewTournament}
                     variant="outline" 
                     className="w-full justify-start"
                   >
@@ -162,9 +170,9 @@ const Navbar: React.FC<NavbarProps> = ({
                   )}
                 </Button>
                 
-                {onDownloadPDF && (
+                {bracketData && (
                   <Button 
-                    onClick={onDownloadPDF}
+                    onClick={exportAsPDF}
                     variant="outline" 
                     className="w-full justify-start"
                   >

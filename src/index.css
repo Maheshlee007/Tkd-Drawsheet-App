@@ -96,6 +96,14 @@
 }
 
 /* Improve bracket alignment */
+.bracket-wrapper {
+  width: max-content;
+  min-width: 100%;
+  position: relative;
+  padding-bottom: 2rem; /* Add some bottom padding for scrolling */
+  overflow-x: auto; /* Ensure horizontal scrolling works */
+}
+
 .bracket-display {
   display: flex;
   flex-direction: row;
@@ -112,6 +120,7 @@
 .bracket-match {
   width: 220px !important;
   margin-bottom: 15px;
+  box-sizing: border-box;
 }
 
 /* Ensure consistent heights for matches */
@@ -119,4 +128,24 @@
   min-height: 36px;
   display: flex;
   align-items: center;
+}
+
+/* Custom scrollbar styling */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
