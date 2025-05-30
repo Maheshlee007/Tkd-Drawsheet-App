@@ -5,20 +5,27 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Plus } from "lucide-react";
+import { Plus, Minus } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 
 interface InputPanelProps {
-  isPending: boolean;
   onGenerateBracket: (
     participants: string[],
     seedType: "random" | "ordered" | "as-entered",
-    tournamentName: string
+    tournamentName: string,
+    rounds?: number
   ) => void;
+  isPending?: boolean;
 }
 
-const InputPanel = ({ isPending, onGenerateBracket }: InputPanelProps) => {
-  const [inputMethod, setInputMethod] = useState<string>("blank");
+const InputPanel = ({ onGenerateBracket, isPending = false }: InputPanelProps) => {  const [inputMethod, setInputMethod] = useState<string>("blank");
   const [tournamentName, setTournamentName] = useState<string>("Tournament Draw Sheet");
   const [participants, setParticipants] = useState<{
     bulk: string;
@@ -34,6 +41,7 @@ const InputPanel = ({ isPending, onGenerateBracket }: InputPanelProps) => {
   const [seedType, setSeedType] = useState<"random" | "ordered" | "as-entered">(
     "as-entered",
   );
+  const [roundsPerMatch, setRoundsPerMatch] = useState<number>(1);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -99,17 +107,13 @@ const InputPanel = ({ isPending, onGenerateBracket }: InputPanelProps) => {
     if (participantsList.length < 2) {
       setError("Please enter at least 2 participants.");
       return;
-    }
-
-    // We no longer require an even number of participants
-    // Our enhanced bracket logic with byes handles odd numbers properly
-
-    setError(null);
-    // Pass the tournament name to the onGenerateBracket function
+    }    setError(null);
+    // Pass the tournament name and rounds per match to the onGenerateBracket function
     onGenerateBracket(
       participantsList, 
       seedType, 
-      tournamentName
+      tournamentName,
+      roundsPerMatch
     );
   };
 
@@ -130,12 +134,10 @@ const InputPanel = ({ isPending, onGenerateBracket }: InputPanelProps) => {
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 sticky top-0">
+    <div className="bg-white rounded-lg shadow-md p-6">
       <h2 className="text-xl font-semibold text-slate-800 mb-4">
         Participants
       </h2>
-
-      
 
       <Tabs value={inputMethod} onValueChange={setInputMethod}>
         <TabsList className="mb-2 overflow-auto border-b w-fit flex-wrap rounded-none bg-transparent justify-start">
@@ -318,10 +320,8 @@ const InputPanel = ({ isPending, onGenerateBracket }: InputPanelProps) => {
             (Player 1, Player 2, etc.)
           </div>
         </TabsContent>
-      </Tabs>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        {/* Tournament Name Field - Now beside participants as a column */}
+      </Tabs>      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        {/* Tournament Name Field */}
         <div>
           <Label
             htmlFor="tournament-name"
@@ -337,6 +337,48 @@ const InputPanel = ({ isPending, onGenerateBracket }: InputPanelProps) => {
           />
         </div>
 
+        {/* Rounds Per Match Configuration */}
+        <div>
+          <Label
+            htmlFor="rounds-per-match"
+            className="block text-sm font-medium text-slate-700 mb-2"
+          >
+            Rounds Per Match
+          </Label>
+          <div className="flex items-center">
+            <Button 
+              variant="outline" 
+              size="icon"
+              onClick={() => setRoundsPerMatch(prev => Math.max(1, prev - 1))}
+              className="h-9 w-9"
+            >
+              <Minus className="h-4 w-4" />
+            </Button>
+            <Input
+              id="rounds-per-match"
+              type="number"
+              min="1"
+              max="9"
+              value={roundsPerMatch}
+              onChange={(e) => setRoundsPerMatch(parseInt(e.target.value) || 3)}
+              className="w-16 mx-2 text-center"
+            />
+            <Button 
+              variant="outline" 
+              size="icon"
+              onClick={() => setRoundsPerMatch(prev => Math.min(9, prev + 1))}
+              className="h-9 w-9"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+            <span className="ml-3 text-sm text-slate-500">
+              {roundsPerMatch === 1 ? '(Single round)' : `(Best of ${roundsPerMatch})`}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-6">
         {/* Seeding Options */}
         <div>
           <Label className="block text-sm font-medium text-slate-700 mb-2">
@@ -367,7 +409,6 @@ const InputPanel = ({ isPending, onGenerateBracket }: InputPanelProps) => {
                 Use Order as Seeding
               </Label>
             </div>
-           
           </RadioGroup>
         </div>
       </div>

@@ -763,8 +763,24 @@ function shuffleArray<T>(array: T[]): T[] {
 export function calculateBracketConnectors(
   bracketData: BracketMatch[][],
   containerElement: HTMLElement
-): Array<{ left: number; top: number; width?: number; height?: number; type: string }> {
-  const connectors: Array<{ left: number; top: number; width?: number; height?: number; type: string }> = [];
+): Array<{ 
+  left: number; 
+  top: number; 
+  width?: number; 
+  height?: number; 
+  type: string; 
+  hasWinner?: boolean; 
+  matchId?: string;
+}> {
+  const connectors: Array<{ 
+    left: number; 
+    top: number; 
+    width?: number; 
+    height?: number; 
+    type: string; 
+    hasWinner?: boolean;
+    matchId?: string; 
+  }> = [];
   
   if (!bracketData || bracketData.length <= 1 || !containerElement) {
     return connectors;
@@ -781,6 +797,7 @@ export function calculateBracketConnectors(
     // Process each round except the final
     for (let roundIndex = 0; roundIndex < bracketData.length - 1; roundIndex++) {
       const currentRound = bracketData[roundIndex];
+      const nextRound = bracketData[roundIndex + 1];
       
       // For each match in the current round
       for (let matchIndex = 0; matchIndex < currentRound.length; matchIndex++) {
@@ -802,22 +819,38 @@ export function calculateBracketConnectors(
             const matchRect = matchElement.getBoundingClientRect();
             const nextMatchRect = nextMatchElement.getBoundingClientRect();
             const containerRect = containerElement.getBoundingClientRect();
-            console.log(`Match Rect: ${JSON.stringify(matchRect)}, Next Match Rect: ${JSON.stringify(nextMatchRect)}`,containerRect);
             
             // Calculate relative positions
             const currentX = matchRect.right - containerRect.left;
             const currentY = matchRect.top + matchRect.height / 2 - containerRect.top;
             const nextX = nextMatchRect.left - containerRect.left;
             const nextY = nextMatchRect.top + nextMatchRect.height / 2 - containerRect.top;
-            console.log(`Current Position: (${currentX}, ${currentY}), Next Position: (${nextX}, ${nextY})`);
+            
             // Only create connectors if elements are properly positioned
             if (currentX >= 0 && currentY >= 0 && nextX >= 0 && nextY >= 0) {
+              // Check if there's a winner for this match
+              const hasWinner = match.winner !== null && match.winner !== undefined;
+              
+              // Find the next match in the bracket data
+              const nextMatch = nextRound.find(m => m.id === match.nextMatchId);
+              
+              // A connector should be green only if:
+              // 1. The current match has a declared winner
+              // 2. The winner has been propagated to the next match
+              const winnerPropagated = nextMatch && 
+                ((nextMatch.participants[0] === match.winner) || 
+                 (nextMatch.participants[1] === match.winner));
+              
+              const showAsWinner = hasWinner && winnerPropagated;
+              
               // Horizontal line from current match
               connectors.push({
                 left: currentX,
                 top: currentY,
                 width: (nextX - currentX) / 2,
                 type: "horizontal",
+                hasWinner: showAsWinner,
+                matchId: match.id
               });
               
               // Vertical line connecting both
@@ -826,6 +859,8 @@ export function calculateBracketConnectors(
                 top: Math.min(currentY, nextY),
                 height: Math.abs(nextY - currentY),
                 type: "vertical",
+                hasWinner: showAsWinner,
+                matchId: match.id
               });
               
               // Horizontal line to next match
@@ -834,6 +869,8 @@ export function calculateBracketConnectors(
                 top: nextY,
                 width: (nextX - currentX) / 2,
                 type: "horizontal",
+                hasWinner: showAsWinner,
+                matchId: match.id
               });
             }
           } catch (err) {

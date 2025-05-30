@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { BracketMatch } from "@shared/schema";
 import { jsPDF } from "jspdf";
+import tkdLogo from '@/assets/tkd_logo.png';
 
 export type PDFOrientation = "landscape" | "portrait";
 
@@ -167,13 +168,13 @@ function addPDFFooter(pdf: jsPDF, pageWidth: number, pageHeight: number, margin:
       // Fallback to text if image fails
       pdf.setFontSize(10);
       pdf.setFont("helvetica", "bold");
-      pdf.text("WTF", logoX, logoY + 8);
+      pdf.text("WT", logoX, logoY + 8);
     }
   } else {
     // Text-only logo fallback
     pdf.setFontSize(10);
     pdf.setFont("helvetica", "bold");
-    pdf.text("WTF", logoX, logoY + 8);
+    pdf.text("WT", logoX, logoY + 8);
   }
   
   // Organization info (left side)
@@ -279,7 +280,7 @@ export const useBracketPDF = () => {
     return new Promise<string | null>((resolve) => {
       // Create image object
       const img = new Image();
-      
+      img.crossOrigin="ananymus";
       // Handle image load
       img.onload = () => {
         // Create canvas to convert image to base64
@@ -313,12 +314,13 @@ export const useBracketPDF = () => {
       };
       
       // Set source and start loading
-      img.src = '/src/assets/tkd_logo.png';
+      img.src = tkdLogo || '/src/assets/tkd_logo.png';
       
       // Try alternate path if the first one fails
       setTimeout(() => {
         if (!img.complete) {
-          img.src = './src/assets/tkd_logo.png';
+          // img.src = './src/assets/tkd_logo.png';
+          img.src = tkdLogo;
         }
       }, 500);
     });

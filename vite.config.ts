@@ -24,9 +24,9 @@ export default defineConfig({
     host: true,
     open: true,
   },
-  root: path.resolve(__dirname, "."),
-  build: {
-    outDir: path.resolve(__dirname, "dist/public"),
-    emptyOutDir: true,
-  },
+  // root: path.resolve(__dirname, "."),
+  // build: {
+  //   outDir: path.resolve(__dirname, "dist/public"),
+  //   emptyOutDir: true,
+  // },
 })

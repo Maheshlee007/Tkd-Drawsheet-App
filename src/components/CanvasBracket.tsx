@@ -187,8 +187,7 @@ const CanvasBracket: React.FC<CanvasBracketProps> = ({
           winner: match.winner,
           roundIndex: roundIndex
         });
-        
-        // Draw match box
+          // Draw match box
         ctx.lineWidth = 1;
         ctx.strokeStyle = "#cbd5e1";
         ctx.fillStyle = "#ffffff";
@@ -197,6 +196,31 @@ const CanvasBracket: React.FC<CanvasBracketProps> = ({
         ctx.roundRect(roundX, matchY, matchWidth, matchHeight, 4);
         ctx.fill();
         ctx.stroke();
+          // Draw match identifier (sequential numbers: M1, M2, etc.)
+        ctx.fillStyle = "#f1f5f9"; // Light gray background
+        ctx.strokeStyle = "#cbd5e1"; // Border color
+        ctx.lineWidth = 1;
+        
+        // Draw identifier background
+        const labelWidth = 30; // Slightly smaller since we have shorter labels
+        const labelHeight = 16;
+        const labelX = roundX - 2;
+        const labelY = matchY - 16;
+        
+        ctx.beginPath();
+        ctx.roundRect(labelX, labelY, labelWidth, labelHeight, 3);
+        ctx.fill();
+        ctx.stroke();
+        
+        // Draw identifier text - sequential match number
+        ctx.fillStyle = "#64748b"; // Slate text color
+        ctx.font = "bold 11px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        
+        // Calculate sequential match number
+        const sequentialMatchNum = roundIndex * round.length + matchIndex + 1;
+        ctx.fillText(`M${sequentialMatchNum}`, labelX + labelWidth/2, labelY + labelHeight/2);
         
         // Draw divider line between participants
         ctx.beginPath();

@@ -1,0 +1,783 @@
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import { BracketMatch } from '@shared/schema';
+import { createBracket } from '@/lib/bracketUtils';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
+
+// Define Toast type
+type ToastType = 'default' | 'success' | 'destructive';
+
+interface ToastMessage {
+  type: ToastType;
+  title: string;
+  description: string;
+}
+
+// Define win methods
+export type WinMethod = 'PTF' | 'PTG' | 'DSQ' | 'PUN' | 'RSC' | 'WDR' | 'DQB';
+
+// Define round result
+export interface RoundResult {
+  player1Score: number | null;
+  player2Score: number | null;
+  winMethod: WinMethod | null;
+  winner: string | null; // player name or null for tie
+}
+
+// Define match history entry
+export interface MatchHistoryEntry {
+  timestamp: number;
+  action: 'create' | 'update';
+  previousWinner: string | null;
+  newWinner: string | null;
+  reason: string | null;
+}
+
+// Define match result
+export interface MatchResult {
+  matchId: string;
+  player1: string;
+  player2: string;
+  winner: string | null;
+  completed: boolean;
+  rounds: RoundResult[];
+  comment?: string;  // Optional comment field for tiebreaker decisions
+  history: MatchHistoryEntry[];
+}
+
+interface TournamentState {
+  // Data
+  tournamentId: string; // Unique identifier for each tournament
+  tournamentName: string;
+  bracketData: BracketMatch[][] | null;
+  participantCount: number;
+  seedType: 'random' | 'ordered' | 'as-entered';
+  
+  // Match round configuration
+  internalRoundsPerMatch: number;
+  matchResults: Record<string, MatchResult>;
+  
+  // UI State
+  isExportModalOpen: boolean;
+  isPending: boolean;
+  toast: ToastMessage | null;
+    // Actions
+  resetTournamentData: () => void;
+  setTournamentName: (name: string) => void;
+  generateBracket: (
+    participants: string[], 
+    seedType: 'random' | 'ordered' | 'as-entered',
+    tournamentName?: string,
+    rounds?: number
+  ) => void;
+  updateTournamentMatch: (matchId: string, winnerId: string) => void;
+  openExportModal: () => void;
+  closeExportModal: () => void;
+  exportAsPNG: () => void;
+  exportAsPDF: () => void;
+  copyToClipboard: () => void;
+  
+  // New actions for match rounds
+  setInternalRoundsPerMatch: (rounds: number) => void;
+  saveMatchResult: (matchResult: MatchResult) => void;
+  updateMatchWinner: (matchId: string, newWinner: string, reason: string) => void;
+  exportMatchDataAsJson: () => void;
+  
+  // Toast actions
+  showToast: (toast: ToastMessage) => void;
+  clearToast: () => void;
+}
+
+// Define the store with properly typed persistence
+export const useTournamentStore = create<TournamentState>()(
+  persist(
+    (set, get) => ({
+  // Initial State
+  tournamentId: Date.now().toString(), // Unique ID for each tournament
+  tournamentName: 'Tournament Draw Sheet',
+  bracketData: null,
+  participantCount: 0,
+  seedType: 'random',
+  internalRoundsPerMatch: 3,
+  matchResults: {},
+  isExportModalOpen: false,
+  isPending: false,
+  toast: null,
+  
+  // Toast actions
+  showToast: (toast) => set({ toast }),
+  clearToast: () => set({ toast: null }),
+  
+  // Actions
+  setTournamentName: (name) => set({ tournamentName: name }),
+  // Reset all tournament data
+  resetTournamentData: () => {
+    // Generate a new tournament ID to ensure complete fresh start
+    const newTournamentId = Date.now().toString();
+    
+    set({
+      tournamentId: newTournamentId,
+      bracketData: null,
+      participantCount: 0,
+      matchResults: {},
+      isExportModalOpen: false,
+      isPending: false,
+      // Reset to default values
+      tournamentName: 'Tournament Draw Sheet',
+      seedType: 'random',
+      internalRoundsPerMatch: 3
+    });
+    
+    // Clear localStorage to ensure no persistence between tournaments
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('tournament-storage');
+    }
+    
+    get().showToast({
+      type: 'success',
+      title: 'Reset Complete',
+      description: 'Tournament data has been cleared'
+    });
+  },
+  
+  generateBracket: (participants, seedType, tournamentName, rounds = 3) => {
+    set({ isPending: true });
+    
+    try {
+      // First perform a complete reset to ensure clean slate
+      // Create a new tournament ID for each new tournament
+      const newTournamentId = Date.now().toString();
+      
+      // Clear all stored data including matchResults
+      set({ 
+        tournamentId: newTournamentId,
+        bracketData: null,
+        matchResults: {},
+        participantCount: 0
+      });
+      
+      // If tournament name is provided, update it
+      if (tournamentName) {
+        set({ tournamentName });
+      }
+      
+      // Ensure rounds parameter is a valid number
+      const validatedRounds = typeof rounds === 'number' && !isNaN(rounds) && rounds > 0 
+        ? Math.floor(rounds) 
+        : 3;
+      
+      // Generate the bracket data
+      const bracketData = createBracket(participants, seedType);
+      const participantCount = participants.length || 0;
+      
+      set({ 
+        bracketData, 
+        participantCount, 
+        seedType,
+        internalRoundsPerMatch: validatedRounds,
+        isPending: false 
+      });
+      
+      // Clear localStorage to ensure no persistence between tournaments
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.removeItem('tournament-storage');
+        } catch (e) {
+          console.warn('Could not clear localStorage', e);
+        }
+      }
+      
+      get().showToast({
+        type: 'success',
+        title: 'Success',
+        description: 'Tournament bracket generated successfully!'
+      });
+    } catch (error) {
+      console.error('Failed to generate bracket:', error);
+      set({ isPending: false });
+      
+      get().showToast({
+        type: 'destructive',
+        title: 'Error',
+        description: 'Failed to generate tournament bracket'
+      });
+    }
+  },
+  
+  updateTournamentMatch: (matchId, winnerId) => {
+    const { bracketData } = get();
+    if (!bracketData) return;
+    
+    const newBracketData = [...bracketData];
+    
+    // Find the match in the bracket data
+    let targetMatch: BracketMatch | null = null;
+    let targetRoundIndex = -1;
+    let targetMatchIndex = -1;
+    
+    // Find the match by ID
+    for (let roundIndex = 0; roundIndex < newBracketData.length; roundIndex++) {
+      const round = newBracketData[roundIndex];
+      const matchIndex = round.findIndex(match => match.id === matchId);
+      
+      if (matchIndex !== -1) {
+        targetMatch = round[matchIndex];
+        targetRoundIndex = roundIndex;
+        targetMatchIndex = matchIndex;
+        break;
+      }
+    }
+    
+    if (!targetMatch || targetRoundIndex === -1 || targetMatchIndex === -1) {
+      get().showToast({
+        type: 'destructive',
+        title: 'Error',
+        description: 'Match not found'
+      });
+      return;
+    }
+    
+    // Update the winner for this match
+    newBracketData[targetRoundIndex][targetMatchIndex] = {
+      ...targetMatch,
+      winner: winnerId
+    };
+    
+    // If there's a next match, update its participants too
+    if (targetMatch.nextMatchId) {
+      // Find the next match
+      let nextMatch: BracketMatch | null = null;
+      let nextRoundIndex = -1;
+      let nextMatchIndex = -1;
+      
+      for (let roundIndex = 0; roundIndex < newBracketData.length; roundIndex++) {
+        const round = newBracketData[roundIndex];
+        const matchIndex = round.findIndex(match => match.id === targetMatch?.nextMatchId);
+        
+        if (matchIndex !== -1) {
+          nextMatch = round[matchIndex];
+          nextRoundIndex = roundIndex;
+          nextMatchIndex = matchIndex;
+          break;
+        }
+      }
+      
+      if (nextMatch && nextRoundIndex !== -1 && nextMatchIndex !== -1) {
+        // Determine which position this participant should take
+        const positionInNextMatch = targetMatch.position % 2 === 0 ? 0 : 1;
+        
+        // Create an updated participants array for the next match
+        const newParticipants: [string | null, string | null] = [...nextMatch.participants] as [string | null, string | null];
+        newParticipants[positionInNextMatch] = winnerId;
+        
+        // Update the next match
+        newBracketData[nextRoundIndex][nextMatchIndex] = {
+          ...nextMatch,
+          participants: newParticipants,
+          // If the other finalist doesn't exist yet, we can't determine a winner
+          winner: nextMatch.winner === nextMatch.participants[positionInNextMatch] ? winnerId : nextMatch.winner
+        };
+      }
+    }
+    
+    // Update the state with the new bracket data
+    set({ bracketData: newBracketData });
+    
+    get().showToast({
+      type: 'success',
+      title: 'Match Updated',
+      description: `Winner set to ${winnerId}`
+    });
+  },
+  
+  openExportModal: () => set({ isExportModalOpen: true }),
+  
+  closeExportModal: () => set({ isExportModalOpen: false }),
+  
+  exportAsPNG: () => {
+    const activePoolTab = document.querySelector('button[data-state="active"]');
+    const poolIndex = activePoolTab?.getAttribute('value') || "0";
+    
+    const printView = document.querySelector(".print\\:block .bracket-display");
+    if (!printView) {
+      get().showToast({
+        type: 'destructive',
+        title: 'Export Error',
+        description: 'Could not find bracket display element'
+      });
+      return;
+    }
+    
+    const { closeExportModal } = get();
+    
+    const cloneContainer = document.createElement('div');
+    cloneContainer.style.position = 'absolute';
+    cloneContainer.style.top = '-9999px';
+    cloneContainer.style.left = '-9999px';
+    cloneContainer.style.width = 'max-content';
+    cloneContainer.style.backgroundColor = 'white';
+    cloneContainer.style.padding = '20px';
+    
+    const title = document.createElement('h2');
+    title.textContent = `Tournament Bracket - Pool ${parseInt(poolIndex as string) + 1}`;
+    title.style.textAlign = 'center';
+    title.style.fontWeight = 'bold';
+    title.style.margin = '20px 0';
+    cloneContainer.appendChild(title);
+    
+    const clone = printView.cloneNode(true) as HTMLElement;
+    cloneContainer.appendChild(clone);
+    document.body.appendChild(cloneContainer);
+    
+    html2canvas(cloneContainer, {
+      backgroundColor: "#FFFFFF",
+      scale: 1.5,
+      allowTaint: true,
+      useCORS: true,
+      logging: false,
+      onclone: (document) => {
+        const clonedStyles = document.createElement('style');
+        clonedStyles.textContent = `
+          .bracket-round {
+            width: 180px !important;
+            padding: 0 !important;
+            margin-left: 20px !important;
+          }
+          .bracket-round:first-child {
+            margin-left: 0 !important;
+          }
+          .bracket-match {
+            padding: 0 !important;
+            border: 1px solid #cbd5e1 !important;
+            margin-bottom: 2px !important;
+          }
+          .participant {
+            padding: 1px 2px !important;
+            margin: 0 !important;
+          }
+          .bracket-connector {
+            border-color: #666 !important;
+          }
+        `;
+        document.head.appendChild(clonedStyles);
+      }
+    }).then((canvas) => {
+      const link = document.createElement("a");
+      link.download = `tournament-bracket-pool-${parseInt(poolIndex as string) + 1}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+      
+      document.body.removeChild(cloneContainer);
+      
+      closeExportModal();
+      
+      get().showToast({
+        type: 'success',
+        title: 'Success',
+        description: 'Bracket exported as PNG successfully!'
+      });
+    }).catch(error => {
+      console.error("Export error:", error);
+      document.body.removeChild(cloneContainer);
+      
+      get().showToast({
+        type: 'destructive',
+        title: 'Export Error',
+        description: 'Failed to export bracket as PNG'
+      });
+      
+      closeExportModal();
+    });
+  },
+  
+  exportAsPDF: () => {
+    const activePoolTab = document.querySelector('button[data-state="active"]');
+    const poolIndex = activePoolTab?.getAttribute('value') || "0";
+    
+    const printView = document.querySelector(".print\\:block .bracket-display");
+    if (!printView) {
+      get().showToast({
+        type: 'destructive',
+        title: 'Export Error',
+        description: 'Could not find bracket display element'
+      });
+      return;
+    }
+    
+    const { closeExportModal } = get();
+    
+    const cloneContainer = document.createElement('div');
+    cloneContainer.style.position = 'absolute';
+    cloneContainer.style.top = '-9999px';
+    cloneContainer.style.left = '-9999px';
+    cloneContainer.style.width = 'max-content';
+    cloneContainer.style.backgroundColor = 'white';
+    cloneContainer.style.padding = '20px';
+    
+    const title = document.createElement('h2');
+    title.textContent = `Tournament Bracket - Pool ${parseInt(poolIndex as string) + 1}`;
+    title.style.textAlign = 'center';
+    title.style.fontWeight = 'bold';
+    title.style.margin = '20px 0';
+    cloneContainer.appendChild(title);
+    
+    const clone = printView.cloneNode(true) as HTMLElement;
+    cloneContainer.appendChild(clone);
+    document.body.appendChild(cloneContainer);
+    
+    html2canvas(cloneContainer, {
+      backgroundColor: "#FFFFFF",
+      scale: 1.5,
+      allowTaint: true,
+      useCORS: true,
+      logging: false,
+      onclone: (document) => {
+        const clonedStyles = document.createElement('style');
+        clonedStyles.textContent = `
+          .bracket-round {
+            width: 180px !important;
+            padding: 0 !important;
+            margin-left: 20px !important;
+          }
+          .bracket-round:first-child {
+            margin-left: 0 !important;
+          }
+          .bracket-match {
+            padding: 0 !important;
+            border: 1px solid #cbd5e1 !important;
+            margin-bottom: 2px !important;
+          }
+          .participant {
+            padding: 1px 2px !important;
+            margin: 0 !important;
+          }
+          .bracket-connector {
+            border-color: #666 !important;
+          }
+        `;
+        document.head.appendChild(clonedStyles);
+      }
+    }).then((canvas) => {
+      // Generate PDF
+      const canvasWidth = canvas.width;
+      const canvasHeight = canvas.height;
+      const imgData = canvas.toDataURL('image/png');
+      
+      // Create PDF with appropriate orientation
+      const pdf = new jsPDF({
+        orientation: canvasWidth > canvasHeight ? 'landscape' : 'portrait',
+        unit: 'mm',
+      });
+      
+      // Calculate dimensions to fit the PDF page
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      
+      let imgWidth = pdfWidth - 20; // 10mm margins on each side
+      let imgHeight = (canvasHeight * imgWidth) / canvasWidth;
+      
+      // If image is too tall, scale based on height
+      if (imgHeight > pdfHeight - 20) {
+        imgHeight = pdfHeight - 20;
+        imgWidth = (canvasWidth * imgHeight) / canvasHeight;
+      }
+      
+      // Center the image
+      const x = (pdfWidth - imgWidth) / 2;
+      const y = (pdfHeight - imgHeight) / 2;
+      
+      pdf.addImage(imgData, 'PNG', x, y, imgWidth, imgHeight);
+      pdf.save(`tournament-bracket-pool-${parseInt(poolIndex as string) + 1}.pdf`);
+      
+      document.body.removeChild(cloneContainer);
+      
+      closeExportModal();
+      
+      get().showToast({
+        type: 'success',
+        title: 'Success',
+        description: 'Bracket exported as PDF successfully!'
+      });
+    }).catch(error => {
+      console.error("Export error:", error);
+      document.body.removeChild(cloneContainer);
+      
+      get().showToast({
+        type: 'destructive',
+        title: 'Export Error',
+        description: 'Failed to export bracket as PDF'
+      });
+      
+      closeExportModal();
+    });
+  },
+  
+  copyToClipboard: () => {
+    const activePoolTab = document.querySelector('button[data-state="active"]');
+    const poolIndex = activePoolTab?.getAttribute('value') || "0";
+    
+    const printView = document.querySelector(".print\\:block .bracket-display");
+    if (!printView) {
+      get().showToast({
+        type: 'destructive',
+        title: 'Copy Error',
+        description: 'Could not find bracket display element'
+      });
+      return;
+    }
+    
+    const { closeExportModal } = get();
+    
+    const cloneContainer = document.createElement('div');
+    cloneContainer.style.position = 'absolute';
+    cloneContainer.style.top = '-9999px';
+    cloneContainer.style.left = '-9999px';
+    cloneContainer.style.width = 'max-content';
+    cloneContainer.style.backgroundColor = 'white';
+    cloneContainer.style.padding = '20px';
+    
+    const title = document.createElement('h2');
+    title.textContent = `Tournament Bracket - Pool ${parseInt(poolIndex as string) + 1}`;
+    title.style.textAlign = 'center';
+    title.style.fontWeight = 'bold';
+    title.style.margin = '20px 0';
+    cloneContainer.appendChild(title);
+    
+    const clone = printView.cloneNode(true) as HTMLElement;
+    cloneContainer.appendChild(clone);
+    document.body.appendChild(cloneContainer);
+    
+    html2canvas(cloneContainer, {
+      backgroundColor: "#FFFFFF",
+      scale: 1.5,
+      allowTaint: true,
+      useCORS: true,
+      logging: false,
+      onclone: (document) => {
+        const clonedStyles = document.createElement('style');
+        clonedStyles.textContent = `
+          .bracket-round {
+            width: 180px !important;
+            padding: 0 !important;
+            margin-left: 20px !important;
+          }
+          .bracket-round:first-child {
+            margin-left: 0 !important;
+          }
+          .bracket-match {
+            padding: 0 !important;
+            border: 1px solid #cbd5e1 !important;
+            margin-bottom: 2px !important;
+          }
+          .participant {
+            padding: 1px 2px !important;
+            margin: 0 !important;
+          }
+          .bracket-connector {
+            border-color: #666 !important;
+          }
+        `;
+        document.head.appendChild(clonedStyles);
+      }
+    }).then(async (canvas) => {
+      try {
+        const blob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob(blob => {
+            if (blob) resolve(blob);
+            else reject(new Error('Canvas to Blob conversion failed'));
+          }, 'image/png');
+        });
+        
+        await navigator.clipboard.write([
+          new ClipboardItem({ 'image/png': blob })
+        ]);
+        
+        document.body.removeChild(cloneContainer);
+        
+        closeExportModal();
+        
+        get().showToast({
+          type: 'success',
+          title: 'Success',
+          description: 'Bracket copied to clipboard!'
+        });
+      } catch (err) {
+        console.error("Copy error:", err);
+        document.body.removeChild(cloneContainer);
+        
+        get().showToast({
+          type: 'destructive',
+          title: 'Copy Error',
+          description: 'Failed to copy bracket to clipboard'
+        });
+        
+        closeExportModal();
+      }
+    }).catch(error => {
+      console.error("Copy error:", error);
+      document.body.removeChild(cloneContainer);
+      
+      get().showToast({
+        type: 'destructive',
+        title: 'Copy Error',
+        description: 'Failed to generate image for clipboard'
+      });
+      
+      closeExportModal();
+    });
+  },
+  
+  setInternalRoundsPerMatch: (rounds) => {
+    const { matchResults } = get();
+    
+    // Update the number of rounds
+    set({ internalRoundsPerMatch: rounds });
+    
+    // If there are existing match results, update them to have the correct number of rounds
+    if (Object.keys(matchResults).length > 0) {
+      const updatedResults = { ...matchResults };
+      
+      // Update each match result to have the correct number of rounds
+      Object.keys(updatedResults).forEach(matchId => {
+        const result = updatedResults[matchId];
+        
+        // Ensure each match has exactly the new number of rounds
+        if (result.rounds.length < rounds) {
+          // Add more rounds if needed
+          while (result.rounds.length < rounds) {
+            result.rounds.push({
+              player1Score: null,
+              player2Score: null,
+              winMethod: null,
+              winner: null
+            });
+          }
+        } else if (result.rounds.length > rounds) {
+          // Remove excess rounds
+          result.rounds = result.rounds.slice(0, rounds);
+        }
+      });
+      
+      set({ matchResults: updatedResults });
+    }
+    
+    get().showToast({
+      type: 'success',
+      title: 'Rounds Updated',
+      description: `Match rounds set to ${rounds}`
+    });
+  },
+  
+  saveMatchResult: (matchResult) => {
+    const { matchResults, bracketData } = get();
+    
+    // Save the match result, merging with existing data if present
+    set({ 
+      matchResults: {
+        ...matchResults,
+        [matchResult.matchId]: matchResult
+      } 
+    });
+    
+    // If we have a completed match with a winner, update the bracket too
+    if (matchResult.completed && matchResult.winner && bracketData) {
+      // The updateTournamentMatch function handles winner advancement
+      get().updateTournamentMatch(matchResult.matchId, matchResult.winner);
+    }
+    
+    get().showToast({
+      type: 'success',
+      title: 'Success',
+      description: 'Match result saved'
+    });
+  },
+    updateMatchWinner: (matchId, newWinner, reason) => {
+    const { matchResults } = get();
+    const matchResult = matchResults[matchId];
+    
+    if (!matchResult) {
+      get().showToast({
+        type: 'destructive',
+        title: 'Error',
+        description: 'Match result not found'
+      });
+      return;
+    }
+    
+    // Create a properly typed history entry
+    const historyEntry: MatchHistoryEntry = {
+      timestamp: Date.now(),
+      action: 'update',
+      previousWinner: matchResult.winner,
+      newWinner,
+      reason: reason || null
+    };
+    
+    // Update the match result with the new winner
+    const updatedMatchResult = {
+      ...matchResult,
+      winner: newWinner,
+      history: [
+        ...matchResult.history,
+        historyEntry
+      ]
+    };
+    
+    set({ 
+      matchResults: {
+        ...matchResults,
+        [matchId]: updatedMatchResult
+      } 
+    });
+    
+    get().showToast({
+      type: 'success',
+      title: 'Success',
+      description: `Match winner updated to ${newWinner}`
+    });
+  },
+  
+  exportMatchDataAsJson: () => {
+    const { matchResults } = get();
+    
+    // Convert match results to a JSON string
+    const json = JSON.stringify(matchResults, null, 2);
+    
+    // Create a blob from the JSON string
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    // Create a link to download the JSON file
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'match-results.json';
+    a.click();
+    
+    // Clean up
+    URL.revokeObjectURL(url);
+    
+    get().showToast({
+      type: 'success',
+      title: 'Success',
+      description: 'Match data exported as JSON'
+    });
+  },
+}),
+{
+  name: 'tournament-storage', // base localStorage key
+  partialize: (state) => ({
+    // Only persist these fields
+    bracketData: state.bracketData,
+    tournamentName: state.tournamentName,
+    internalRoundsPerMatch: state.internalRoundsPerMatch,
+    matchResults: state.matchResults,
+    // Include tournamentId to ensure unique tournament identification
+    tournamentId: state.tournamentId,
+    participantCount: state.participantCount,
+    seedType: state.seedType
+  }),
+  // Use a version number for storage format
+  version: 1
+}
+));
