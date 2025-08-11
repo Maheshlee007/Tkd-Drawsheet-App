@@ -12,7 +12,7 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
-  Menu
+  RadioTower
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTournamentStore } from '@/store/useTournamentStore';
@@ -54,11 +54,15 @@ export function SideNav({ className, onClose, onCollapse }: SideNavProps) {
       href: '/statistics',
       icon: BarChart2,
       disabled: !bracketData,
-    },
-    {
+    },    {
       name: 'Announcements',
       href: '/announcements',
       icon: Megaphone,
+    },
+    {
+      name: 'Live Feed',
+      href: '/live-feed',
+      icon: RadioTower,
     },
     {
       name: 'Settings',

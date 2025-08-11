@@ -6,6 +6,24 @@ import tkdLogo from '@/assets/tkd_logo.png';
 
 export type PDFOrientation = "landscape" | "portrait";
 
+export interface PDFGenOptions {
+  tournamentHeader: string;
+  organizedBy: string;
+  fileName: string;
+  pdfOrientation?: PDFOrientation;
+  noColorMode?: boolean;
+  lineViewMode?: boolean; // Added lineViewMode
+  hideBye?: boolean; // Added hideBye option
+}
+
+interface PaginatedBracket {
+  pages: BracketMatch[][][];
+  isFinalsPage: boolean[]; // True if the page is the "Finals" page
+  pageTitles: string[];
+  overallTournamentRounds: number; // Total rounds in the entire tournament
+  firstRoundIndexOnPage: number[]; // The 0-based global index of this page's first round
+}
+
 // Function to determine if a player had a bye in the previous round (copied from BracketDisplay)
 function previousRoundHadBye(playerName: string, bracketData: BracketMatch[][], currentRound: number): boolean {
   if (currentRound <= 0 || !bracketData[currentRound - 1]) return false;
@@ -39,53 +57,73 @@ function formatDate(date: Date): string {
 /**
  * Get round name based on the round index and total rounds
  */
-function getRoundName(roundIndex: number, totalRounds: number): string {
-  // Calculate rounds from the end (final, semi, etc.)
-  const roundsFromEnd = totalRounds - roundIndex - 1;
-  
-  switch (roundsFromEnd) {
-    case 0:
-      return "Final";
-    case 1:
-      return "Semi Finals";
-    case 2:
-      return "Quarter Finals";
-    default:
-      return `Round ${roundIndex + 1}`;
+function getRoundName(
+  roundIndexOnPage: number,          // 0-indexed for the current page's rounds
+  overallTournamentRounds: number,   // Total rounds in the entire tournament
+  firstRoundIndexOnThisPage: number, // 0-indexed global round number that corresponds to roundIndexOnPage = 0
+  isSegmentPage: boolean             // True if this page is a segment of a multi-page layout (not finals, not single page)
+): string {
+  if (isSegmentPage) {
+    // For segment pages (e.g., Pool A, Pool B of a multi-page bracket),
+    // always display "Round 1", "Round 2", etc., relative to the segment.
+    return `Round ${roundIndexOnPage + 1}`;
+  } else {
+    // For Finals pages of a multi-page bracket, or for single-page brackets,
+    // use special names based on the overall tournament structure.
+    const globalRoundIndex = firstRoundIndexOnThisPage + roundIndexOnPage;
+    const roundsFromEnd = overallTournamentRounds - globalRoundIndex - 1;
+    switch (roundsFromEnd) {
+      case 0:
+        return "Final";
+      case 1:
+        return "Semi Finals";
+      case 2:
+        return "Quarter Finals";
+      default:
+        // For rounds on the finals page or single page that are not QF, SF, F
+        return `Round ${globalRoundIndex + 1}`;
+    }
   }
 }
 
 /**
  * Get background color for round labels - Using Indian flag color scheme
  */
-function getRoundLabelColor(roundIndex: number, totalRounds: number): { bg: number[], text: number[], border: number[] } {
-  // Calculate rounds from the end (final, semi, etc.)
-  const roundsFromEnd = totalRounds - roundIndex - 1;
-  
-  switch (roundsFromEnd) {
-    case 0:
-      return { 
-        bg: [144, 248, 144],       // Light green background
-    text: [4, 106, 56],        // India green text
-    border: [0, 100, 0],       // Dark green border
+function getRoundLabelColor(roundIndexOnPage: number, totalRoundsOnPage: number, noColorMode = false): { bg?: number[], text: number[], border: number[] } {
+  if (noColorMode) {
+    return {
+      text: [0, 0, 0],       // Black text
+      border: [150, 150, 150], // Gray border
+      bg: [255, 255, 255]    // White background
+    };
+  }
+
+  const roundsFromEndOnPage = totalRoundsOnPage - roundIndexOnPage - 1;
+
+  switch (roundsFromEndOnPage) {
+    case 0: // Last round on this page
+      return {
+        bg: [144, 248, 144], // Light green background (Finals color)
+        text: [4, 106, 56],    // India green text
+        border: [0, 100, 0],   // Dark green border
       };
-    case 1:
-      return { 
-        bg: [255, 255, 255],      // Smoky white background
-    text: [0, 0, 128],        // Navy blue text (for Ashoka Chakra)
-    border: [200, 200, 200],  // Light gray border
+    case 1: // Second to last round on this page
+      return {
+        bg: [255, 255, 255],  // Smoky white background (Semi-Finals color)
+        text: [0, 0, 128],    // Navy blue text (for Ashoka Chakra)
+        border: [200, 200, 200], // Light gray border
       };
-    case 2:
-      return { 
-        bg: [255, 231, 171],       // Light saffron background
-        text: [255, 103, 31],      // Deep saffron text
-        border: [204, 82, 0],      // Darker saffron border
+    case 2: // Third to last round on this page
+      return {
+        bg: [255, 231, 171],   // Light saffron background (Quarter-Finals color)
+        text: [255, 103, 31],  // Deep saffron text
+        border: [204, 82, 0],  // Darker saffron border
       };
-    default:
-      return { 
-        bg: [240, 240, 240], 
-        text: [80, 80, 80],
-        border: [200, 200, 200]
+    default: // All other rounds on this page
+      return {
+        bg: [220, 220, 220],   // Consistent light gray for other rounds
+        text: [50, 50, 50],     // Dark gray text
+        border: [180, 180, 180] // Slightly darker gray border
       };
   }
 }
@@ -94,59 +132,166 @@ function getRoundLabelColor(roundIndex: number, totalRounds: number): { bg: numb
  * Split large brackets into pages of 16 brackets each
  * This allows us to fit 32 players per page
  */
-function splitBracketForPagination(bracketData: BracketMatch[][]): BracketMatch[][][] {
-  // For brackets with >16 matches in the first round, split into pages
-  const firstRoundMatches = bracketData[0].length;
-  
-  // If the first round has 16 or fewer matches (32 or fewer players), keep as one page
-  if (firstRoundMatches <= 16) {
-    return [bracketData];
+function splitBracketForPagination(bracketData: BracketMatch[][], participantCount: number, baseTitle: string): PaginatedBracket {
+  const MAX_PLAYERS_PER_STANDARD_PAGE = 32; 
+  const MAX_ROUNDS_FOR_SINGLE_PAGE_LAYOUT = 5; 
+
+  const numOverallRounds = bracketData.length > 0 ? bracketData.length : (participantCount > 0 ? Math.ceil(Math.log2(participantCount)) : 0);
+
+  if (numOverallRounds === 0) {
+    return { pages: [], isFinalsPage: [], pageTitles: [], overallTournamentRounds: 0, firstRoundIndexOnPage: [] };
+  }
+
+  if (participantCount <= MAX_PLAYERS_PER_STANDARD_PAGE || numOverallRounds <= MAX_ROUNDS_FOR_SINGLE_PAGE_LAYOUT) {
+    return {
+      pages: [bracketData],
+      isFinalsPage: [false],
+      pageTitles: [baseTitle],
+      overallTournamentRounds: numOverallRounds,
+      firstRoundIndexOnPage: [0]
+    };
+  }
+
+  let roundsOnSegmentPages = 4;
+  let roundsOnFinalsPage = numOverallRounds - roundsOnSegmentPages;
+
+  if (numOverallRounds <= roundsOnSegmentPages) { // Should not happen if previous check is correct
+      return {
+          pages: [bracketData],
+          isFinalsPage: [false],
+          pageTitles: [baseTitle],
+          overallTournamentRounds: numOverallRounds,
+          firstRoundIndexOnPage: [0]
+      };
+  }
+
+  const paginatedResult: PaginatedBracket = {
+    pages: [],
+    isFinalsPage: [],
+    pageTitles: [],
+    overallTournamentRounds: numOverallRounds,
+    firstRoundIndexOnPage: []
+  };
+
+  const MATCHES_PER_SEGMENT_FIRST_ROUND = 16;
+  const numberOfSegments = Math.ceil(participantCount / MAX_PLAYERS_PER_STANDARD_PAGE);
+
+  if (roundsOnSegmentPages > 0) {
+    for (let i = 0; i < numberOfSegments; i++) {
+      const segmentStartIndex = i * MATCHES_PER_SEGMENT_FIRST_ROUND;
+      const actualDepthForSegment = Math.min(roundsOnSegmentPages, numOverallRounds);
+
+      // Corrected call to extractMatchesForSegment:
+      // It expects (bracketData, startMatchIndexInFirstRound, numMatchesInFirstRoundForSegment, depthToExtract)
+      // The original `bracketData[0]` was to get the first round, but we need to pass the whole bracketData
+      // and let extractMatchesForSegment handle the slicing.
+      // The `numMatchesInFirstRoundForSegment` is MATCHES_PER_SEGMENT_FIRST_ROUND.
+      const segmentBracketData = extractMatchesForSegment(
+        bracketData, // Pass the whole bracket
+        segmentStartIndex,
+        MATCHES_PER_SEGMENT_FIRST_ROUND,
+        actualDepthForSegment
+      );
+      if (segmentBracketData.length > 0) {
+        paginatedResult.pages.push(segmentBracketData);
+        paginatedResult.isFinalsPage.push(false);
+        paginatedResult.pageTitles.push(`${baseTitle} - Pool ${String.fromCharCode(65 + i)}`);
+        paginatedResult.firstRoundIndexOnPage.push(0); // Segments always display starting from global round 0 perspective
+      }
+    }
+  }
+
+  if (roundsOnFinalsPage > 0 && numOverallRounds > roundsOnSegmentPages) {
+    const finalsBracketData: BracketMatch[][] = [];
+    const firstRoundIndexForFinals = roundsOnSegmentPages;
+
+    for (let r = firstRoundIndexForFinals; r < numOverallRounds; r++) {
+      if (bracketData[r]) { 
+         finalsBracketData.push(bracketData[r]);
+      }
+    }
+    if (finalsBracketData.length > 0) {
+      paginatedResult.pages.push(finalsBracketData);
+      paginatedResult.isFinalsPage.push(true);
+      paginatedResult.pageTitles.push(`${baseTitle} - Finals`);
+      paginatedResult.firstRoundIndexOnPage.push(firstRoundIndexForFinals);
+    }
+  }
+
+  if (paginatedResult.pages.length === 0 && bracketData.length > 0) {
+      paginatedResult.pages.push(bracketData);
+      paginatedResult.isFinalsPage.push(false); 
+      paginatedResult.pageTitles.push(baseTitle);
+      paginatedResult.overallTournamentRounds = numOverallRounds; // Already set, but ensure consistency
+      paginatedResult.firstRoundIndexOnPage.push(0);
   }
   
-  // Split the bracket into chunks of 16 brackets per page
-  const pages: BracketMatch[][][] = [];
-  const bracketCopy = [...bracketData];
-  
-  // For each page, create a subset of the bracket with 16 first-round matches
-  for (let i = 0; i < firstRoundMatches; i += 16) {
-    // Take up to 16 matches from each round for this page
-    const pageData: BracketMatch[][] = [];
-    
-    // Process each round
-    for (let roundIdx = 0; roundIdx < bracketCopy.length; roundIdx++) {
-      const round = bracketCopy[roundIdx];
-      
-      // For the first round, take 16 matches
-      if (roundIdx === 0) {
-        const matchGroup = round.slice(i, Math.min(i + 16, round.length));
-        pageData.push(matchGroup);
-      } else {
-        // For subsequent rounds, find corresponding matches
-        const prevRoundMatches = pageData[roundIdx - 1];
-        const matchIds = prevRoundMatches.map(m => m.nextMatchId).filter(id => id !== null);
-        
-        // Get matches from this round that are connected to the previous round
-        const connectedMatches = round.filter(m => matchIds.includes(m.id));
-        
-        if (connectedMatches.length > 0) {
-          pageData.push(connectedMatches);
+  return paginatedResult;
+}
+
+/**
+ * Extracts a segment of the bracket.
+ * @param fullBracketData The complete bracket data for the entire tournament.
+ * @param startMatchIndexInFirstRound The index of the first match in the *overall first round* that this segment should start from.
+ * @param numMatchesInFirstRoundForSegment The number of matches from the *overall first round* that belong to this segment.
+ * @param depthToExtract The number of rounds to extract for this segment.
+ */
+function extractMatchesForSegment(
+  fullBracketData: BracketMatch[][],
+  startMatchIndexInFirstRound: number,
+  numMatchesInFirstRoundForSegment: number,
+  depthToExtract: number
+): BracketMatch[][] {
+  const segmentBracket: BracketMatch[][] = [];
+  const MAX_ROUNDS_PER_SEGMENT_PAGE = 5;
+
+  if (!fullBracketData || fullBracketData.length === 0) return [];
+
+  // Get the initial set of matches for this segment's first round
+  const firstRoundSegmentMatches = fullBracketData[0].slice(startMatchIndexInFirstRound, startMatchIndexInFirstRound + numMatchesInFirstRoundForSegment);
+  if (firstRoundSegmentMatches.length === 0) return [];
+
+  segmentBracket.push(firstRoundSegmentMatches);
+  const processedMatchIds = new Set<string>(firstRoundSegmentMatches.map(m => m.id));
+
+  for (let r = 0; r < MAX_ROUNDS_PER_SEGMENT_PAGE -1; r++) {
+    if (r + 1 >= fullBracketData.length) break; // Original bracket is shorter than 5 rounds
+
+    const nextRoundMatchesInSegment: BracketMatch[] = [];
+    const currentRoundInSegment = segmentBracket[r];
+
+    for (const currentMatch of currentRoundInSegment) {
+      if (currentMatch.nextMatchId) {
+        // Find the next match in the full bracket data
+        const nextMatchInFullBracket = fullBracketData[r + 1].find(m => m.id === currentMatch.nextMatchId);
+        if (nextMatchInFullBracket && !processedMatchIds.has(nextMatchInFullBracket.id)) {
+          nextRoundMatchesInSegment.push(nextMatchInFullBracket);
+          processedMatchIds.add(nextMatchInFullBracket.id);
+        } else if (nextMatchInFullBracket && processedMatchIds.has(nextMatchInFullBracket.id)) {
+          // If already added (e.g. two matches from current round feed into one in next)
+          // ensure it's in the list if not already by another path
+          if (!nextRoundMatchesInSegment.some(m => m.id === nextMatchInFullBracket.id)) {
+            // This case should ideally be handled by ensuring each match is unique in the round
+            // For safety, let's check, but primary logic relies on finding unique nextMatchId targets
+          }
         }
       }
     }
-    
-    // Only add the page if it contains matches
-    if (pageData.length > 0 && pageData[0].length > 0) {
-      pages.push(pageData);
+    if (nextRoundMatchesInSegment.length > 0) {
+      // Ensure unique matches in the round before pushing
+      const uniqueNextRoundMatches = Array.from(new Map(nextRoundMatchesInSegment.map(m => [m.id, m])).values());
+      segmentBracket.push(uniqueNextRoundMatches);
+    } else {
+      break; // No more matches to trace for this segment
     }
   }
-  
-  return pages;
+  return segmentBracket;
 }
 
 /**
  * Adds footer with organization info, copyright, and judge signature to the PDF
  */
-function addPDFFooter(pdf: jsPDF, pageWidth: number, pageHeight: number, margin: number, pageNumber: number, totalPages: number, tkdLogoBase64?: string) {
+function addPDFFooter(pdf: jsPDF, pageWidth: number, pageHeight: number, margin: number, pageNumber: number, totalPages: number, organizedBy: string, tkdLogoBase64?: string) {
   // Move the divider even lower to prevent collision with the last bracket
   const footerTop = pageHeight - 16; // Moved 10px lower from previous position (was 22)
   pdf.setDrawColor(150, 150, 150);
@@ -180,7 +325,7 @@ function addPDFFooter(pdf: jsPDF, pageWidth: number, pageHeight: number, margin:
   // Organization info (left side)
   pdf.setFontSize(7);
   pdf.setFont("helvetica", "normal");
-  pdf.text("Professional TKD Academy", logoX + logoWidth + 3, logoY + 5);
+  pdf.text(organizedBy, logoX + logoWidth + 3, logoY + 5);
   
   // Copyright (center)
   pdf.setFontSize(7);
@@ -206,7 +351,7 @@ function addPDFFooter(pdf: jsPDF, pageWidth: number, pageHeight: number, margin:
 /**
  * Adds a placement box for noting 1st, 2nd, 3rd, 4th positions
  */
-function addPlacementBox(pdf: jsPDF, pageWidth: number, pageHeight: number, margin: number) {
+function addPlacementBox(pdf: jsPDF, pageWidth: number, pageHeight: number, margin: number, noColorMode = false) {
   // Position box at bottom of page above the separator line
   const boxWidth = 60; // Increased width for noting names
   const boxHeight = 40;
@@ -215,47 +360,45 @@ function addPlacementBox(pdf: jsPDF, pageWidth: number, pageHeight: number, marg
   
   // Draw the main box with rounded corners
   pdf.setDrawColor(100, 100, 100);
-  pdf.setFillColor(250, 250, 250);
+  if (noColorMode) {
+    pdf.setFillColor(255, 255, 255); // White background for no-color mode
+  } else {
+    pdf.setFillColor(250, 250, 250); // Default light gray background
+  }
   pdf.roundedRect(boxX, boxY, boxWidth, boxHeight, 2, 2, 'FD');
   
   // Title
   pdf.setFontSize(7);
   pdf.setFont("helvetica", "bold");
-  pdf.setTextColor(80, 80, 80);
+  pdf.setTextColor(noColorMode ? 0 : 80, noColorMode ? 0 : 80, noColorMode ? 0 : 80); // Black text for no-color
   pdf.text("PLACEMENTS", boxX + (boxWidth / 2), boxY + 5, { align: "center" });
   
   // Create 4 sections inside the box
   const sectionHeight = 8;
   const textX = boxX + 4;
   
-  // Gold - 1st Place
-  pdf.setFillColor(255, 240, 180); // Gold color
-  pdf.rect(boxX + 1, boxY + 7, boxWidth - 2, sectionHeight, 'F');
-  pdf.setFontSize(6);
-  pdf.setFont("helvetica", "bold");
-  pdf.setTextColor(150, 120, 0);
-  pdf.text("1st (Gold):", textX, boxY + 12);
-  
-  // Silver - 2nd Place
-  pdf.setFillColor(230, 230, 230); // Silver color
-  pdf.rect(boxX + 1, boxY + 7 + sectionHeight, boxWidth - 2, sectionHeight, 'F');
-  pdf.setFontSize(6);
-  pdf.setTextColor(100, 100, 100);
-  pdf.text("2nd (Silver):", textX, boxY + 12 + sectionHeight);
-  
-  // Bronze - 3rd Place
-  pdf.setFillColor(230, 200, 170); // Bronze color
-  pdf.rect(boxX + 1, boxY + 7 + (sectionHeight * 2), boxWidth - 2, sectionHeight, 'F');
-  pdf.setFontSize(6);
-  pdf.setTextColor(150, 90, 50);
-  pdf.text("3rd (Bronze):", textX, boxY + 12 + (sectionHeight * 2));
-  
-  // 2nd Bronze - 4th Place
-  pdf.setFillColor(230, 200, 170); // Bronze color
-  pdf.rect(boxX + 1, boxY + 7 + (sectionHeight * 3), boxWidth - 2, sectionHeight, 'F');
-  pdf.setFontSize(6);
-  pdf.setTextColor(150, 90, 50);
-  pdf.text("4th (Bronze):", textX, boxY + 12 + (sectionHeight * 3));
+  const placements = [
+    { label: "1st (Gold):", color: [150, 120, 0], bgColor: [255, 240, 180] },
+    { label: "2nd (Silver):", color: [100, 100, 100], bgColor: [230, 230, 230] },
+    { label: "3rd (Bronze):", color: [150, 90, 50], bgColor: [230, 200, 170] },
+    { label: "4th (Bronze):", color: [150, 90, 50], bgColor: [230, 200, 170] },
+  ];
+
+  placements.forEach((placement, i) => {
+    if (!noColorMode) {
+      pdf.setFillColor(placement.bgColor[0], placement.bgColor[1], placement.bgColor[2]);
+      pdf.rect(boxX + 1, boxY + 7 + (sectionHeight * i), boxWidth - 2, sectionHeight, 'F');
+      pdf.setTextColor(placement.color[0], placement.color[1], placement.color[2]);
+    } else {
+      pdf.setTextColor(0,0,0); // Black text for no-color mode
+      // Optionally draw a border for sections in no-color mode
+      pdf.setDrawColor(180, 180, 180);
+      pdf.rect(boxX + 1, boxY + 7 + (sectionHeight * i), boxWidth - 2, sectionHeight, 'D'); 
+    }
+    pdf.setFontSize(6);
+    pdf.setFont("helvetica", "bold");
+    pdf.text(placement.label, textX, boxY + 12 + (sectionHeight * i));
+  });
   
   // Lines for writing names - make longer for more space
   pdf.setDrawColor(150, 150, 150);
@@ -331,24 +474,32 @@ export const useBracketPDF = () => {
    */
   const generateBracketPDF = useCallback(async (
     bracketData: BracketMatch[][],
-    title = "Tournament Bracket",
-    participantCount: number = 0,
-    pdfOrientation?: PDFOrientation
+    title: string, 
+    participantCount: number, 
+    options: Partial<PDFGenOptions> = {}
   ) => {
+    console.log("Generating PDF with options:", options);
+    
     try {
-      // Attempt to load the TKD logo
       const logoData = await loadTkdLogo();
-      
-      // Use provided orientation or fall back to state
-      const finalOrientation = pdfOrientation || orientation;
-      
-      // Get the current date
+      const finalOrientation = options.pdfOrientation || orientation;
+      const organizedByText = options.organizedBy || "Professional TKD Academy";
+      const finalFileName = options.fileName || `${title.replace(/\\s+/g, '_')}.pdf`;
+      const noColor = !!options.noColorMode;
+      const lineView = !!options.lineViewMode;
+
       const currentDate = formatDate(new Date());
       
-      // Split brackets into pages of 16 brackets each
-      const bracketPages = splitBracketForPagination(bracketData);
+      const allMatchSequentialIds = new Map<string, number>();
+      let globalMatchCounter = 1;
+      bracketData.forEach(round => {
+        round.forEach(match => {
+          allMatchSequentialIds.set(match.id, globalMatchCounter++);
+        });
+      });
       
-      // Set up PDF with proper orientation
+      const paginatedBracket = splitBracketForPagination(bracketData, participantCount, title);
+      
       const pdf = new jsPDF({
         orientation: finalOrientation,
         unit: "mm",
@@ -362,17 +513,35 @@ export const useBracketPDF = () => {
       const contentWidth = pageWidth - (margin * 2);
       const contentHeight = pageHeight - (margin * 2);
       
+      const isOverallBracketSinglePage = paginatedBracket.pages.length === 1;
+      
       // Generate each page
-      bracketPages.forEach((pageBracket, pageIndex) => {
-        // Add a new page for all pages except the first
+      paginatedBracket.pages.forEach((pageBracketData: BracketMatch[][], pageIndex: number) => {
         if (pageIndex > 0) {
           pdf.addPage();
         }
-        
-        // Add title, participant count, and date on the same line
+
+        const matchSequentialIdsForPage = new Map<string, number>();
+        pageBracketData.forEach(round => {
+          round.forEach(match => {
+            const seqId = allMatchSequentialIds.get(match.id);
+            if (seqId !== undefined) {
+              matchSequentialIdsForPage.set(match.id, seqId);
+            }
+          });
+        });
+
+        const currentPageTitle = paginatedBracket.pageTitles[pageIndex] || title;
+        const isCurrentPageFinals = paginatedBracket.isFinalsPage[pageIndex];
+        const currentOverallTournamentRounds = paginatedBracket.overallTournamentRounds;
+        const currentFirstRoundIndexOnPage = paginatedBracket.firstRoundIndexOnPage[pageIndex] !== undefined
+                                              ? paginatedBracket.firstRoundIndexOnPage[pageIndex]
+                                              : 0;
+        const isSegmentPageForRoundNaming = !isCurrentPageFinals && !isOverallBracketSinglePage;
+
         pdf.setFontSize(16);
         pdf.setFont("helvetica", "bold");
-        pdf.text(title, pageWidth / 2, margin + 5, { align: "center" });
+        pdf.text(currentPageTitle, pageWidth / 2, margin + 5, { align: "center" });
         
         pdf.setFontSize(10);
         pdf.setFont("helvetica", "normal");
@@ -384,31 +553,49 @@ export const useBracketPDF = () => {
         pdf.text(`Date: ${currentDate}`, margin, margin + 5);
         
         // Add page indicator if multiple pages
-        if (bracketPages.length > 1 && false) { //later change based on requirement
+        if (paginatedBracket.pages.length > 1) {
           pdf.setFontSize(9);
-          pdf.text(`Page ${pageIndex + 1} of ${bracketPages.length}`, pageWidth / 2, margin + 12, { align: "center" });
+          pdf.text(`Page ${pageIndex + 1} of ${paginatedBracket.pages.length}`, pageWidth / 2, margin + 12, { align: "center" });
           
-          // Add bracket range description
-          const startBracket = pageIndex * 16 + 1;
-          const endBracket = Math.min(startBracket + 15, bracketData[0].length);
-          
-          pdf.setFont("helvetica", "italic");
-          pdf.text(`Brackets ${startBracket}-${endBracket}`, pageWidth / 2, margin + 17, { align: "center" });
-          pdf.setFont("helvetica", "normal");
+          // Add bracket range description - this might need adjustment for segmented brackets
+          // For now, let's keep it simple or conditional
+          if (!isCurrentPageFinals) {
+            const playersOnThisPage = pageBracketData[0] ? pageBracketData[0].length * 2 : 0; // Approx
+            pdf.setFont("helvetica", "italic");
+            // pdf.text(`Displaying segment for up to ${playersOnThisPage} players`, pageWidth / 2, margin + 17, { align: "center" });
+            pdf.setFont("helvetica", "normal");
+          } else {
+            pdf.setFont("helvetica", "italic");
+            pdf.text(`Final Playoff Rounds`, pageWidth / 2, margin + 17, { align: "center" });
+            pdf.setFont("helvetica", "normal");
+          }
         }
         
         // Add placement box to every page
-        addPlacementBox(pdf, pageWidth, pageHeight, margin);
-        
-        // Draw the bracket with visual style matching BracketDisplay component
-        renderBracket(pdf, pageBracket, margin, contentWidth, contentHeight, finalOrientation);
-        
+        addPlacementBox(pdf, pageWidth, pageHeight, margin, noColor);        // Draw the bracket with visual style matching BracketDisplay component
+        renderBracket(
+          pdf,
+          pageBracketData,
+          margin,
+          contentWidth,
+          contentHeight,
+          finalOrientation,
+          noColor,
+          lineView,
+          isCurrentPageFinals, 
+          currentOverallTournamentRounds,
+          currentFirstRoundIndexOnPage,
+          isSegmentPageForRoundNaming, 
+          matchSequentialIdsForPage,
+          !!options.hideBye
+        );
+
         // Add footer with organization info and signature line
-        addPDFFooter(pdf, pageWidth, pageHeight, margin, pageIndex + 1, bracketPages.length, logoData || undefined);
+        addPDFFooter(pdf, pageWidth, pageHeight, margin, pageIndex + 1, paginatedBracket.pages.length, organizedByText, logoData || undefined);
       });
       
       // Save the PDF
-      pdf.save(`${title.replace(/\s+/g, '_')}.pdf`);
+      pdf.save(finalFileName);
       
       // Show success message
       toast({
@@ -527,98 +714,137 @@ export const useBracketPDF = () => {
 
   /**
    * Render a bracket with style matching the BracketDisplay component
-   */
-  const renderBracket = (
-    pdf: jsPDF, 
-    bracketData: BracketMatch[][], 
-    margin: number, 
-    contentWidth: number, 
+   */  const renderBracket = (
+    pdfDoc: jsPDF, 
+    bracketData: BracketMatch[][],
+    margin: number,
+    contentWidth: number,
     contentHeight: number,
-    orientation: PDFOrientation
-  ) => {
-    // Get page dimensions
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
+    currentOrientation: PDFOrientation, 
+    noColorMode = false,
+    lineViewMode = false,
+    isFinalsPage = false, 
+    overallTournamentRounds: number, 
+    firstRoundIndexOnThisPage: number, 
+    isSegmentPage: boolean, 
+    matchSequentialIds?: Map<string, number>,
+    hideBye = false
+  ) => {    const CONNECTOR_HORIZONTAL_MARGIN = 5; 
+    const pageWidth = pdfDoc.internal.pageSize.getWidth(); 
+    const pageHeight = pdfDoc.internal.pageSize.getHeight(); 
     
-    // Calculate dimensions
     const roundCount = bracketData.length;
     
-    // Calculate the round width based on available space and orientation
-    // Increase match proportion to make brackets wider
-    const matchWidthProportion = 0.75; // Increased to 75% for bracket, 25% for connector
-    const roundWidth = contentWidth / roundCount;
+    // Helper function to check if a match involves a bye
+    const isByeMatch = (match: BracketMatch): boolean => {
+      return match.participants[0] === "(bye)" || match.participants[1] === "(bye)";
+    };
     
-    // Calculate match dimensions - increase sizes for both orientations
-    // For landscape mode: wider brackets than portrait
-    const matchWidth = orientation === 'landscape' 
-      ? Math.min(55, roundWidth * matchWidthProportion) // Significantly wider in landscape
-      : Math.min(50, roundWidth * matchWidthProportion); // Wider in portrait too
+    let dynamicRoundWidth = contentWidth / roundCount;
+    if (isFinalsPage && roundCount < 3 && roundCount > 0) { 
+        dynamicRoundWidth = contentWidth / Math.max(roundCount, 2); 
+    }
+
+    const matchWidthProportion = 0.75; 
+    const roundWidth = dynamicRoundWidth; 
     
-    // Increase match height for better readability in both modes
-    // But keep smaller in landscape to fit 16 brackets on page
-    const matchHeight = orientation === 'landscape' ? 8 : 8; // Same height for consistency
+    const baseMatchDisplayWidth = isFinalsPage ? roundWidth * 0.9 : roundWidth * matchWidthProportion;
     
-    // Starting position with room for round labels - Start higher on the page
-    const startY = orientation === 'portrait' 
-      ? margin + 23  // Higher start in portrait
-      : margin + 25; // Higher start in landscape
+    const matchWidth = (currentOrientation === 'landscape' 
+      ? Math.min(lineViewMode ? 70 : 55, baseMatchDisplayWidth) 
+      : Math.min(lineViewMode ? 65 : 50, baseMatchDisplayWidth)); 
     
-    // Add separator line above round labels
-    pdf.setDrawColor(150, 150, 150);
-    pdf.setLineWidth(0.5);
-    pdf.line(margin, startY - 18, pageWidth - margin, startY - 18);
+    const matchHeight = currentOrientation === 'landscape' ? 8 : 8; 
     
-    // Draw round labels with background colors
-    pdf.setFontSize(orientation === 'portrait' ? 8 : 9); // Smaller font in portrait mode
+    const startY = currentOrientation === 'portrait' 
+      ? margin + 23  
+      : margin + 25; 
     
-    // Add round labels in a row at the top - moved higher to give more space for brackets
-    bracketData.forEach((round, roundIndex) => {
+    const blockWidthPdf = 3; 
+    
+    pdfDoc.setDrawColor(150, 150, 150); 
+    pdfDoc.setLineWidth(0.5); 
+    pdfDoc.line(margin, startY - 18, pageWidth - margin, startY - 18); 
+    
+    pdfDoc.setFontSize(currentOrientation === 'portrait' ? 8 : 9); 
+    
+    bracketData.forEach((round, roundIndex) => { 
       const roundX = margin + (roundIndex * roundWidth) + (matchWidth / 2);
-      const roundName = getRoundName(roundIndex, roundCount);
+      const roundName = getRoundName(
+        roundIndex, 
+        overallTournamentRounds,
+        firstRoundIndexOnThisPage,
+        isSegmentPage 
+      );
       
-      // Get round label colors
-      const colors = getRoundLabelColor(roundIndex, roundCount);
+      const roundsOnThisPage = bracketData.length;
+      const colors = getRoundLabelColor(roundIndex, roundsOnThisPage, noColorMode);
       
-      // Draw round label with colored background - reduced height and centered
-      const labelWidth = orientation === 'portrait' ? 28 : 32; // Smaller in portrait
-      const labelHeight = orientation === 'portrait' ? 6 : 7;  // Reduced height for both orientations
+      const labelWidth = currentOrientation === 'portrait' ? 28 : 32; 
+      const labelHeight = currentOrientation === 'portrait' ? 6 : 7;  
       const labelX = roundX - (labelWidth / 2);
-      const labelY = startY - 16; // Moved higher to give more space for brackets
+      const labelY = startY - 16; 
       
-      // Draw rounded rectangle background
-      pdf.setFillColor(colors.bg[0], colors.bg[1], colors.bg[2]);
-      pdf.setDrawColor(colors.border[0], colors.border[1], colors.border[2]);
-      pdf.roundedRect(labelX, labelY, labelWidth, labelHeight, 2, 2, 'FD');
+      if (colors.bg) { 
+        pdfDoc.setFillColor(colors.bg[0], colors.bg[1], colors.bg[2]); 
+      } else {
+        pdfDoc.setFillColor(255, 255, 255); 
+      }
+      pdfDoc.setDrawColor(colors.border[0], colors.border[1], colors.border[2]); 
+      pdfDoc.roundedRect(labelX, labelY, labelWidth, labelHeight, 2, 2, 'FD'); 
       
-      // Draw round name text - centered vertically in the smaller label
-      pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
-      pdf.setFont("helvetica", "bold");
-      pdf.text(roundName, roundX, startY - 11.5, { align: "center" }); // Adjusted text position
+      pdfDoc.setTextColor(colors.text[0], colors.text[1], colors.text[2]); 
+      pdfDoc.setFont("helvetica", "bold"); 
+      pdfDoc.text(roundName, roundX, startY - 11.5, { align: "center" }); 
     });
     
-    // Reset text color
-    pdf.setTextColor(30, 30, 30);
+    pdfDoc.setTextColor(30, 30, 30); 
     
-    // Pre-calculate match positions to ensure proper alignment
     const matchPositions = calculateMatchPositions(
       bracketData,
       startY-7,
       matchHeight,
-      roundWidth,
+      roundWidth, 
       margin,
-      orientation
+      currentOrientation 
     );
-    
-    // Draw each round
-    bracketData.forEach((round, roundIndex) => {
-      // Draw each match in this round
+      bracketData.forEach((round, roundIndex) => {
       round.forEach((match, matchIndex) => {
-        // Get the pre-calculated position for this match
         const matchPosition = matchPositions[roundIndex].find(m => m.id === match.id);
         if (!matchPosition) return;
         
         const roundX = matchPosition.x;
         const matchY = matchPosition.y;
+
+        // Skip rendering bye matches if hideBye is enabled
+        if (hideBye && isByeMatch(match)) {
+          return; // Skip drawing this match entirely but maintain positioning
+        }
+
+        if (matchSequentialIds) {
+          const currentMatchSeqId = matchSequentialIds.get(match.id);
+          if (currentMatchSeqId !== undefined) {
+            const idText = `M${currentMatchSeqId}`;
+            pdfDoc.setFontSize(6); 
+            pdfDoc.setTextColor(128, 128, 128); 
+            pdfDoc.setFont("helvetica", "normal"); 
+            pdfDoc.text(idText, roundX + matchWidth + 1, matchY + (matchHeight / 2) + 1.5); 
+            pdfDoc.setTextColor(30, 30, 30); 
+          }
+        }
+
+        if (lineViewMode && roundIndex > 0) {
+          const lineViewMatchRepresentationWidth = matchWidth; // Occupy full conceptual width
+          const lineViewMatchX = matchPosition.x;
+          const lineViewMatchY = matchPosition.y + (matchHeight / 2); // Vertical center of the match slot
+          
+          pdfDoc.setDrawColor(150, 150, 150); // Use pdfDoc
+          pdfDoc.setLineWidth(0.3); // Use pdfDoc
+          pdfDoc.line(lineViewMatchX, lineViewMatchY, lineViewMatchX + lineViewMatchRepresentationWidth, lineViewMatchY); // Use pdfDoc
+          
+          // Skip drawing the full match box, participants, etc.
+          return; 
+        }
         
         // Get participant styling info (similar to BracketDisplay getParticipantStyle)
         const isFirstRound = roundIndex === 0;
@@ -632,121 +858,190 @@ export const useBracketPDF = () => {
                               previousRoundHadBye(match.participants[1], bracketData, roundIndex);
         
         // Draw match box
-        pdf.setDrawColor(200, 200, 200);
-        pdf.setFillColor(255, 255, 255);
-        pdf.roundedRect(roundX, matchY, matchWidth, matchHeight, 1, 1, 'FD');
+        pdfDoc.setDrawColor(200, 200, 200); // Use pdfDoc
+        pdfDoc.setFillColor(255, 255, 255); // Use pdfDoc
+        pdfDoc.roundedRect(roundX, matchY, matchWidth, matchHeight, 1, 1, 'FD'); // Use pdfDoc
         
         // Draw participant 1
         const participant1 = match.participants[0] || "";
         const text1 = participant1 === "(bye)" ? "(bye)" : participant1;
-        // Set appropriate background color (similar to BracketDisplay colors)
-        if (participant1 === "(bye)") {
-          // Gray with green border for bye
-          pdf.setFillColor(240, 240, 240);
-          pdf.rect(roundX, matchY, matchWidth, matchHeight/2, 'F');
-          pdf.setDrawColor(0, 180, 0);
-          pdf.line(roundX, matchY, roundX, matchY + matchHeight/2);
-          pdf.setDrawColor(200, 200, 200);
-        } else if (hasOpponentByeTop) {
-          // Light green for player with bye
-          pdf.setFillColor(240, 255, 240);
-          pdf.rect(roundX, matchY, matchWidth, matchHeight/2, 'F');
-          pdf.setDrawColor(0, 180, 0);
-          pdf.line(roundX, matchY, roundX, matchY + matchHeight/2);
-          pdf.setDrawColor(200, 200, 200);
-        } else if (hasMatchByeTop) {
-          // Light green for player from match with bye
-          pdf.setFillColor(240, 255, 240);
-          pdf.rect(roundX, matchY, matchWidth, matchHeight/2, 'F');
-          pdf.setDrawColor(0, 180, 0);
-          pdf.line(roundX, matchY, roundX, matchY + matchHeight/2);
-          pdf.setDrawColor(200, 200, 200);
+        
+        if (noColorMode) {
+            const participantTextStartX = roundX + blockWidthPdf + 2;
+            // const participantNameBgX = roundX + blockWidthPdf; // Unused
+            // const participantNameBgWidth = matchWidth - blockWidthPdf; // Unused
+
+            if (participant1 === "(bye)") {
+                pdfDoc.setFillColor(240, 240, 240);  // Use pdfDoc
+                pdfDoc.rect(roundX, matchY, matchWidth, matchHeight / 2, 'F'); // Use pdfDoc
+                pdfDoc.setTextColor(150, 150, 150);  // Use pdfDoc
+            } else {
+                pdfDoc.setFillColor(59, 130, 246);  // Use pdfDoc
+                pdfDoc.rect(roundX, matchY, blockWidthPdf, matchHeight / 2, 'F'); // Use pdfDoc
+                
+                const originalFontSize = pdfDoc.getFontSize(); // Use pdfDoc
+                const originalFont = pdfDoc.getFont(); // Use pdfDoc
+                pdfDoc.setFontSize(6);  // Use pdfDoc
+                pdfDoc.setFont("helvetica", "bold"); // Use pdfDoc
+                pdfDoc.setTextColor(255, 255, 255);  // Use pdfDoc
+                pdfDoc.text("B", roundX + blockWidthPdf / 2, matchY + (matchHeight / 4) + 1.5, { align: "center" }); // Use pdfDoc
+                pdfDoc.setFontSize(originalFontSize); // Use pdfDoc
+                pdfDoc.setFont(originalFont.fontName, originalFont.fontStyle); // Use pdfDoc
+
+
+                pdfDoc.setFillColor(255, 255, 255); // Use pdfDoc
+                // pdfDoc.rect(participantNameBgX, matchY, participantNameBgWidth, matchHeight / 2, 'F'); // This line was causing a visual bug
+                pdfDoc.setTextColor(0, 0, 0); // Use pdfDoc
+            }
         } else {
-          // Blue for top participant
-          pdf.setFillColor(240, 245, 255);
-          pdf.rect(roundX, matchY, matchWidth, matchHeight/2, 'F');
-          pdf.setDrawColor(30, 120, 255);
-          pdf.line(roundX, matchY, roundX, matchY + matchHeight/2);
-          pdf.setDrawColor(200, 200, 200);
+            // Existing color logic for Participant 1
+            if (participant1 === "(bye)") {
+              pdfDoc.setFillColor(240, 240, 240); // Use pdfDoc
+              pdfDoc.rect(roundX, matchY, matchWidth, matchHeight/2, 'F');  // Use pdfDoc
+              pdfDoc.setDrawColor(0, 180, 0); // Use pdfDoc
+              pdfDoc.line(roundX, matchY, roundX, matchY + matchHeight/2); // Use pdfDoc
+            } else if (hasOpponentByeTop || hasMatchByeTop) {
+              pdfDoc.setFillColor(240, 255, 240); // Use pdfDoc
+              pdfDoc.rect(roundX, matchY, matchWidth, matchHeight/2, 'F'); // Use pdfDoc
+              pdfDoc.setDrawColor(0, 180, 0); // Use pdfDoc
+              pdfDoc.line(roundX, matchY, roundX, matchY + matchHeight/2); // Use pdfDoc
+            } else {
+              pdfDoc.setFillColor(240, 245, 255);  // Use pdfDoc
+              pdfDoc.rect(roundX, matchY, matchWidth, matchHeight/2, 'F'); // Use pdfDoc
+              pdfDoc.setDrawColor(30, 120, 255);  // Use pdfDoc
+              pdfDoc.line(roundX, matchY, roundX, matchY + matchHeight/2); // Use pdfDoc
+            }
+            pdfDoc.setTextColor(30, 30, 30); // Use pdfDoc
+        }
+        pdfDoc.setDrawColor(200, 200, 200); // Use pdfDoc
+
+        pdfDoc.setFontSize(6.5); // Use pdfDoc
+        if (match.winner === participant1 && participant1 !== "(bye)") {
+          pdfDoc.setFont("helvetica", "bold"); // Use pdfDoc
+        } else {
+          pdfDoc.setFont("helvetica", "normal"); // Use pdfDoc
         }
         
-        // Draw text for participant 1
-        pdf.setFontSize(6.5);
-        if (match.winner === participant1) {
-          pdf.setFont("helvetica", "bold");
-        } else {
-          pdf.setFont("helvetica", "normal");
-        }
-        
-        // Truncate text if needed
         let displayText1 = text1;
-        pdf.setTextColor(30, 30, 30);
-        const maxTextWidth = matchWidth - 4;
-        if (pdf.getTextWidth(displayText1) > maxTextWidth) {
-          displayText1 = displayText1.substring(0, 15) + "...";
-        }
+        const availableTextWidth1 = (noColorMode && participant1 !== "(bye)") 
+                                  ? matchWidth - blockWidthPdf - 2 - 2 
+                                  : matchWidth - 4; 
         
-        pdf.text(displayText1, roundX + 2, matchY + (matchHeight / 4) + 1);
+        const ellipsis = "...";
+        const ellipsisWidth = pdfDoc.getTextWidth(ellipsis); // Use pdfDoc
+
+        if (pdfDoc.getTextWidth(displayText1) > availableTextWidth1) { // Use pdfDoc
+            if (availableTextWidth1 <= ellipsisWidth && availableTextWidth1 > 0) {
+                let tempText = displayText1;
+                 while(pdfDoc.getTextWidth(tempText) > availableTextWidth1 && tempText.length > 0) { // Use pdfDoc
+                    tempText = tempText.substring(0, tempText.length - 1);
+                 }
+                 displayText1 = tempText;
+            } else if (availableTextWidth1 > ellipsisWidth) {
+                let newText = displayText1;
+                while (pdfDoc.getTextWidth(newText + ellipsis) > availableTextWidth1 && newText.length > 0) { // Use pdfDoc
+                    newText = newText.substring(0, newText.length - 1);
+                }
+                displayText1 = newText + ellipsis;
+            } else { 
+                displayText1 = "";
+            }
+        }
+
+        const textX1 = (noColorMode && participant1 !== "(bye)") ? (roundX + blockWidthPdf + 2) : (roundX + 2);
+        pdfDoc.text(displayText1, textX1, matchY + (matchHeight / 4) + 1); // Use pdfDoc
         
         // Draw divider line
-        pdf.setDrawColor(200, 200, 200);
-        pdf.line(roundX, matchY + matchHeight/2, roundX + matchWidth, matchY + matchHeight/2);
+        pdfDoc.setDrawColor(200, 200, 200); // Use pdfDoc
+        pdfDoc.line(roundX, matchY + matchHeight/2, roundX + matchWidth, matchY + matchHeight/2); // Use pdfDoc
         
         // Draw participant 2
         const participant2 = match.participants[1] || "";
         const text2 = participant2 === "(bye)" ? "(bye)" : participant2;
         
-        // Set appropriate background color (similar to BracketDisplay colors)
-        if (participant2 === "(bye)") {
-          // Gray with green border for bye
-          pdf.setFillColor(240, 240, 240);
-          pdf.rect(roundX, matchY + matchHeight/2, matchWidth, matchHeight/2, 'F');
-          pdf.setDrawColor(0, 180, 0);
-          pdf.line(roundX, matchY + matchHeight/2, roundX, matchY + matchHeight);
-          pdf.setDrawColor(200, 200, 200);
-        } else if (hasOpponentByeBottom) {
-          // Light green for player with bye
-          pdf.setFillColor(240, 255, 240);
-          pdf.rect(roundX, matchY + matchHeight/2, matchWidth, matchHeight/2, 'F');
-          pdf.setDrawColor(0, 180, 0);
-          pdf.line(roundX, matchY + matchHeight/2, roundX, matchY + matchHeight);
-          pdf.setDrawColor(200, 200, 200);
-        } else if (hasMatchByeBottom) {
-          // Light green for player from match with bye
-          pdf.setFillColor(240, 255, 240);
-          pdf.rect(roundX, matchY + matchHeight/2, matchWidth, matchHeight/2, 'F');
-          pdf.setDrawColor(0, 180, 0);
-          pdf.line(roundX, matchY + matchHeight/2, roundX, matchY + matchHeight);
-          pdf.setDrawColor(200, 200, 200);
+        if (noColorMode) {
+            const participantTextStartX = roundX + blockWidthPdf + 2;
+            // const participantNameBgX = roundX + blockWidthPdf; // Unused
+            // const participantNameBgWidth = matchWidth - blockWidthPdf; // Unused
+
+            if (participant2 === "(bye)") {
+                pdfDoc.setFillColor(240, 240, 240); // Use pdfDoc
+                pdfDoc.rect(roundX, matchY + matchHeight / 2, matchWidth, matchHeight / 2, 'F'); // Use pdfDoc
+                pdfDoc.setTextColor(150, 150, 150); // Use pdfDoc
+            } else {
+                pdfDoc.setFillColor(239, 68, 68);  // Use pdfDoc
+                pdfDoc.rect(roundX, matchY + matchHeight / 2, blockWidthPdf, matchHeight / 2, 'F'); // Use pdfDoc
+
+                const originalFontSize = pdfDoc.getFontSize(); // Use pdfDoc
+                const originalFont = pdfDoc.getFont(); // Use pdfDoc
+                pdfDoc.setFontSize(6); // Use pdfDoc
+                pdfDoc.setFont("helvetica", "bold"); // Use pdfDoc
+                pdfDoc.setTextColor(255, 255, 255); // Use pdfDoc
+                pdfDoc.text("R", roundX + blockWidthPdf / 2, matchY + (matchHeight * 3/4) + 1.5, { align: "center" }); // Use pdfDoc
+                pdfDoc.setFontSize(originalFontSize); // Use pdfDoc
+                pdfDoc.setFont(originalFont.fontName, originalFont.fontStyle); // Use pdfDoc
+
+                pdfDoc.setFillColor(255, 255, 255); // Use pdfDoc
+                // pdfDoc.rect(participantNameBgX, matchY + matchHeight / 2, participantNameBgWidth, matchHeight / 2, 'F'); // This line was causing a visual bug
+                pdfDoc.setTextColor(0, 0, 0); // Use pdfDoc
+            }
         } else {
-          // Red for bottom participant
-          pdf.setFillColor(255, 245, 245);
-          pdf.rect(roundX, matchY + matchHeight/2, matchWidth, matchHeight/2, 'F');
-          pdf.setDrawColor(255, 70, 70);
-          pdf.line(roundX, matchY + matchHeight/2, roundX, matchY + matchHeight);
-          pdf.setDrawColor(200, 200, 200);
+            // Existing color logic for Participant 2
+            if (participant2 === "(bye)") {
+              pdfDoc.setFillColor(240, 240, 240); // Use pdfDoc
+              pdfDoc.rect(roundX, matchY + matchHeight/2, matchWidth, matchHeight/2, 'F'); // Use pdfDoc
+              pdfDoc.setDrawColor(0, 180, 0); // Use pdfDoc
+              pdfDoc.line(roundX, matchY + matchHeight/2, roundX, matchY + matchHeight); // Use pdfDoc
+            } else if (hasOpponentByeBottom || hasMatchByeBottom) {
+              pdfDoc.setFillColor(240, 255, 240); // Use pdfDoc
+              pdfDoc.rect(roundX, matchY + matchHeight/2, matchWidth, matchHeight/2, 'F'); // Use pdfDoc
+              pdfDoc.setDrawColor(0, 180, 0); // Use pdfDoc
+              pdfDoc.line(roundX, matchY + matchHeight/2, roundX, matchY + matchHeight); // Use pdfDoc
+            } else {
+              pdfDoc.setFillColor(255, 245, 245);  // Use pdfDoc
+              pdfDoc.rect(roundX, matchY + matchHeight/2, matchWidth, matchHeight/2, 'F'); // Use pdfDoc
+              pdfDoc.setDrawColor(255, 70, 70);  // Use pdfDoc
+              pdfDoc.line(roundX, matchY + matchHeight/2, roundX, matchY + matchHeight); // Use pdfDoc
+            }
+            pdfDoc.setTextColor(30, 30, 30); // Use pdfDoc
+        }
+        pdfDoc.setDrawColor(200, 200, 200); // Use pdfDoc
+
+        pdfDoc.setFontSize(6.5); // Use pdfDoc
+        if (match.winner === participant2 && participant2 !== "(bye)") {
+          pdfDoc.setFont("helvetica", "bold"); // Use pdfDoc
+        } else {
+          pdfDoc.setFont("helvetica", "normal"); // Use pdfDoc
         }
         
-        // Draw text for participant 2
-        pdf.setFontSize(6.5);
-        if (match.winner === participant2) {
-          pdf.setFont("helvetica", "bold");
-        } else {
-          pdf.setFont("helvetica", "normal");
-        }
-        
-        // Truncate text if needed
         let displayText2 = text2;
-        pdf.setTextColor(30, 30, 30);
-        if (pdf.getTextWidth(displayText2) > maxTextWidth) {
-          displayText2 = displayText2.substring(0, 15) + "...";
+        const availableTextWidth2 = (noColorMode && participant2 !== "(bye)")
+                                  ? matchWidth - blockWidthPdf - 2 - 2
+                                  : matchWidth - 4;
+
+        if (pdfDoc.getTextWidth(displayText2) > availableTextWidth2) {
+            if (availableTextWidth2 <= ellipsisWidth && availableTextWidth2 > 0) {
+                 let tempText = displayText2;
+                 while(pdfDoc.getTextWidth(tempText) > availableTextWidth2 && tempText.length > 0) {
+                    tempText = tempText.substring(0, tempText.length - 1);
+                 }
+                 displayText2 = tempText;
+            } else if (availableTextWidth2 > ellipsisWidth) {
+                let newText = displayText2;
+                while (pdfDoc.getTextWidth(newText + ellipsis) > availableTextWidth2 && newText.length > 0) {
+                    newText = newText.substring(0, newText.length - 1);
+                }
+                displayText2 = newText + ellipsis;
+            } else {
+                displayText2 = "";
+            }
         }
-        
-        pdf.text(displayText2, roundX + 2, matchY + (matchHeight * 3/4) + 1);
+
+        const textX2 = (noColorMode && participant2 !== "(bye)") ? (roundX + blockWidthPdf + 2) : (roundX + 2);
+        pdfDoc.text(displayText2, textX2, matchY + (matchHeight * 3/4) + 1); // Use pdfDoc
       });
     });
-    
-    // Draw connectors (similar to how BracketDisplay calculates its connectors)
+      // Draw connectors (similar to how BracketDisplay calculates its connectors)
     // Process all rounds except the last one
     for (let roundIndex = 0; roundIndex < matchPositions.length - 1; roundIndex++) {
       const round = matchPositions[roundIndex];
@@ -759,6 +1054,18 @@ export const useBracketPDF = () => {
           const nextMatch = nextRound.find(m => m.id === match.nextMatchId);
           
           if (nextMatch) {
+            // Get the actual match data to check for byes
+            const currentMatchData = bracketData[roundIndex].find(m => m.id === match.id);
+            const nextMatchData = bracketData[roundIndex + 1].find(m => m.id === nextMatch.id);
+            
+            // Skip drawing connectors if hideBye is enabled and either match involves a bye
+            if (hideBye && (
+              (currentMatchData && isByeMatch(currentMatchData)) || 
+              (nextMatchData && isByeMatch(nextMatchData))
+            )) {
+              return; // Skip drawing this connector
+            }
+            
             // Calculate connector points
             // Start point (from current match)
             const startX = match.x + matchWidth;
@@ -772,17 +1079,17 @@ export const useBracketPDF = () => {
             const midX = startX + ((endX - startX) / 2);
             
             // Draw connector lines with lighter color (similar to BracketDisplay)
-            pdf.setDrawColor(150, 150, 150);
-            pdf.setLineWidth(0.2);
+            pdfDoc.setDrawColor(150, 150, 150);
+            pdfDoc.setLineWidth(0.2);
             
             // Horizontal line from current match
-            pdf.line(startX, startY, midX, startY);
+            pdfDoc.line(startX, startY, midX, startY);
             
             // Vertical connector
-            pdf.line(midX, startY, midX, endY);
+            pdfDoc.line(midX, startY, midX, endY);
             
             // Horizontal line to next match
-            pdf.line(midX, endY, endX, endY);
+            pdfDoc.line(midX, endY, endX, endY);
           }
         }
       });
@@ -792,34 +1099,47 @@ export const useBracketPDF = () => {
     const finalRound = bracketData[bracketData.length - 1];
     if (finalRound && finalRound.length === 1 && finalRound[0].winner) {
       const finalMatch = finalRound[0];
-      const winner = finalMatch.winner;
-      
-      // Find the position of the final match
+      // const winner = finalMatch.winner; // Not strictly needed if we might skip drawing
       const finalMatchPos = matchPositions[matchPositions.length - 1][0];
       
       if (finalMatchPos) {
-        // Add winner badge
-        pdf.setFillColor(100, 100, 255);
-        pdf.setDrawColor(80, 80, 200);
-        pdf.roundedRect(
-          finalMatchPos.x + matchWidth + 2, 
-          finalMatchPos.y + (finalMatchPos.height / 2) - 3, 
-          20, 
-          6, 
-          2, 
-          2, 
-          'FD'
-        );
-        
-        pdf.setTextColor(255, 255, 255);
-        pdf.setFontSize(7);
-        pdf.setFont("helvetica", "bold");
-        pdf.text(
-          "WINNER", 
-          finalMatchPos.x + matchWidth + 12, 
-          finalMatchPos.y + (finalMatchPos.height / 2) + 1, 
-          { align: "center" }
-        );
+        // Determine if the final round on this page should be rendered as a line
+        // (i.e., lineViewMode is on AND the final round is not the first round of this page's bracketData)
+        const isFinalRoundAsLine = lineViewMode && (bracketData.length - 1 > 0);
+
+        if (!isFinalRoundAsLine) {
+          let badgeBg = [100, 100, 255]; 
+          let badgeBorder = [80, 80, 200]; 
+          let badgeText = [255, 255, 255]; 
+
+          if (noColorMode) {
+              badgeBg = [230, 230, 230]; 
+              badgeBorder = [0, 0, 0];   
+              badgeText = [0, 0, 0];     
+          }
+
+          pdfDoc.setFillColor(badgeBg[0], badgeBg[1], badgeBg[2]);
+          pdfDoc.setDrawColor(badgeBorder[0], badgeBorder[1], badgeBorder[2]);
+          pdfDoc.roundedRect(
+            finalMatchPos.x + matchWidth + 2, 
+            finalMatchPos.y + (finalMatchPos.height / 2) - 3, 
+            20, 
+            6, 
+            2, 
+            2, 
+            'FD'
+          );
+          
+          pdfDoc.setTextColor(badgeText[0], badgeText[1], badgeText[2]);
+          pdfDoc.setFontSize(7);
+          pdfDoc.setFont("helvetica", "bold");
+          pdfDoc.text(
+            "WINNER", 
+            finalMatchPos.x + matchWidth + 12, 
+            finalMatchPos.y + (finalMatchPos.height / 2) + 1, 
+            { align: "center" }
+          );
+        }
       }
     }
     
@@ -837,227 +1157,128 @@ export const useBracketPDF = () => {
     // }
   };
 
-  // Function to toggle orientation
-  const toggleOrientation = useCallback(() => {
-    setOrientation(prev => prev === "landscape" ? "portrait" : "landscape");
-  }, []);
-
   /**
    * Preview the PDF before downloading
    */
   const previewBracketPDF = useCallback(async (
     bracketData: BracketMatch[][],
     title = "Tournament Bracket",
-    participantCount: number = 0
+    participantCount: number = 0,
+    options: Partial<PDFGenOptions> = {}
   ) => {
     try {
-      // Attempt to load the TKD logo
       const logoData = await loadTkdLogo();
-      
-      // Get the current date
+      const finalOrientation = options.pdfOrientation || orientation;
+      const organizedByText = options.organizedBy || "Professional TKD Academy";
+      const noColor = !!options.noColorMode;
+      const lineView = !!options.lineViewMode;
+
       const currentDate = formatDate(new Date());
-      
-      // Split brackets into pages of 16 brackets each
-      const bracketPages = splitBracketForPagination(bracketData);
-      
-      // Create the PDF
+
+      // Generate sequential IDs for ALL matches in the entire bracketData for preview
+      const allMatchSequentialIdsPreview = new Map<string, number>();
+      let globalMatchCounterPreview = 1;
+      bracketData.forEach(round => {
+        round.forEach(match => {
+          allMatchSequentialIdsPreview.set(match.id, globalMatchCounterPreview++);
+        });
+      });
+
+      const paginatedBracket = splitBracketForPagination(bracketData, participantCount, title);
+
       const pdf = new jsPDF({
-        orientation: orientation,
+        orientation: finalOrientation,
         unit: "mm",
         format: "a4"
       });
-      
-      // Define page dimensions and layout settings
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 10;
-      const contentWidth = pageWidth - (margin * 2);
-      const contentHeight = pageHeight - (margin * 2);
-      
-      // Generate each page
-      bracketPages.forEach((pageBracket, pageIndex) => {
-        // Add a new page for all pages except the first
+
+      const isOverallBracketSinglePage = paginatedBracket.pages.length === 1;
+
+      // Generate each page for preview
+      paginatedBracket.pages.forEach((pageBracketData: BracketMatch[][], pageIndex: number) => {
         if (pageIndex > 0) {
           pdf.addPage();
         }
-        
-        // Add title, participant count, and date on the same line
+
+        // Create a map of sequential IDs for matches on the current page for preview
+        const matchSequentialIdsForPage = new Map<string, number>();
+        pageBracketData.forEach(round => {
+          round.forEach(match => {
+            const seqId = allMatchSequentialIdsPreview.get(match.id); // Use allMatchSequentialIdsPreview
+            if (seqId !== undefined) {
+              matchSequentialIdsForPage.set(match.id, seqId);
+            }
+          });
+        });
+
+        const currentPageTitle = paginatedBracket.pageTitles[pageIndex] || title;
+        const isCurrentPageFinals = paginatedBracket.isFinalsPage[pageIndex] || false;
+        const currentOverallTournamentRounds = paginatedBracket.overallTournamentRounds;
+        const currentFirstRoundIndexOnPage = paginatedBracket.firstRoundIndexOnPage[pageIndex] !== undefined
+                                              ? paginatedBracket.firstRoundIndexOnPage[pageIndex]
+                                              : 0;
+        const isSegmentPageForRoundNaming = !isCurrentPageFinals && !isOverallBracketSinglePage;
+
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const margin = 10;
+        const contentWidth = pageWidth - (margin * 2);
+        const contentHeight = pageHeight - (margin * 2);
+
         pdf.setFontSize(16);
         pdf.setFont("helvetica", "bold");
-        pdf.text(title, pageWidth / 2, margin + 5, { align: "center" });
-        
+        pdf.text(currentPageTitle, pageWidth / 2, margin + 5, { align: "center" });
+
         pdf.setFontSize(10);
         pdf.setFont("helvetica", "normal");
-        
-        // Add participant count on right side
-        pdf.text(`Participants: ${participantCount}`, pageWidth - margin - 40, margin + 5, { align: "right" });
-        
-        // Add date on left side
+        pdf.text(`Participants: ${participantCount}`, pageWidth - margin -40, margin + 5, { align: "right" });
         pdf.text(`Date: ${currentDate}`, margin, margin + 5);
-        
-        // Add page indicator if multiple pages
-        if (bracketPages.length > 1 ) { //later change based on requirement
+
+        if (paginatedBracket.pages.length > 1) {
           pdf.setFontSize(9);
-          // pdf.text(`Page ${pageIndex + 1} of ${bracketPages.length}`, pageWidth / 2, margin + 12, { align: "center" });
-          
-          // Add bracket range description
-          const startBracket = pageIndex * 16 + 1;
-          const endBracket = Math.min(startBracket + 15, bracketData[0].length);
-          
-          pdf.setFont("helvetica", "italic");
-          pdf.text(`Matches ${startBracket}-${endBracket}`, pageWidth - margin - 15, margin + 5, { align: "right" });
-          pdf.setFont("helvetica", "normal");
+          pdf.text(`Page ${pageIndex + 1} of ${paginatedBracket.pages.length}`, pageWidth / 2, margin + 12, { align: "center" });
+           if (!isCurrentPageFinals) {
+            pdf.setFont("helvetica", "italic");
+            // pdf.text(`Displaying segment for up to 32 players`, pageWidth / 2, margin + 17, { align: "center" });
+            pdf.setFont("helvetica", "normal");
+          } else {
+            pdf.setFont("helvetica", "italic");
+            pdf.text(`Final Playoff Rounds`, pageWidth / 2, margin + 17, { align: "center" });
+            pdf.setFont("helvetica", "normal");
+          }
         }
-        
-        // Add placement box to every page
-        addPlacementBox(pdf, pageWidth, pageHeight, margin);
-        
-        // Draw the bracket with visual style matching BracketDisplay component
-        renderBracket(pdf, pageBracket, margin, contentWidth, contentHeight, orientation);
-        
-        // Add footer with organization info and signature line
-        addPDFFooter(pdf, pageWidth, pageHeight, margin, pageIndex + 1, bracketPages.length,logoData || undefined);
+          addPlacementBox(pdf, pageWidth, pageHeight, margin, noColor);
+        renderBracket(
+          pdf,
+          pageBracketData,
+          margin,
+          contentWidth,
+          contentHeight,
+          finalOrientation,
+          noColor,
+          lineView,
+          isCurrentPageFinals,
+          currentOverallTournamentRounds,
+          currentFirstRoundIndexOnPage,
+          isSegmentPageForRoundNaming,
+          matchSequentialIdsForPage, // Pass the sequential IDs for the current page for preview
+          !!options.hideBye
+        );
+        addPDFFooter(pdf, pageWidth, pageHeight, margin, pageIndex + 1, paginatedBracket.pages.length, organizedByText, logoData || undefined);
       });
-      
-      // Generate PDF as data URL for preview
-      const pdfOutput = pdf.output('datauristring');
-      
-      // Open PDF in a new window (better browser compatibility than new tab)
-      const previewWindow = window.open('', '_blank');
-      if (!previewWindow) {
-        // If popup is blocked, show error message
+
+      const pdfDataUri = pdf.output('datauristring');
+      const previewWindow = window.open();
+      if (previewWindow) {
+        previewWindow.document.write(`<iframe width='100%' height='100%' src='${pdfDataUri}'></iframe>`);
+        previewWindow.document.title = `Preview: ${options.fileName || title}`;
+      } else {
         toast({
           variant: "destructive",
-          title: "Preview Blocked",
-          description: "Please allow popups to preview the bracket.",
+          title: "Preview Error",
+          description: "Failed to open preview window. Please check your browser settings.",
         });
-        return false;
       }
-      
-      // Write PDF viewer HTML to the new window
-      previewWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Tournament Bracket Preview</title>
-          <style>
-            body {
-              margin: 0;
-              padding: 0;
-              display: flex;
-              flex-direction: column;
-              height: 100vh;
-            }
-            .toolbar {
-              background: #f5f5f5;
-              border-bottom: 1px solid #ddd;
-              padding: 10px;
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-            }
-            .preview {
-              flex: 1;
-              width: 100%;
-              height: 100%;
-              border: none;
-            }
-            button {
-              padding: 6px 12px;
-              background: #0284c7;
-              color: white;
-              border: none;
-              border-radius: 4px;
-              cursor: pointer;
-              margin-left: 10px;
-            }
-            button:hover {
-              background: #0369a1;
-            }
-            .page-controls {
-              display: ${bracketPages.length > 1 ? 'flex' : 'none'};
-              align-items: center;
-              margin-right: 20px;
-            }
-            .page-info {
-              margin: 0 10px;
-              font-size: 14px;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="toolbar">
-            <h3>Tournament Bracket Preview</h3>
-            <div style="display: flex; align-items: center;">
-              <div class="page-controls">
-                <button id="prev-btn" ${bracketPages.length <= 1 ? 'disabled' : ''}>Previous Page</button>
-                <span class="page-info">Page <span id="current-page">1</span> of ${bracketPages.length}</span>
-                <button id="next-btn" ${bracketPages.length <= 1 ? 'disabled' : ''}>Next Page</button>
-              </div>
-              <button id="print-btn">Print</button>
-              <button id="download-btn">Download</button>
-              <button id="close-btn">Close</button>
-            </div>
-          </div>
-          <iframe class="preview" src="${pdfOutput}"></iframe>
-          <script>
-            const iframe = document.querySelector('iframe');
-            let currentPage = 0;
-            const totalPages = ${bracketPages.length};
-            
-            document.getElementById('print-btn').addEventListener('click', function() {
-              iframe.contentWindow.print();
-            });
-            
-            document.getElementById('download-btn').addEventListener('click', function() {
-              const link = document.createElement('a');
-              link.href = "${pdfOutput}";
-              link.download = "${title.replace(/\s+/g, '_')}.pdf";
-              link.click();
-            });
-            
-            document.getElementById('close-btn').addEventListener('click', function() {
-              window.close();
-            });
-            
-            // Page controls for multi-page PDFs
-            if (totalPages > 1) {
-              const pdfDoc = iframe.contentWindow;
-              const currentPageEl = document.getElementById('current-page');
-              
-              document.getElementById('prev-btn').addEventListener('click', function() {
-                if (currentPage > 0) {
-                  currentPage--;
-                  if (pdfDoc.PDFViewerApplication) {
-                    pdfDoc.PDFViewerApplication.page = currentPage + 1;
-                  }
-                  currentPageEl.textContent = currentPage + 1;
-                }
-              });
-              
-              document.getElementById('next-btn').addEventListener('click', function() {
-                if (currentPage < totalPages - 1) {
-                  currentPage++;
-                  if (pdfDoc.PDFViewerApplication) {
-                    pdfDoc.PDFViewerApplication.page = currentPage + 1;
-                  }
-                  currentPageEl.textContent = currentPage + 1;
-                }
-              });
-            }
-          </script>
-        </body>
-        </html>
-      `);
-      
-      previewWindow.document.close();
-      
-      // Show success message
-      toast({
-        title: "Preview Ready",
-        description: "The bracket preview has been opened in a new window.",
-      });
-      
       return true;
     } catch (error) {
       console.error("Error generating bracket PDF preview:", error);
@@ -1070,11 +1291,16 @@ export const useBracketPDF = () => {
     }
   }, [toast, orientation, loadTkdLogo]);
 
-  return { 
+  // Function to toggle orientation
+  const toggleOrientation = useCallback(() => {
+    setOrientation(prev => prev === "landscape" ? "portrait" : "landscape");
+  }, []);
+
+  return {
     generateBracketPDF,
     previewBracketPDF,
     orientation,
-    setOrientation,
-    toggleOrientation
+    toggleOrientation, // Ensure toggleOrientation is returned
+    loadTkdLogo // if it needs to be exposed
   };
 };

@@ -51,3 +51,32 @@ export const createTournamentSchema = z.object({
 });
 
 export type CreateTournamentRequest = z.infer<typeof createTournamentSchema>;
+
+// Extended Participant Management (for future features)
+export interface ParticipantDetails {
+  id: string; // Unique identifier
+  name: string; // Display name
+  number?: string; // Participant number/bib
+  education?: string; // Educational background
+  currentBelt?: string; // Current belt level (e.g., "Black Belt 1st Dan")
+  category?: string; // Competition category (e.g., "Adult Male", "Junior Female")
+  age?: number; // Age
+  dateOfBirth?: string; // Date of birth
+  coach?: string; // Coach name
+  club?: string; // Club/School affiliation
+  weight?: number; // Weight in kg
+  height?: number; // Height in cm
+  experience?: string; // Years of experience
+  medicalNotes?: string; // Any medical considerations
+  emergencyContact?: {
+    name: string;
+    phone: string;
+    relationship: string;
+  };
+  createdAt: string; // When participant was added
+  updatedAt: string; // Last updated
+}
+
+// For backwards compatibility, we'll keep using string arrays for now
+// but plan to migrate to ParticipantDetails[] in the future
+export type ParticipantIdentifier = string; // For now, just the name

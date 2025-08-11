@@ -26,9 +26,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   };
   return (
     <div className="flex h-screen flex-col overflow-auto scroll-smooth scrollbar-hide">
-      <Navbar />
-
-      <div className="flex flex-1 scrollbar-hide">
+      <Navbar />      <div className="flex flex-1 scrollbar-hide">
         {/* Sidebar for desktop */}
         {showNavigation && (
           <aside className={cn("hidden border-r bg-muted/40 md:block ",collapsed ? "w-20" : "w-64")}>
@@ -36,37 +34,8 @@ export function AppLayout({ children }: AppLayoutProps) {
           </aside>
         )}
 
-{/* <div className="flex flex-1 relative "> */}
-        {/* Sidebar for desktop */}
-        {/* {showNavigation && (
-          <aside 
-            className={cn(
-              "h-full hidden border-r bg-white transition-all duration-300 ease-in-out md:block absolute top-0 left-0 z-30",
-              collapsed ? "w-20" : "w-64"
-            )}
-          >
-            <SideNav
-              className="h-full"
-              onCollapse={handleCollapse} 
-            />
-          </aside>
-        )} */}
-
-        {/* Mobile sheet navigation */}
-        {showNavigation && (
-          <Sheet open={open} onOpenChange={setOpen}>
-            <SheetTrigger asChild className="md:hidden absolute left-4 top-20 z-20">
-              <Button variant="outline" size="icon" className="rounded-full">
-                <Menu className="h-5 w-5" />
-                <span className="sr-only">Open navigation menu</span>
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-72 p-0 pt-10">
-              <SideNav onClose={() => setOpen(false)} />
-            </SheetContent>
-          </Sheet>
-        )}
-
+        {/* Mobile sheet navigation - REMOVED since navigation is now consolidated in Navbar */}
+        
         {/* Main content */}
         <main className={cn("flex-1 container", showNavigation ? "md:ml-0" : "")}>
           {children}
