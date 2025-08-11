@@ -1,20 +1,36 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useTournamentStore } from "@/store/useTournamentStore";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ChevronLeft, Trophy, XCircle } from "lucide-react";
+import { ChevronLeft, Edit2, Save, X } from "lucide-react";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+
+interface RoundDetail {
+  roundNumber: number;
+  participantScore: number | null;
+  opponentScore: number | null;
+  winMethod?: string | null; // Allow null
+  notes?: string;
+}
 
 interface MatchSummary {
   matchId: string;
-  roundNumber: number;
-  matchNumber: number;
+  roundNumber: number; // Tournament round
+  matchNumber: number; // Sequential match number
   opponent: string;
   result: "win" | "loss";
-  score?: string;
-  method?: string;
+  score?: string; // Overall score string
+  method?: string; // Overall win method
+  roundsPlayed: number;
+  detailedRounds: RoundDetail[]; // Details for each round played in the match
 }
 
 const ParticipantDetailsPage = () => {
@@ -22,7 +38,11 @@ const ParticipantDetailsPage = () => {
   const [, setLocation] = useLocation();
   const participantName = params?.name ? decodeURIComponent(params.name) : "";
   
-  const { bracketData, matchResults } = useTournamentStore();
+  // Name editing state
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editedName, setEditedName] = useState(participantName);
+  
+  const { bracketData, matchResults, updateParticipantName } = useTournamentStore();
   const [matches, setMatches] = useState<MatchSummary[]>([]);
   const [stats, setStats] = useState({
     wins: 0,
@@ -31,78 +51,131 @@ const ParticipantDetailsPage = () => {
     pointsScored: 0,
     pointsConceded: 0,
   });
+  // Update editedName when participantName changes
+  useEffect(() => {
+    setEditedName(participantName);
+  }, [participantName]);
+
+  // Handle name save
+  const handleSaveName = () => {
+    if (!editedName.trim()) {
+      return;
+    }
+    
+    const result = updateParticipantName(participantName, editedName.trim());
+    
+    if (result.success) {
+      setIsEditingName(false);
+      // Update URL to reflect new name
+      setLocation(`/participant/${encodeURIComponent(editedName.trim())}`);
+    }
+  };
+
+  // Handle name cancel
+  const handleCancelEdit = () => {
+    setEditedName(participantName);
+    setIsEditingName(false);
+  };
+
+  // Handle Enter key press in input
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSaveName();
+    } else if (e.key === 'Escape') {
+      handleCancelEdit();
+    }
+  };
   
   useEffect(() => {
     if (!bracketData || !matchResults || !participantName) return;
     
-    // Find all matches involving this participant
     const participantMatches: MatchSummary[] = [];
     let wins = 0;
     let losses = 0;
-    let pointsScored = 0;
-    let pointsConceded = 0;
+    let totalPointsScoredOverall = 0;
+    let totalPointsConcededOverall = 0;
     
-    // Iterate through all matches in the bracket
     bracketData.forEach((round, roundIndex) => {
-      round.forEach((match, matchIndex) => {
-        // Calculate sequential match number
-        const matchNumber = roundIndex * round.length + matchIndex + 1;
-        
+      round.forEach((match, matchIndexInOriginalRound) => {
+        const matchNumber = participantMatches.length + 1;
+
         if (match.participants.includes(participantName)) {
           const matchResult = matchResults[match.id];
           
-          // Skip matches that haven't been scored
           if (!matchResult || !matchResult.completed) return;
           
-          // Determine if participant won or lost
           const isWin = matchResult.winner === participantName;
+          const isMutualDQ = matchResult.winner === "NO_WINNER";
           
-          // Determine the opponent
           const opponent = match.participants[0] === participantName ? 
             match.participants[1] : match.participants[0];
             
-          // Calculate scores
-          let scoreText = "N/A";
-          let methodText = "N/A";
+          let overallScoreText = "N/A";
+          let overallMethodText = "N/A";
+          const detailedRounds: RoundDetail[] = [];
+          let matchParticipantTotalScore = 0;
+          let matchOpponentTotalScore = 0;
           
           if (matchResult.rounds.length > 0) {
-            // Sum up points across rounds
-            let participantTotalScore = 0;
-            let opponentTotalScore = 0;
-            
-            matchResult.rounds.forEach(round => {
+            matchResult.rounds.forEach((roundDetail, rdIndex) => {
               const isPlayer1 = match.participants[0] === participantName;
               
-              if (round.player1Score !== null && round.player2Score !== null) {
+              let pScore: number | null = null;
+              let oScore: number | null = null;
+
+              if (roundDetail.player1Score !== null && roundDetail.player2Score !== null) {
                 if (isPlayer1) {
-                  participantTotalScore += round.player1Score;
-                  opponentTotalScore += round.player2Score;
+                  pScore = roundDetail.player1Score;
+                  oScore = roundDetail.player2Score;
                 } else {
-                  participantTotalScore += round.player2Score;
-                  opponentTotalScore += round.player1Score;
+                  pScore = roundDetail.player2Score;
+                  oScore = roundDetail.player1Score;
                 }
+                matchParticipantTotalScore += pScore;
+                matchOpponentTotalScore += oScore;
               }
               
-              // Get the win method from the final round
-              if (round.winMethod) {
-                methodText = round.winMethod;
+              detailedRounds.push({
+                roundNumber: rdIndex + 1,
+                participantScore: pScore,
+                opponentScore: oScore,
+                winMethod: roundDetail.winMethod, // This can be null
+                notes: roundDetail.winMethodReason // Using winMethodReason as notes
+              });
+
+              if (rdIndex === matchResult.rounds.length - 1 && roundDetail.winMethod) {
+                overallMethodText = roundDetail.winMethod; 
               }
             });
             
-            scoreText = `${participantTotalScore}-${opponentTotalScore}`;
-            
-            pointsScored += participantTotalScore;
-            pointsConceded += opponentTotalScore;
+            overallScoreText = `${matchParticipantTotalScore}-${matchOpponentTotalScore}`;
+            totalPointsScoredOverall += matchParticipantTotalScore;
+            totalPointsConcededOverall += matchOpponentTotalScore;
           }
           
+          // Consolidate overallMethodText determination
+          if (overallMethodText === "N/A") {
+            if (matchResult.matchLevelDecision?.method && matchResult.matchLevelDecision.method !== 'EXTRA_ROUND') {
+              overallMethodText = matchResult.matchLevelDecision.method;
+            } else if (matchResult.rounds.length > 0) {
+              // Fallback to last round's method if no matchLevelDecision method
+              const lastRound = matchResult.rounds[matchResult.rounds.length - 1];
+              if (lastRound.winMethod) {
+                overallMethodText = lastRound.winMethod;
+              }
+            }
+          }
+
           participantMatches.push({
             matchId: match.id,
             roundNumber: roundIndex + 1,
-            matchNumber,
+            matchNumber: matchNumber,
             opponent: opponent || "BYE",
-            result: isWin ? "win" : "loss",
-            score: scoreText,
-            method: methodText
+            result: isMutualDQ ? "loss" : (isWin ? "win" : "loss"),
+            score: isMutualDQ ? "DQ-DQ" : overallScoreText,
+            method: isMutualDQ ? "DQBOTH" : overallMethodText,
+            roundsPlayed: matchResult.rounds.length,
+            detailedRounds
           });
           
           if (isWin) wins++;
@@ -111,13 +184,13 @@ const ParticipantDetailsPage = () => {
       });
     });
     
-    setMatches(participantMatches);
+    setMatches(participantMatches.sort((a, b) => a.roundNumber - b.roundNumber || a.matchNumber - b.matchNumber));
     setStats({
       wins,
       losses,
       matchesPlayed: wins + losses,
-      pointsScored,
-      pointsConceded
+      pointsScored: totalPointsScoredOverall,
+      pointsConceded: totalPointsConcededOverall
     });
   }, [bracketData, matchResults, participantName]);
   
@@ -131,10 +204,51 @@ const ParticipantDetailsPage = () => {
       </div>
     );
   }
-  
-  return (
-    <div className="container py-8 space-y-8">    <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">{participantName}</h1>
+    return (
+    <div className="container py-8 space-y-8">
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          {isEditingName ? (
+            <div className="flex items-center gap-2">
+              <Input
+                value={editedName}
+                onChange={(e) => setEditedName(e.target.value)}
+                onKeyDown={handleKeyPress}
+                className="text-3xl font-bold h-12 px-3"
+                autoFocus
+                onBlur={() => {
+                  // Don't auto-cancel on blur, let user decide
+                }}
+              />
+              <Button 
+                onClick={handleSaveName} 
+                size="sm"
+                disabled={!editedName.trim() || editedName.trim() === participantName}
+              >
+                <Save className="h-4 w-4" />
+              </Button>
+              <Button 
+                onClick={handleCancelEdit} 
+                size="sm" 
+                variant="outline"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <h1 className="text-3xl font-bold">{participantName}</h1>
+              <Button 
+                onClick={() => setIsEditingName(true)} 
+                size="sm" 
+                variant="ghost"
+                className="h-8 w-8 p-0"
+              >
+                <Edit2 className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+        </div>
         <Button onClick={() => setLocation("/participants")} variant="outline">
           <ChevronLeft className="mr-2 h-4 w-4" />
           Back to Participants
@@ -204,40 +318,61 @@ const ParticipantDetailsPage = () => {
             </CardHeader>
             <CardContent>
               {matches.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Match #</TableHead>
-                      <TableHead>Round</TableHead>
-                      <TableHead>Opponent</TableHead>
-                      <TableHead>Result</TableHead>
-                      <TableHead>Score</TableHead>
-                      <TableHead>Win Method</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {matches.map((match) => (
-                      <TableRow key={match.matchId}>
-                        <TableCell>M{match.matchNumber}</TableCell>
-                        <TableCell>Round {match.roundNumber}</TableCell>
-                        <TableCell>{match.opponent}</TableCell>
-                        <TableCell>
-                          {match.result === "win" ? (
-                            <div className="flex items-center text-green-600 font-medium">
-                              <Trophy className="mr-2 h-4 w-4" /> Win
+                <Accordion type="single" collapsible className="w-full">
+                  {matches.map((match) => (
+                    <AccordionItem value={match.matchId} key={match.matchId}>
+                      <AccordionTrigger className="hover:bg-slate-50 dark:hover:bg-slate-800 px-4 py-3 rounded-md">
+                        <div className="flex justify-between items-center w-full">
+                          <div className="flex flex-col text-left">
+                            <span className="font-semibold">
+                              Match vs {match.opponent}
+                            </span>
+                            <span className="text-sm text-slate-500 dark:text-slate-400">
+                              Tournament Round {match.roundNumber} - Overall: {match.score} ({match.method})
+                            </span>
+                          </div>
+                          <span className={`font-bold text-lg ${match.result === "win" ? "text-green-600" : "text-red-600"}`}>
+                            {match.result === "win" ? "WIN" : "LOSS"}
+                          </span>
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent className="pt-3 pb-4 px-4 border-t dark:border-slate-700">
+                        <div className="space-y-3">
+                          <div>
+                            <h4 className="font-semibold text-md mb-2">Match Summary:</h4>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm pl-2">
+                              <p><strong>Opponent:</strong></p><p>{match.opponent}</p>
+                              <p><strong>Result:</strong></p><p><span className={match.result === "win" ? "text-green-600 font-semibold" : "text-red-600 font-semibold"}>{match.result === "win" ? "Win" : "Loss"}</span></p>
+                              <p><strong>Overall Score:</strong></p><p>{match.score}</p>
+                              <p><strong>Win Method:</strong></p><p>{match.method}</p>
+                              <p><strong>Rounds Played:</strong></p><p>{match.roundsPlayed}</p>
                             </div>
-                          ) : (
-                            <div className="flex items-center text-red-600 font-medium">
-                              <XCircle className="mr-2 h-4 w-4" /> Loss
+                          </div>
+
+                          {match.detailedRounds.length > 0 && (
+                            <div>
+                              <h4 className="font-semibold text-md mt-3 mb-2">Round Details:</h4>
+                              <ul className="space-y-2 pl-2">
+                                {match.detailedRounds.map((rd, index) => (
+                                  <li key={index} className="text-sm border-b border-slate-200 dark:border-slate-700 pb-2 last:border-b-0 last:pb-0">
+                                    <div className="flex justify-between items-center">
+                                      <span className="font-medium">Round {rd.roundNumber}:</span>
+                                      <span>
+                                        {rd.participantScore !== null ? `${rd.participantScore} - ${rd.opponentScore}` : 'N/A'}
+                                      </span>
+                                    </div>
+                                    {rd.winMethod && <p className="text-xs text-slate-500 dark:text-slate-400">Method: {rd.winMethod}</p>}
+                                    {rd.notes && <p className="text-xs text-slate-500 dark:text-slate-400">Notes: {rd.notes}</p>}
+                                  </li>
+                                ))}
+                              </ul>
                             </div>
                           )}
-                        </TableCell>
-                        <TableCell>{match.score}</TableCell>
-                        <TableCell>{match.method}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  ))}
+                </Accordion>
               ) : (
                 <div className="text-center py-8 text-slate-500">
                   No matches found for this participant.

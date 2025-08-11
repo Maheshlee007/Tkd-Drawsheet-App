@@ -10,6 +10,8 @@ import ParticipantsPage from "@/pages/ParticipantsPage";
 import ParticipantDetailsPage from "@/pages/ParticipantDetailsPage";
 import AnnouncementsPage from "@/pages/AnnouncementsPage";
 import StatisticsPage from "@/pages/StatisticsPage";
+import SettingsPage from "@/pages/SettingsPage";
+import LiveFeedPage from "@/pages/LiveFeedPage";
 import { ToastProvider } from "@/components/ToastProvider";
 import { AppLayout } from "@/components/AppLayout";
 
@@ -37,20 +39,17 @@ function Router() {
         </Route>
         <Route path="/announcements">
           {(params) => <AnnouncementsPage />}
+        </Route>        <Route path="/live-feed">
+          {(params) => <LiveFeedPage />}          
         </Route>
         <Route path="/settings">
-          {(params) => (
-            <div className="p-6">
-              <h1 className="text-2xl font-bold">Settings</h1>
-              <p className="text-gray-500 mt-2">This page is under construction.</p>
-            </div>
-          )}
+          {(params) => <SettingsPage />}
         </Route>
         <Route path="/:rest*">
           {(params) => <NotFound />}
         </Route>
       </Switch>
-    </AppLayout>
+    </AppLayout>    
   );
 }
 

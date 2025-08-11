@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, devtools } from 'zustand/middleware';
 import { BracketMatch } from '@shared/schema';
 import { createBracket } from '@/lib/bracketUtils';
 import html2canvas from 'html2canvas';
@@ -15,7 +15,7 @@ interface ToastMessage {
 }
 
 // Define win methods
-export type WinMethod = 'PTF' | 'PTG' | 'DSQ' | 'PUN' | 'RSC' | 'WDR' | 'DQB';
+export type WinMethod = 'PTF' | 'PTG' | 'DSQ' | 'PUN' | 'RSC' | 'WDR' | 'DQB' | 'DQBOTH';
 
 // Define round result
 export interface RoundResult {
@@ -23,6 +23,7 @@ export interface RoundResult {
   player2Score: number | null;
   winMethod: WinMethod | null;
   winner: string | null; // player name or null for tie
+  winMethodReason?: string; // Optional reason for the win method, especially for PUN
 }
 
 // Define match history entry
@@ -39,10 +40,15 @@ export interface MatchResult {
   matchId: string;
   player1: string;
   player2: string;
-  winner: string | null;
+  winner: string | null; // player name, null for tie, or "NO_WINNER" for mutual disqualification
   completed: boolean;
   rounds: RoundResult[];
   comment?: string;  // Optional comment field for tiebreaker decisions
+  matchLevelDecision?: {
+    method: 'PUN' | 'EXTRA_ROUND' | null;
+    winner: string | null;
+    reason: string;
+  };
   history: MatchHistoryEntry[];
 }
 
@@ -54,6 +60,10 @@ interface TournamentState {
   participantCount: number;
   seedType: 'random' | 'ordered' | 'as-entered';
   
+  // Participant Management (Future Extension)
+  // participantDetails: Record<string, ParticipantDetails>; // Future: Extended participant info
+  // Currently we use participant names as strings in bracketData and matchResults
+  
   // Match round configuration
   internalRoundsPerMatch: number;
   matchResults: Record<string, MatchResult>;
@@ -62,9 +72,14 @@ interface TournamentState {
   isExportModalOpen: boolean;
   isPending: boolean;
   toast: ToastMessage | null;
-    // Actions
+  
+  // Current match highlighting
+  currentMatchId: string | null; // ID of the match currently being worked on
+  
+  // Actions
   resetTournamentData: () => void;
-  setTournamentName: (name: string) => void;  generateBracket: (
+  setTournamentName: (name: string) => void;
+  generateBracket: (
     participants: string[], 
     seedType: 'random' | 'ordered' | 'as-entered',
     tournamentName?: string,
@@ -80,17 +95,26 @@ interface TournamentState {
   // New actions for match rounds
   setInternalRoundsPerMatch: (rounds: number) => void;
   saveMatchResult: (matchResult: MatchResult) => void;
+  saveIntermediateMatchState: (matchId: string, rounds: RoundResult[], comment: string, matchLevelDecision: any) => void;
   updateMatchWinner: (matchId: string, newWinner: string, reason: string) => void;
   exportMatchDataAsJson: () => void;
+  
+  // Participant management
+  updateParticipantName: (oldName: string, newName: string) => { success: boolean; message?: string };
+  
+  // Current match actions
+  setCurrentMatch: (matchId: string | null) => void;
   
   // Toast actions
   showToast: (toast: ToastMessage) => void;
   clearToast: () => void;
 }
 
-export const useTournamentStore = create<TournamentState>(
-  persist(
-    (set, get) => ({
+// Define the store with properly typed persistence and devtools
+export const useTournamentStore = create<TournamentState>()(
+  devtools(
+    persist(
+      (set, get) => ({
   // Initial State
   tournamentId: Date.now().toString(), // Unique ID for each tournament
   tournamentName: 'Tournament Draw Sheet',
@@ -102,13 +126,15 @@ export const useTournamentStore = create<TournamentState>(
   isExportModalOpen: false,
   isPending: false,
   toast: null,
+  currentMatchId: null,
   
   // Toast actions
   showToast: (toast) => set({ toast }),
   clearToast: () => set({ toast: null }),
   
   // Actions
-  setTournamentName: (name) => set({ tournamentName: name }),  // Reset all tournament data
+  setTournamentName: (name) => set({ tournamentName: name }),
+  // Reset all tournament data
   resetTournamentData: () => {
     // Generate a new tournament ID to ensure complete fresh start
     const newTournamentId = Date.now().toString();
@@ -137,7 +163,8 @@ export const useTournamentStore = create<TournamentState>(
       description: 'Tournament data has been cleared'
     });
   },
-    generateBracket: (participants, seedType, tournamentName, rounds = 3) => {
+  
+  generateBracket: (participants, seedType, tournamentName, rounds = 3) => {
     set({ isPending: true });
     
     try {
@@ -200,8 +227,7 @@ export const useTournamentStore = create<TournamentState>(
       });
     }
   },
-  
-  updateTournamentMatch: (matchId, winnerId) => {
+    updateTournamentMatch: (matchId, winnerId) => {
     const { bracketData } = get();
     if (!bracketData) return;
     
@@ -239,8 +265,7 @@ export const useTournamentStore = create<TournamentState>(
       ...targetMatch,
       winner: winnerId
     };
-    
-    // If there's a next match, update its participants too
+      // If there's a next match, update its participants
     if (targetMatch.nextMatchId) {
       // Find the next match
       let nextMatch: BracketMatch | null = null;
@@ -265,14 +290,18 @@ export const useTournamentStore = create<TournamentState>(
         
         // Create an updated participants array for the next match
         const newParticipants: [string | null, string | null] = [...nextMatch.participants] as [string | null, string | null];
-        newParticipants[positionInNextMatch] = winnerId;
+        
+        // Set the participant based on whether there's a winner or both were disqualified
+        newParticipants[positionInNextMatch] = winnerId === "NO_WINNER" ? "No player" : winnerId;
         
         // Update the next match
         newBracketData[nextRoundIndex][nextMatchIndex] = {
           ...nextMatch,
           participants: newParticipants,
-          // If the other finalist doesn't exist yet, we can't determine a winner
-          winner: nextMatch.winner === nextMatch.participants[positionInNextMatch] ? winnerId : nextMatch.winner
+          // Only set winner if there's an actual player advancing
+          winner: winnerId === "NO_WINNER" ? 
+            nextMatch.winner : 
+            (nextMatch.winner === nextMatch.participants[positionInNextMatch] ? winnerId : nextMatch.winner)
         };
       }
     }
@@ -280,10 +309,15 @@ export const useTournamentStore = create<TournamentState>(
     // Update the state with the new bracket data
     set({ bracketData: newBracketData });
     
+    // Show appropriate toast message
+    const successMessage = winnerId === "NO_WINNER" 
+      ? "Match completed - both players disqualified, no advancement"
+      : `Winner set to ${winnerId}`;
+    
     get().showToast({
       type: 'success',
       title: 'Match Updated',
-      description: `Winner set to ${winnerId}`
+      description: successMessage
     });
   },
   
@@ -456,58 +490,45 @@ export const useTournamentStore = create<TournamentState>(
       }
     }).then((canvas) => {
       // Generate PDF
-      try {
-        const imgData = canvas.toDataURL('image/png');
-        const pdf = new jsPDF({
-          orientation: 'landscape',
-          unit: 'mm',
-          format: 'a4'
-        });
-        
-        const canvasWidth = canvas.width;
-        const canvasHeight = canvas.height;
-        
-        // Calculate dimensions to fit the PDF page
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = pdf.internal.pageSize.getHeight();
-        
-        let imgWidth = pdfWidth - 20; // 10mm margins on each side
-        let imgHeight = (canvasHeight * imgWidth) / canvasWidth;
-        
-        // If image is too tall, scale based on height
-        if (imgHeight > pdfHeight - 20) {
-          imgHeight = pdfHeight - 20;
-          imgWidth = (canvasWidth * imgHeight) / canvasHeight;
-        }
-        
-        // Center the image
-        const x = (pdfWidth - imgWidth) / 2;
-        const y = (pdfHeight - imgHeight) / 2;
-        
-        pdf.addImage(imgData, 'PNG', x, y, imgWidth, imgHeight);
-        pdf.save(`tournament-bracket-pool-${parseInt(poolIndex as string) + 1}.pdf`);
-        
-        document.body.removeChild(cloneContainer);
-        
-        closeExportModal();
-        
-        get().showToast({
-          type: 'success',
-          title: 'Success',
-          description: 'Bracket exported as PDF successfully!'
-        });
-      } catch (error) {
-        console.error("PDF generation error:", error);
-        document.body.removeChild(cloneContainer);
-        
-        get().showToast({
-          type: 'destructive',
-          title: 'Export Error',
-          description: 'Failed to generate PDF'
-        });
-        
-        closeExportModal();
+      const canvasWidth = canvas.width;
+      const canvasHeight = canvas.height;
+      const imgData = canvas.toDataURL('image/png');
+      
+      // Create PDF with appropriate orientation
+      const pdf = new jsPDF({
+        orientation: canvasWidth > canvasHeight ? 'landscape' : 'portrait',
+        unit: 'mm',
+      });
+      
+      // Calculate dimensions to fit the PDF page
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      
+      let imgWidth = pdfWidth - 20; // 10mm margins on each side
+      let imgHeight = (canvasHeight * imgWidth) / canvasWidth;
+      
+      // If image is too tall, scale based on height
+      if (imgHeight > pdfHeight - 20) {
+        imgHeight = pdfHeight - 20;
+        imgWidth = (canvasWidth * imgHeight) / canvasHeight;
       }
+      
+      // Center the image
+      const x = (pdfWidth - imgWidth) / 2;
+      const y = (pdfHeight - imgHeight) / 2;
+      
+      pdf.addImage(imgData, 'PNG', x, y, imgWidth, imgHeight);
+      pdf.save(`tournament-bracket-pool-${parseInt(poolIndex as string) + 1}.pdf`);
+      
+      document.body.removeChild(cloneContainer);
+      
+      closeExportModal();
+      
+      get().showToast({
+        type: 'success',
+        title: 'Success',
+        description: 'Bracket exported as PDF successfully!'
+      });
     }).catch(error => {
       console.error("Export error:", error);
       document.body.removeChild(cloneContainer);
@@ -515,7 +536,7 @@ export const useTournamentStore = create<TournamentState>(
       get().showToast({
         type: 'destructive',
         title: 'Export Error',
-        description: 'Failed to generate image for PDF'
+        description: 'Failed to export bracket as PDF'
       });
       
       closeExportModal();
@@ -589,33 +610,40 @@ export const useTournamentStore = create<TournamentState>(
         `;
         document.head.appendChild(clonedStyles);
       }
-    }).then((canvas) => {
-      canvas.toBlob((blob) => {
-        if (blob) {
-          const item = new ClipboardItem({ "image/png": blob });
-          navigator.clipboard.write([item]).then(() => {
-            get().showToast({
-              type: 'success',
-              title: 'Success',
-              description: 'Bracket copied to clipboard!'
-            });
-            
-            document.body.removeChild(cloneContainer);
-            closeExportModal();
-          }).catch(error => {
-            console.error("Copy error:", error);
-            document.body.removeChild(cloneContainer);
-            
-            get().showToast({
-              type: 'destructive',
-              title: 'Copy Error',
-              description: 'Failed to copy bracket to clipboard'
-            });
-            
-            closeExportModal();
-          });
-        }
-      }, "image/png");
+    }).then(async (canvas) => {
+      try {
+        const blob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob(blob => {
+            if (blob) resolve(blob);
+            else reject(new Error('Canvas to Blob conversion failed'));
+          }, 'image/png');
+        });
+        
+        await navigator.clipboard.write([
+          new ClipboardItem({ 'image/png': blob })
+        ]);
+        
+        document.body.removeChild(cloneContainer);
+        
+        closeExportModal();
+        
+        get().showToast({
+          type: 'success',
+          title: 'Success',
+          description: 'Bracket copied to clipboard!'
+        });
+      } catch (err) {
+        console.error("Copy error:", err);
+        document.body.removeChild(cloneContainer);
+        
+        get().showToast({
+          type: 'destructive',
+          title: 'Copy Error',
+          description: 'Failed to copy bracket to clipboard'
+        });
+        
+        closeExportModal();
+      }
     }).catch(error => {
       console.error("Copy error:", error);
       document.body.removeChild(cloneContainer);
@@ -693,8 +721,58 @@ export const useTournamentStore = create<TournamentState>(
       description: 'Match result saved'
     });
   },
-  
-  updateMatchWinner: (matchId, newWinner, reason) => {
+
+  saveIntermediateMatchState: (matchId, rounds, comment, matchLevelDecision) => {
+    const { matchResults } = get();
+    const existingResult = matchResults[matchId];
+    
+    // Get match participants from existing result or create a minimal structure
+    let player1 = '';
+    let player2 = '';
+    
+    if (existingResult) {
+      player1 = existingResult.player1;
+      player2 = existingResult.player2;
+    } else {
+      // If no existing result, we need to find the participants from the bracket
+      const { bracketData } = get();
+      if (bracketData) {
+        for (const round of bracketData) {
+          const match = round.find(m => m.id === matchId);
+          if (match && match.participants[0] && match.participants[1]) {
+            player1 = match.participants[0] || '';
+            player2 = match.participants[1] || '';
+            break;
+          }
+        }
+      }
+    }
+    
+    // Create intermediate match state - not marked as completed
+    const intermediateMatchResult: MatchResult = {
+      matchId,
+      player1,
+      player2,
+      winner: null, // Winner not determined yet for intermediate state
+      completed: false, // Explicitly mark as incomplete
+      rounds: [...rounds], // Save current round states
+      comment: comment || '',
+      matchLevelDecision: matchLevelDecision || undefined,
+      history: existingResult?.history || []
+    };
+    
+    // Save the intermediate state
+    set({ 
+      matchResults: {
+        ...matchResults,
+        [matchId]: intermediateMatchResult
+      } 
+    });
+    
+    // No toast for intermediate saves to avoid spam
+    console.log(`Intermediate match state saved for ${matchId}`);
+  },
+    updateMatchWinner: (matchId, newWinner, reason) => {
     const { matchResults } = get();
     const matchResult = matchResults[matchId];
     
@@ -707,19 +785,22 @@ export const useTournamentStore = create<TournamentState>(
       return;
     }
     
+    // Create a properly typed history entry
+    const historyEntry: MatchHistoryEntry = {
+      timestamp: Date.now(),
+      action: 'update',
+      previousWinner: matchResult.winner,
+      newWinner,
+      reason: reason || null
+    };
+    
     // Update the match result with the new winner
     const updatedMatchResult = {
       ...matchResult,
       winner: newWinner,
       history: [
         ...matchResult.history,
-        {
-          timestamp: Date.now(),
-          action: 'update',
-          previousWinner: matchResult.winner,
-          newWinner,
-          reason: reason || null
-        }
+        historyEntry
       ]
     };
     
@@ -761,7 +842,134 @@ export const useTournamentStore = create<TournamentState>(
       description: 'Match data exported as JSON'
     });
   },
-}), {
+
+  // Participant management
+  updateParticipantName: (oldName, newName) => {
+    if (!newName || newName.trim() === "") {
+      get().showToast({ 
+        type: 'destructive', 
+        title: 'Error', 
+        description: "New name cannot be empty." 
+      });
+      return { success: false, message: "New name cannot be empty." };
+    }
+    
+    if (oldName === newName) {
+      return { success: true, message: "Names are the same, no update performed." };
+    }
+
+    const { bracketData, matchResults, showToast } = get();
+    
+    // Check if newName already exists (case-insensitive)
+    const allParticipants = new Set<string>();
+    if (bracketData) {
+      bracketData.flat().forEach(match => {
+        match.participants.forEach(participant => {
+          if (participant && participant !== "(bye)") {
+            allParticipants.add(participant.toLowerCase());
+          }
+        });
+      });
+    }
+
+    if (allParticipants.has(newName.toLowerCase()) && oldName.toLowerCase() !== newName.toLowerCase()) {
+      showToast({ 
+        type: 'destructive', 
+        title: 'Error', 
+        description: `Participant name "${newName}" already exists.` 
+      });
+      return { success: false, message: `Participant name "${newName}" already exists.` };
+    }
+
+    // Deep clone to avoid direct state mutation
+    let updatedBracketData = bracketData ? JSON.parse(JSON.stringify(bracketData)) as BracketMatch[][] : null;
+    const updatedMatchResults = JSON.parse(JSON.stringify(matchResults)) as Record<string, MatchResult>;
+
+    let nameChanged = false;
+
+    // Update in bracketData
+    if (updatedBracketData) {
+      updatedBracketData.forEach(round => {
+        round.forEach(match => {
+          match.participants = match.participants.map(participant => {
+            if (participant === oldName) { 
+              nameChanged = true; 
+              return newName; 
+            }
+            return participant;
+          }) as [string | null, string | null];
+          
+          if (match.winner === oldName) {
+            match.winner = newName;
+            nameChanged = true;
+          }
+        });
+      });
+    }
+
+    // Update in matchResults
+    Object.values(updatedMatchResults).forEach(match => {
+      if (match.player1 === oldName) { 
+        match.player1 = newName; 
+        nameChanged = true; 
+      }
+      if (match.player2 === oldName) { 
+        match.player2 = newName; 
+        nameChanged = true; 
+      }
+      if (match.winner === oldName) { 
+        match.winner = newName; 
+        nameChanged = true; 
+      }
+      
+      // Update rounds
+      match.rounds?.forEach(round => {
+        if (round.winner === oldName) { 
+          round.winner = newName; 
+          nameChanged = true; 
+        }
+      });
+      
+      // Update history entries
+      match.history?.forEach(entry => {
+        if (entry.previousWinner === oldName) { 
+          entry.previousWinner = newName; 
+          nameChanged = true; 
+        }
+        if (entry.newWinner === oldName) { 
+          entry.newWinner = newName; 
+          nameChanged = true; 
+        }
+      });
+    });
+
+    if (!nameChanged) {
+      showToast({ 
+        type: 'destructive', 
+        title: 'Error', 
+        description: `Participant "${oldName}" not found.` 
+      });
+      return { success: false, message: `Participant "${oldName}" not found.` };
+    }
+    
+    // Update the state
+    set({ 
+      bracketData: updatedBracketData, 
+      matchResults: updatedMatchResults 
+    });
+    
+    showToast({ 
+      type: 'success', 
+      title: 'Success', 
+      description: `Participant "${oldName}" updated to "${newName}".` 
+    });
+    
+    return { success: true };
+  },
+
+  // Current match highlighting actions
+  setCurrentMatch: (matchId) => set({ currentMatchId: matchId }),
+    }),    {
       name: 'tournament-storage', // base localStorage key
       partialize: (state) => ({
         // Only persist these fields
@@ -772,10 +980,15 @@ export const useTournamentStore = create<TournamentState>(
         // Include tournamentId to ensure unique tournament identification
         tournamentId: state.tournamentId,
         participantCount: state.participantCount,
-        seedType: state.seedType
-      }),      // Use a custom version for storage format
-      version: 1, // Increment this when making breaking changes to storage format
-      }
+        seedType: state.seedType,
+        // Persist current match highlighting for consistency across mode switches
+        currentMatchId: state.currentMatchId
+      }),
+      // Use a version number for storage format
+      version: 1
     }
-  )
-);
+  ),
+  {
+    name: 'tournament-store', // DevTools instance name
+  }
+));

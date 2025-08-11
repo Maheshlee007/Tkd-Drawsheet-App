@@ -1,31 +1,45 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { BracketMatch } from "@shared/schema";
 import { calculateBracketConnectors } from "@/lib/bracketUtils";
 import {
-  Download,
-  FileText,
-  Printer,
-  Smartphone,
-  Monitor,
-  Grid,
+  ChevronDown,
+  ChevronUp,
+  Users,
+  CalendarDays,
+  ListOrdered,
+  Swords,
+  Shield,
   Layers,
-  Copy,
-  Expand,
   Maximize,
-  Lock,
-  Trophy,
   CheckCircle,
+  Trophy,
+  Search,
+  Grid,
+  MoreVertical
 } from "lucide-react";
 import "./BracketConnector.css"; // Import custom connector styles
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { useTournament } from "@/hooks/useTournament";
 import { useToast } from "@/hooks/use-toast";
 import CanvasBracket from "./CanvasBracket";
 import MedalPodium from "./MedalPodium";
-import { useBracketPDF } from "@/hooks/useBracketPDF";
 import { useTournamentStore, MatchResult } from "@/store/useTournamentStore";
 import {
   AlertDialog,
@@ -37,6 +51,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  getMatchColors,
+  getParticipantClasses,
+  isCurrentMatch,
+  getMatchContainerClasses,
+  calculateMatchNumber,
+  isByeMatch,
+  isParticipantDisqualified,
+} from "@/utils/bracketUtils";
 
 interface BracketDisplayProps {
   bracketData: BracketMatch[][] | null;
@@ -45,8 +68,10 @@ interface BracketDisplayProps {
   onMatchClick?: (matchId: string, player1: string, player2: string) => void;
 }
 
-// Function to determine if a player had a bye in the previous round
-// Helper function to determine label names based on bracket size and round position
+
+
+
+
 function getRoundName(totalRounds: number, roundIndex: number): string {
   const roundsFromEnd = totalRounds - roundIndex - 1;
 
@@ -110,26 +135,30 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
     "landscape" | "portrait"
   >("landscape");
   const [renderMode, setRenderMode] = useState<"dom" | "canvas">("canvas"); // Changed default to canvas
-  const [canvasPrintMode, setCanvasPrintMode] = useState<boolean>(false);
-  const [isFullScreen, setIsFullScreen] = useState<boolean>(false);
+  const [canvasPrintMode, setCanvasPrintMode] = useState<boolean>(false);  const [isFullScreen, setIsFullScreen] = useState<boolean>(false);
+  // New state for highlighted participant path
+  const [highlightedParticipant, setHighlightedParticipant] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState(""); // Added for custom search input
+  const [showDropdown, setShowDropdown] = useState(false); // Added for custom dropdown visibility
+  const searchInputRef = useRef<HTMLInputElement>(null); // Ref for the search input
+  const dropdownRef = useRef<HTMLDivElement>(null); // Ref for the dropdown
   const bracketContainerRef = useRef<HTMLDivElement>(null);
   const canvasBracketRef = useRef<HTMLDivElement>(null);
   const fullScreenRef = useRef<HTMLDivElement>(null);
 
   const { toast } = useToast();
-  const { generateBracketPDF } = useBracketPDF();
-
   const { updateTournamentMatch } = useTournament();
-
   // Get match results from tournament store
   const matchResults = useTournamentStore((state) => state.matchResults || {});
+  
+  // Get current match ID for highlighting
+  const currentMatchId = useTournamentStore((state) => state.currentMatchId);
 
   // Winner selection dialog state
   const [winnerDialogOpen, setWinnerDialogOpen] = useState(false);
-  const [selectedMatch, setSelectedMatch] = useState<BracketMatch | null>(null);
-  const [selectedWinner, setSelectedWinner] = useState<string | null>(null);
+  const [selectedMatchInfo, setSelectedMatchInfo] = useState<{match: BracketMatch, winner: string | null} | null>(null); // Store match and potential winner
 
-  console.log("Bracket Data:", bracketData);
+  // console.log("Bracket Data:", bracketData); // Keep this for debugging if needed, or remove
   // Calculate connector lines when the bracket data changes
   useEffect(() => {
     if (!bracketData || !bracketContainerRef.current || renderMode === "canvas")
@@ -192,8 +221,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
         }
 
         setConnectors(allConnectors);
-      }
-    }, 200); // Increased timeout to ensure DOM is fully updated
+      }    }, 200); // Increased timeout to ensure DOM is fully updated
   }, [bracketData, pooledBrackets, poolCount, activePool, renderMode]);
 
   // Organize brackets into pools
@@ -368,7 +396,8 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
       if (
         !winner ||
         winner === "(bye)" ||
-        !selectedMatch.participants[participantIndex ? 0 : 1]
+        !selectedMatch.participants[participantIndex ? 0 : 1] ||
+        selectedMatch.participants[participantIndex ? 0 : 1] === "(bye)"
       ) {
         toast({
           title: "Cannot set winner",
@@ -380,8 +409,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
 
       // If this is a different winner than already set, confirm
       if (selectedMatch.winner !== winner) {
-        setSelectedMatch(selectedMatch);
-        setSelectedWinner(winner);
+        setSelectedMatchInfo({match: selectedMatch, winner }); // Use new state
         setWinnerDialogOpen(true);
       }
     },
@@ -389,13 +417,13 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
   );
   // Apply the winner update
   const confirmWinner = useCallback(() => {
-    if (!selectedMatch || !selectedWinner) return;
+    if (!selectedMatchInfo || !selectedMatchInfo.match || !selectedMatchInfo.winner) return; // Check new state
 
     // Update the match in the local and remote state
     if (onUpdateMatch) {
-      onUpdateMatch(selectedMatch.id, selectedWinner);
+      onUpdateMatch(selectedMatchInfo.match.id, selectedMatchInfo.winner);
     } else {
-      updateTournamentMatch(selectedMatch.id, selectedWinner);
+      updateTournamentMatch(selectedMatchInfo.match.id, selectedMatchInfo.winner);
     }
 
     setWinnerDialogOpen(false);
@@ -408,7 +436,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
         if (!bracketDisplay) return;
 
         const newConnectors = calculateBracketConnectors(
-          bracketData,
+          bracketData, // This should ideally be the updated bracketData
           bracketDisplay
         );
         setConnectors(newConnectors);
@@ -417,17 +445,79 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
 
     toast({
       title: "Winner Updated",
-      description: `${selectedWinner} has advanced to the next round.`,
+      description: `${selectedMatchInfo.winner} has advanced to the next round.`,
     });
+    setSelectedMatchInfo(null); // Clear selection
   }, [
-    selectedMatch,
-    selectedWinner,
+    selectedMatchInfo, // Use new state
     onUpdateMatch,
     updateTournamentMatch,
     toast,
     bracketData,
-    renderMode,
-  ]);
+    renderMode,  ]);
+  // Handle participant selection for navigation/highlighting
+  const handleParticipantSelection = useCallback((participantName: string | null) => {
+    setShowDropdown(false);
+    if (!participantName || !bracketData) {
+      setHighlightedParticipant(null);
+      setSearchTerm("");
+      return;
+    }
+
+    setHighlightedParticipant(participantName);
+    setSearchTerm(participantName);
+
+    // Find the participant's first match (earliest round)
+    let targetMatch: { match: BracketMatch; roundIndex: number } | null = null;
+
+    // Look through rounds starting from the first round
+    for (let roundIndex = 0; roundIndex < bracketData.length; roundIndex++) {
+      const round = bracketData[roundIndex];
+      for (const match of round) {
+        if (match.participants[0] === participantName || match.participants[1] === participantName) {
+          targetMatch = { match, roundIndex };
+          break;
+        }
+      }
+      if (targetMatch) break; // Stop once we find the first occurrence
+    }
+
+    if (targetMatch) {
+      const targetMatchDomId = `match-${targetMatch.match.id}`;
+      const matchElement = document.getElementById(targetMatchDomId);
+
+      if (matchElement) {
+        matchElement.scrollIntoView({ behavior: 'smooth', block: 'center' });        // Apply pulse effect
+        matchElement.classList.add('pulse-highlight');
+        setTimeout(() => {
+          const currentElement = document.getElementById(targetMatchDomId);
+          if (currentElement) {
+            currentElement.classList.remove('pulse-highlight');
+          }
+        }, 1500);
+
+        // Removed toast notification - using console log instead
+        console.log(`Participant Found: Scrolled to ${participantName}'s match in round ${targetMatch.roundIndex + 1}.`);
+      } else {
+        console.warn(`Navigation Error: Could not find the match element for ${participantName}.`);
+      }    } else {
+      setHighlightedParticipant(null);
+      console.warn(`Participant Not Found: ${participantName} was not found in any matches.`);
+    }
+  }, [bracketData]);
+  // Effect to handle clicks outside the dropdown to close it
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node) &&
+          searchInputRef.current && !searchInputRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showDropdown]);
 
   // Toggle print orientation
   const togglePrintOrientation = () => {
@@ -498,86 +588,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
 
     printWindow.document.close();
   };
-
-  // Handle Canvas print
-  const handleCanvasPrint = () => {
-    if (!canvasBracketRef.current) return;
-
-    // Enable print mode to hide the winners box
-    setCanvasPrintMode(true);
-
-    // Allow time for re-render with printMode=true
-    setTimeout(() => {
-      const canvasElement = canvasBracketRef.current?.querySelector("canvas");
-      if (!canvasElement) {
-        setCanvasPrintMode(false);
-        return;
-      }
-
-      // Get data URL from canvas
-      const dataURL = (canvasElement as HTMLCanvasElement).toDataURL(
-        "image/png"
-      );
-
-      // Create print window
-      const printWindow = window.open("", "_blank");
-      if (!printWindow) {
-        alert("Please allow popups for this website.");
-        setCanvasPrintMode(false);
-        return;
-      }
-
-      printWindow.document.open();
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Canvas Bracket Print</title>
-            <style>
-              @media print {
-                body {
-                  margin: 0;
-                  padding: 0;
-                }
-                img {
-                  max-width: 100%;
-                  height: auto;
-                }
-                h1 {
-                  text-align: center;
-                  font-family: Arial, sans-serif;
-                }
-                @page {
-                  size: ${printOrientation};
-                  margin: ${
-                    printOrientation === "landscape" ? "0.7cm" : "0.5cm"
-                  };
-                }
-              }
-            </style>
-          </head>
-          <body>
-            <h1>KDTA Tournament Tie sheet (Canvas)</h1>
-            <img src="${dataURL}" alt="Tournament Bracket" style="width: 100%;" />
-            <script>
-              window.onload = function() {
-                window.print();
-                setTimeout(function() {
-                  window.close();
-                }, 100);
-              };
-            </script>
-          </body>
-        </html>
-      `);
-
-      printWindow.document.close();
-
-      // Disable print mode after printing
-      setTimeout(() => {
-        setCanvasPrintMode(false);
-      }, 500);
-    }, 200);
-  };
+  // Canvas print functionality has been removed as requested
 
   // Handle Full Screen toggle
   const toggleFullScreen = () => {
@@ -601,31 +612,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
       setIsFullScreen(false);
     }
   };
-
-  // Handle PDF Download with useBracketPDF hook
-  const handlePDFDownload = () => {
-    if (!bracketData) return;
-
-    // Get total participant count
-    let participantCount = 0;
-    if (bracketData[0]) {
-      participantCount = bracketData[0].reduce((count, match) => {
-        return (
-          count +
-          (match.participants[0] && match.participants[0] !== "(bye)" ? 1 : 0) +
-          (match.participants[1] && match.participants[1] !== "(bye)" ? 1 : 0)
-        );
-      }, 0);
-    }
-
-    // Generate PDF with bracket data
-    generateBracketPDF(
-      bracketData,
-      header || "Tournament Bracket",
-      participantCount,
-      printOrientation
-    );
-  };
+  // PDF export functionality has been removed as requested
 
   // Listen for fullscreen change events
   useEffect(() => {
@@ -678,45 +665,199 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
     );
   }
 
-  // Function to get style class for participant
-  const getParticipantStyle = (
-    participant: string | null,
-    hasMatchBye: boolean,
-    isOpponentBye: boolean,
-    isTop: boolean
-  ) => {
-    if (participant === "(bye)") {
-      // Style for bye placeholder (gray with green border)
-      return "border-l-4 border-green-400 bg-gray-100 text-gray-500";
-    }
-
-    if (isOpponentBye) {
-      // Style for player who got a bye (green left border and light green background)
-      return "border-l-4 border-green-400 bg-green-50";
-    }
-
-    // Normal participant styling (blue for top, red for bottom)
-    return isTop
-      ? "border-l-4 border-blue-400 bg-blue-50"
-      : "border-l-4 border-red-400 bg-red-50";
-  };
-
   // Display bracket for the selected pool
   const currentBracket = pooledBrackets[activePool] || bracketData;
 
+  // Memoized participant list for search
+  const allParticipants = useMemo(() => {
+    if (!bracketData || bracketData.length === 0 || !bracketData[0]) {
+      return [];
+    }
+    const participants = bracketData[0].flatMap(match => match.participants);
+    const validParticipants = participants.filter(
+      p => typeof p === 'string' && p && p !== "(bye)"
+    ) as string[];
+    return Array.from(new Set(validParticipants)).sort(); // Changed to Array.from()
+  }, [bracketData]);
+
+  const filteredParticipants = useMemo(() => {
+    if (!searchTerm) {
+      return allParticipants; // Show all if search term is empty
+    }
+    return allParticipants.filter(participant =>
+      participant.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [allParticipants, searchTerm]);
+  // DOM rendering part
   return (
-    <div className="bg-white rounded-lg shadow-md p-6" ref={fullScreenRef}>
-      {/* Header with title and export/print buttons */}
-      <div className="flex justify-between items-center mb-6 ">
-        <h2 className="text-xl font-semibold text-slate-800">
-          {header ? header : "Tournament Bracket"}
-        </h2>
-        <div className="flex space-x-2">
-          <div className="flex items-center space-x-2 mr-4">
-            {/* <Label htmlFor="render-mode" className="cursor-pointer">Rendering:</Label> */}
-            <div className="flex items-center space-x-2 bg-slate-100 p-2 rounded-md ">
+    <div className="bg-white rounded-lg shadow-md p-3 sm:p-6" ref={fullScreenRef}>      {/* Header - responsive layout */}
+      <div className="mb-6">
+        {/* Mobile Layout: Two-line header */}
+        <div className="sm:hidden">
+          {/* Mobile First Line: Tournament name and 3-dot menu */}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-slate-800">
+              {header ? header : "Tournament Bracket"}
+            </h2>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" className="h-10 w-10">
+                  <MoreVertical className="h-4 w-4" />
+                  <span className="sr-only">More options</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={toggleRenderMode} className="flex items-center">
+                  {renderMode === "canvas" ? (
+                    <>
+                      <Grid className="mr-2 h-4 w-4" />
+                      Switch to DOM View
+                    </>
+                  ) : (
+                    <>
+                      <Layers className="mr-2 h-4 w-4" />
+                      Switch to Canvas View
+                    </>
+                  )}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={toggleFullScreen} className="flex items-center">
+                  <Maximize className="mr-2 h-4 w-4" />
+                  Fullscreen
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+          
+          {/* Mobile Second Line: Search bar */}
+          <div className="relative w-full" ref={dropdownRef}>
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Find participant..."
+              className="w-full h-10 pl-10 pr-4 py-2 text-sm border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setShowDropdown(true);
+                if (e.target.value === "") {
+                  setHighlightedParticipant(null);
+                }
+              }}
+              onFocus={() => setShowDropdown(true)}
+            />
+            {showDropdown && (
+              <div className="absolute top-full mt-1 w-full max-h-[300px] overflow-y-auto bg-white border border-slate-300 rounded-md shadow-lg z-50">
+                {highlightedParticipant && (
+                  <div
+                    key="clear-selection-dropdown"
+                    className="px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 cursor-pointer"
+                    onClick={() => handleParticipantSelection(null)}
+                  >
+                    Clear selection ({highlightedParticipant})
+                  </div>
+                )}
+                {filteredParticipants.map(participant => (
+                  <div
+                    key={participant}
+                    className="px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 cursor-pointer"
+                    onClick={() => handleParticipantSelection(participant)}
+                  >
+                    {participant}
+                  </div>
+                ))}
+                {searchTerm !== "" && filteredParticipants.length === 0 && (
+                  <div className="px-3 py-2 text-sm text-slate-500">
+                    No participants found.
+                  </div>
+                )}
+                {searchTerm === "" && !highlightedParticipant && filteredParticipants.length === 0 && allParticipants.length > 0 && (
+                  <div className="px-3 py-2 text-sm text-slate-400">
+                    Type to search or select from list.
+                  </div>
+                )}
+                {allParticipants.length === 0 && (
+                  <div className="px-3 py-2 text-sm text-slate-500">
+                    No participants in the first round.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Desktop Layout: Single-line header */}
+        <div className="hidden sm:flex items-center justify-between">
+          {/* Desktop Left: Tournament name */}
+          <h2 className="text-xl font-semibold text-slate-800">
+            {header ? header : "Tournament Bracket"}
+          </h2>
+
+          <div className="flex items-center">
+          {/* Desktop Center: Search bar */}
+          <div className="relative w-[300px] mx-4" ref={dropdownRef}>
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Find participant..."
+              className="w-full h-10 pl-10 pr-4 py-2 text-sm border border-slate-300 rounded-md focus:ring-2 focus:ring-slate-800 focus:border-blue-200 outline-none bg-white"
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setShowDropdown(true);
+                if (e.target.value === "") {
+                  setHighlightedParticipant(null);
+                }
+              }}
+              onFocus={() => setShowDropdown(true)}
+            />
+            {showDropdown && (
+              <div className="absolute top-full mt-1 w-full max-h-[300px] overflow-y-auto bg-white border border-slate-300 rounded-md shadow-lg z-50">
+                {highlightedParticipant && (
+                  <div
+                    key="clear-selection-dropdown"
+                    className="px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 cursor-pointer"
+                    onClick={() => handleParticipantSelection(null)}
+                  >
+                    Clear selection ({highlightedParticipant})
+                  </div>
+                )}
+                {filteredParticipants.map(participant => (
+                  <div
+                    key={participant}
+                    className="px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 cursor-pointer"
+                    onClick={() => handleParticipantSelection(participant)}
+                  >
+                    {participant}
+                  </div>
+                ))}
+                {searchTerm !== "" && filteredParticipants.length === 0 && (
+                  <div className="px-3 py-2 text-sm text-slate-500">
+                    No participants found.
+                  </div>
+                )}
+                {searchTerm === "" && !highlightedParticipant && filteredParticipants.length === 0 && allParticipants.length > 0 && (
+                  <div className="px-3 py-2 text-sm text-slate-400">
+                    Type to search or select from list.
+                  </div>
+                )}
+                {allParticipants.length === 0 && (
+                  <div className="px-3 py-2 text-sm text-slate-500">
+                    No participants in the first round.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          
+          {/* Desktop Right: Controls */}
+          <div className="flex items-center space-x-2">
+            {/* Canvas/DOM Toggle */}
+            <div className="flex items-center space-x-2 bg-slate-100 p-2 rounded-md">
               <Grid
-                className={`h-4 w-4  ${
+                className={`h-4 w-4 ${
                   renderMode === "dom" ? "text-primary" : "text-slate-400"
                 }`}
               />
@@ -724,7 +865,6 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                 id="render-mode"
                 checked={renderMode === "canvas"}
                 onCheckedChange={toggleRenderMode}
-                // className="w-5 h-5"
               />
               <Layers
                 className={`h-4 w-4 ${
@@ -735,215 +875,61 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
             <span className="text-sm text-slate-600">
               {renderMode === "dom" ? "DOM" : "Canvas"}
             </span>
+            
+            {/* Fullscreen Button */}
+            <Button
+              onClick={toggleFullScreen}
+              variant="outline"
+              className="items-center bg-white hover:bg-slate-50 text-slate-700 border border-slate-300"
+            >
+              <Maximize className="h-4 w-4 mr-1" />
+            </Button>
           </div>
-
-          {/* Full Screen Button */}
-          <Button
-            onClick={toggleFullScreen}
-            variant="outline"
-            className="sm:inline-flex hidden items-center bg-white hover:bg-slate-50 text-slate-700 border border-slate-300"
-          >
-            <Maximize className="h-4 w-4 mr-1" />
-            {/* {isFullScreen ? "Exit Full Screen" : "Full Screen"} */}
-          </Button>
-
-          {/* PDF Download Button */}
-          {/* <Button
-          onClick={handlePDFDownload}
-          variant="outline"
-          className="sm:inline-flex hidden items-center bg-white hover:bg-slate-50 text-slate-700 border border-slate-300"
-        >
-          <Download className="h-4 w-4 mr-1" />
-          PDF
-        </Button> */}
-
-          {renderMode === "dom" ? (
-            <Button
-              onClick={handlePrint}
-              variant="outline"
-              className="sm:inline-flex hidden items-center bg-white hover:bg-slate-50 text-slate-700 border border-slate-300"
-            >
-              <Printer className="h-4 w-4 mr-1" />
-              Print DOM
-            </Button>
-          ) : (
-            <Button
-              onClick={handleCanvasPrint}
-              variant="outline"
-              className="sm:inline-flex hidden items-center bg-white hover:bg-slate-50 text-slate-700 border border-slate-300"
-            >
-              <Printer className="h-4 w-4 mr-1" />
-              Print Canvas
-            </Button>
-          )}
+          </div>
         </div>
       </div>
+
+       
       {/* For printing/exporting, we use the active pool */}
-      <div className="hidden print:block">
-        <div className="print-header text-center mb-6">
-          <h2 className="text-xl font-bold text-black">
-            Tournament Bracket - Pool {activePool + 1}
-          </h2>
-        </div>
-        <div className="overflow-x-auto w-full" ref={bracketContainerRef}>
-          <div
-            className={`bracket-display relative pb-0 ${printOrientation} mt-0 flex justify-start`}
-            data-pool={activePool}
-            style={{
-              minHeight: pooledBrackets[activePool]?.length > 2 ? 500 : 300,
-            }}
-          >
-            {/* Render rounds for print/export */}
-            {pooledBrackets[activePool]?.map((round, roundIndex) => (
-              <div
-                key={`print-round-${roundIndex}`}
-                className="bracket-round"
-                style={{
-                  width: "180px",
-                  marginLeft: roundIndex > 0 ? "20px" : "0",
-                }}
-              >
-                {round.map((match, matchIndex) => {
-                  const isFirstRound = roundIndex === 0;
-                  const hasOpponentByeTop =
-                    match.participants[0] !== null &&
-                    match.participants[1] === "(bye)";
-                  const hasOpponentByeBottom =
-                    match.participants[1] !== null &&
-                    match.participants[0] === "(bye)";
-                  const hasMatchByeTop =
-                    !isFirstRound &&
-                    match.participants[0] !== null &&
-                    match.participants[0] !== "(bye)" &&
-                    previousRoundHadBye(
-                      match.participants[0],
-                      bracketData,
-                      roundIndex
-                    );
-                  const hasMatchByeBottom =
-                    !isFirstRound &&
-                    match.participants[1] !== null &&
-                    match.participants[1] !== "(bye)" &&
-                    previousRoundHadBye(
-                      match.participants[1],
-                      bracketData,
-                      roundIndex
-                    );
-
-                  return (
-                    <div
-                      key={`print-match-${match.id}`}
-                      className="bracket-match border border-slate-200 rounded-md bg-gray-50 relative mb-1 p-0"
-                      data-match-id={match.id}
-                    >
-                      {" "}
-                      {/* Match identifier for print version */}
-                      <div className="absolute -top-4 -left-0 text-[8px] font-semibold bg-slate-100 px-0.5 rounded text-slate-600 border border-slate-300 print:block">
-                        M{roundIndex * round.length + matchIndex + 1}
-                      </div>
-                      <div
-                        className={`participant py-0 px-1 text-sm rounded-none ${getParticipantStyle(
-                          match.participants[0],
-                          hasMatchByeTop,
-                          hasOpponentByeTop,
-                          true
-                        )} ${
-                          match.winner === match.participants[0]
-                            ? "font-medium"
-                            : ""
-                        }`}
-                      >
-                        {match.participants[0] === "(bye)"
-                          ? "(bye)"
-                          : match.participants[0] || ""}
-                      </div>
-                      <div
-                        className={`participant py-0 px-1 text-sm rounded-none ${getParticipantStyle(
-                          match.participants[1],
-                          hasMatchByeBottom,
-                          hasOpponentByeBottom,
-                          false
-                        )} ${
-                          match.winner === match.participants[1]
-                            ? "font-medium"
-                            : ""
-                        }`}
-                      >
-                        {match.participants[1] === "(bye)"
-                          ? "(bye)"
-                          : match.participants[1] || ""}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-
-            {/* Render connector lines for print */}
-            {connectors.map((connector, index) => (
-              <div
-                key={`print-connector-${index}`}
-                className={`bracket-connector 
-                  ${
-                    connector.type === "horizontal"
-                      ? "connector-horizontal"
-                      : "connector-vertical"
-                  } 
-                  ${
-                    connector.hasWinner
-                      ? "connector-winner connector-animate print:border-green-500"
-                      : "print:border-gray-400"
-                  }
-                `}
-                style={{
-                  left: `${connector.left}px`,
-                  top: `${connector.top}px`,
-                  width: connector.width ? `${connector.width}px` : undefined,
-                  height: connector.height
-                    ? `${connector.height}px`
-                    : undefined,
-                }}
-                data-match-id={connector.matchId}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
+      
       {/* Display all pools together for normal view */}
       <div className="print:hidden">
-        {renderMode === "canvas" ? (          // Canvas rendering of the bracket with medal podium
+        {renderMode === "canvas" ? (
+          // Canvas rendering of the bracket with medal podium
           <div className="flex w-full relative">
             <div
               ref={canvasBracketRef}
               className="canvas-view mb-4 flex-grow"
               style={{ width: "100%" }}
-            >
-              <CanvasBracket
+            >              <CanvasBracket
                 bracketData={currentBracket}
-                onMatchClick={handleMatchClick}
+                onMatchClick={onMatchClick}
+                onUpdateMatch={onUpdateMatch}
                 width={Math.min(1200, window.innerWidth - 100)}
                 height={Math.max(500, 100 * (currentBracket?.length || 1))}
                 printMode={canvasPrintMode}
-              />            </div>
-            {/* Medal Podium Section - Absolutely positioned */}
-            <div className="absolute bottom-4 right-4 w-[160px] shadow-md z-20">
+                highlightedParticipant={highlightedParticipant}
+              /></div>            {/* Medal Podium Section - Absolutely positioned */}
+            <div className="absolute bottom-4 right-4 z-20">
               <MedalPodium bracketData={bracketData} />
             </div>
           </div>
         ) : (
+          // DOM rendering of the bracket
           <div className="flex flex-col w-full h-[90vh] relative">
             {/* Combined scrollable content with headers */}
 
             <div
               className="overflow-auto flex-grow custom-scrollbar"
               ref={bracketContainerRef}
-              // style={{ width: 'calc(100% - 220px)' }}
+              // style={{ width: \'calc(100% - 220px)\' }}
             >
               <div className="bracket-wrapper ">
                 {/* Round Headers at the top */}
-                <div className="flex sticky top-1 z-10 pb-3 pt-1 bg-white border-b shadow-md mb-6">
-                  {bracketData.map((round, roundIndex) => {
-                    const totalRounds = bracketData.length;
+                {/* <div className="relative border-2 border-slate-300"> */}
+                <div className="flex sticky top-2  pb-4  bg-white  shadow-sm mb-4">
+                  {bracketData!.map((round, roundIndex) => { // Added !
+                    const totalRounds = bracketData!.length; // Added !
                     const roundName = getRoundName(totalRounds, roundIndex);
 
                     return (
@@ -951,38 +937,41 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                         key={`header-${roundIndex}`}
                         className="flex-shrink-0"
                         style={{
-                          width: "240px",
-                          marginLeft: roundIndex > 0 ? "32px" : "0", // Match the spacing of the rounds below
+                          width: "260px", // Increased to match new bracket width
+                          marginLeft: roundIndex > 0 ? "50px" : "0", // Increased spacing to match rounds below
                         }}
-                      >
-                        <div className="flex justify-center">
+                      >                        <div className="w-full">
                           <div
-                            className="bg-blue-800 text-white font-bold py-2 px-4 rounded-md text-center text-sm shadow-sm relative"
-                            style={{ width: "220px" }} // Make this closer to the bracket match width
+                            // className="bg-gradient-to-r from-blue-500 to-blue-600 text-white font-semibold py-1.5 px-3 text-center text-sm shadow-sm border border-blue-400 w-full"
+                            className="bg-gradient-to-r from-gray-100 to-gray-200 text-slate-800 font-semibold py-1.5 px-3 text-center text-sm shadow-sm border border-gray-50 w-full"
+                            style={{ 
+                              borderRadius: "6px 6px 0 0",
+                              // borderBottom: "1px solid #cbd5e1"
+                            }}
                           >
                             {roundName}
-                            <div className="absolute -bottom-2 left-1/2 w-0 h-0 transform -translate-x-1/2 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[8px] border-t-blue-800"></div>
                           </div>
                         </div>
                       </div>
                     );
                   })}
                 </div>
+                {/* </div> */}
                 {/* Bracket content */}
                 <div className="flex relative">
                   <div
                     className="bracket-display relative pb-8 flex justify-start"
                     data-pool="0"
-                    style={{ minHeight: bracketData.length > 2 ? 500 : 300 }}
+                    style={{ minHeight: bracketData!.length > 2 ? 500 : 300 }} // Added !
                   >
-                    {/* Render rounds with increased spacing */}{" "}
-                    {bracketData.map((round, roundIndex) => (
+                    {/* Render rounds with increased spacing */}
+                    {bracketData!.map((round, roundIndex) => ( // Added !
                       <div
                         key={`round-${roundIndex}`}
                         className="bracket-round"
                         style={{
-                          width: "240px",
-                          marginLeft: roundIndex > 0 ? "32px" : "0", // Further increased spacing between rounds
+                          width: "260px", // Increased width for more spacious bracket layout
+                          marginLeft: roundIndex > 0 ? "50px" : "0", // Significantly increased spacing between rounds
                         }}
                       >
                         {round.map((match, matchIndex) => {
@@ -1005,7 +994,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                             match.participants[0] !== "(bye)" &&
                             previousRoundHadBye(
                               match.participants[0],
-                              bracketData,
+                              bracketData!, // Added !
                               roundIndex
                             );
 
@@ -1015,34 +1004,65 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                             match.participants[1] !== "(bye)" &&
                             previousRoundHadBye(
                               match.participants[1],
-                              bracketData,
+                              bracketData!, // Added !
                               roundIndex
                             );
 
-                          return (
+                          const containerClasses = getMatchContainerClasses(
+                            match,
+                            matchResults,
+                            currentMatchId,
+                            highlightedParticipant
+                          );                          return (
                             <div
                               key={`match-${match.id}`}
-                              className={`bracket-match p-1 border ${
-                                matchResults[match.id]?.completed
-                                  ? "border-slate-300 bg-slate-100"
-                                  : matchResults[match.id]
-                                  ? "border-blue-200 bg-blue-50"
-                                  : "border-slate-200 bg-white"
-                              } rounded-md shadow-sm relative mb-2`}
+                              id={`match-${match.id}`}
+                              className={`bracket-match p-1 border ${containerClasses} rounded-md shadow-sm relative mb-6`}
                               data-match-id={match.id}
+                              data-highlighted-participant={
+                                (highlightedParticipant && 
+                                 (match.participants[0] === highlightedParticipant || 
+                                  match.participants[1] === highlightedParticipant))
+                                  ? "true"
+                                  : "false"
+                              }
                             >
-                              {" "}
-                              {/* Match identifier - positioned at the top left */}
-                              <div className="absolute -top-5 -left-0 text-xs font-semibold bg-slate-100 px-1 rounded text-slate-600 border border-slate-300">
-                                M{roundIndex * round.length + matchIndex + 1}
-                              </div>
-                              {/* First participant */}{" "}
-                              <div
-                                className={`participant py-1 px-2.5 mb-1 text-sm rounded-r-sm print:border-b print:border-b-slate-700 ${getParticipantStyle(
+                              {/* Match Number Display */}
+                              {(!isByeMatch(match) || (match.participants[0] && match.participants[1])) && (
+                                <div
+                                  className={`absolute -top-5 left-1/2 transform -translate-x-1/2 bg-slate-100 border border-slate-300 text-slate-500 text-xs font-semibold px-1.5 py-0.5 rounded-sm shadow-sm z-10 ${
+                                    isByeMatch(match) ? "opacity-50" : ""
+                                  }`}
+                                >
+                                  M{(() => {
+                                      let matchNumber = 0;
+                                      // Count all non-bye matches in previous rounds
+                                      for (let i = 0; i < roundIndex; i++) {
+                                        const roundMatches = bracketData![i] || []; // Added !
+                                        for (const prevMatch of roundMatches) {
+                                          if (!isByeMatch(prevMatch)) {
+                                            matchNumber++;
+                                          }
+                                        }
+                                      }
+                                      // Add non-bye matches in the current round up to this match
+                                      for (let i = 0; i <= matchIndex; i++) {
+                                        if (!isByeMatch(round[i])) { // round is from bracketData!.map, so it's fine
+                                          matchNumber++;
+                                        }
+                                      }
+                                      return matchNumber;
+                                    })()}
+                                </div>
+                              )}
+                              {/* Participant 1 */}{" "}                              <div
+                                className={`participant py-1 px-2.5 mb-1 text-sm rounded-r-sm print:border-b print:border-b-slate-700 ${getParticipantClasses(
                                   match.participants[0],
                                   hasMatchByeTop,
                                   hasOpponentByeTop,
-                                  true
+                                  true,
+                                  match,
+                                  matchResults
                                 )} ${
                                   match.winner === match.participants[0]
                                     ? "font-medium"
@@ -1069,8 +1089,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                                     // Legacy winner selection
                                     handleMatchClick(match.id, 0);
                                   }
-                                }}
-                                style={{
+                                }}                                style={{
                                   cursor:
                                     match.participants[0] &&
                                     match.participants[0] !== "(bye)"
@@ -1081,14 +1100,54 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                                 {match.participants[0] === "(bye)"
                                   ? "(bye)"
                                   : match.participants[0] || ""}
+                                {/* Disqualification indicator for first participant */}
+                                {(() => {
+                                  const matchResult = matchResults[match.id];
+                                  if (matchResult && matchResult.completed && matchResult.rounds.length > 0) {
+                                    const decisiveRound = [...matchResult.rounds].reverse().find(round => 
+                                      round.winMethod && round.winner
+                                    );
+                                    
+                                    if (decisiveRound && decisiveRound.winMethod) {
+                                      const isDisqualificationMethod = decisiveRound.winMethod === 'DSQ' || 
+                                                                     decisiveRound.winMethod === 'DQB' || 
+                                                                     decisiveRound.winMethod === 'DQBOTH';
+                                      
+                                      if (isDisqualificationMethod) {
+                                        let isDisqualified = false;
+                                        if (decisiveRound.winMethod === 'DQBOTH') {
+                                          // Both players disqualified
+                                          isDisqualified = true;
+                                        } else {
+                                          // Single disqualification - the disqualified player is the one who is NOT the winner
+                                          isDisqualified = match.participants[0] !== decisiveRound.winner;
+                                        }
+                                        
+                                        if (isDisqualified && match.participants[0] !== "(bye)") {
+                                          return (
+                                            <div className="absolute top-1/2 right-2 transform -translate-y-1/2 text-red-600 pointer-events-none">
+                                              <svg width="12" height="12" viewBox="0 0 12 12" className="fill-current">
+                                                <path d="M10.5 1.5l-9 9M1.5 1.5l9 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                              </svg>
+                                            </div>
+                                          );
+                                        }
+                                      }
+                                    }
+                                  }
+                                  return null;
+                                })()}
                               </div>
-                              {/* Second participant */}{" "}
-                              <div
-                                className={`participant py-1 px-2.5 text-sm rounded-r-sm ${getParticipantStyle(
+                              {/* Separator */}
+                              <div className="h-px bg-slate-200"></div>
+                              {/* Participant 2 */}{" "}                              <div
+                                className={`participant py-1 px-2.5 text-sm rounded-r-sm ${getParticipantClasses(
                                   match.participants[1],
                                   hasMatchByeBottom,
                                   hasOpponentByeBottom,
-                                  false
+                                  false,
+                                  match,
+                                  matchResults
                                 )} ${
                                   match.winner === match.participants[1]
                                     ? "font-medium"
@@ -1115,8 +1174,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                                     // Legacy winner selection
                                     handleMatchClick(match.id, 1);
                                   }
-                                }}
-                                style={{
+                                }}                                style={{
                                   cursor:
                                     match.participants[1] &&
                                     match.participants[1] !== "(bye)"
@@ -1127,6 +1185,43 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                                 {match.participants[1] === "(bye)"
                                   ? "(bye)"
                                   : match.participants[1] || ""}
+                                {/* Disqualification indicator for second participant */}
+                                {(() => {
+                                  const matchResult = matchResults[match.id];
+                                  if (matchResult && matchResult.completed && matchResult.rounds.length > 0) {
+                                    const decisiveRound = [...matchResult.rounds].reverse().find(round => 
+                                      round.winMethod && round.winner
+                                    );
+                                    
+                                    if (decisiveRound && decisiveRound.winMethod) {
+                                      const isDisqualificationMethod = decisiveRound.winMethod === 'DSQ' || 
+                                                                     decisiveRound.winMethod === 'DQB' || 
+                                                                     decisiveRound.winMethod === 'DQBOTH';
+                                      
+                                      if (isDisqualificationMethod) {
+                                        let isDisqualified = false;
+                                        if (decisiveRound.winMethod === 'DQBOTH') {
+                                          // Both players disqualified
+                                          isDisqualified = true;
+                                        } else {
+                                          // Single disqualification - the disqualified player is the one who is NOT the winner
+                                          isDisqualified = match.participants[1] !== decisiveRound.winner;
+                                        }
+                                        
+                                        if (isDisqualified && match.participants[1] !== "(bye)") {
+                                          return (
+                                            <div className="absolute top-1/2 right-2 transform -translate-y-1/2 text-red-600 pointer-events-none">
+                                              <svg width="12" height="12" viewBox="0 0 12 12" className="fill-current">
+                                                <path d="M10.5 1.5l-9 9M1.5 1.5l9 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                              </svg>
+                                            </div>
+                                          );
+                                        }
+                                      }
+                                    }
+                                  }
+                                  return null;
+                                })()}
                               </div>{" "}
                               {/* Match Status Indicators */}
                               {/* Lock icon commented out per request - may be reused later
@@ -1140,12 +1235,12 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                                 <div className="absolute -right-7 bottom-1 transform -translate-y-1/2">
                                   <CheckCircle className="h-4 w-4 text-green-500" />
                                 </div>
-                              )}
-                              {/* Champion badge for final match */}
-                              {roundIndex === bracketData.length - 1 &&
+                              )}                              {/* Champion badge for final match */}
+                              {roundIndex === bracketData!.length - 1 && matchResults[bracketData[bracketData.length -1][0]?.id ??""] &&
                                 match.winner && (
-                                  <div className="absolute -right-16 top-1/2 transform -translate-y-1/2 bg-primary text-white text-xs py-1 px-2 rounded-full">
-                                    Winner
+                                  <div className="absolute -right-32 top-1/2 transform -translate-y-1/2 bg-primary text-white text-xs py-1 px-2 rounded-full flex items-center">
+                                    <Trophy className="h-3 w-3 mr-1" /> 
+                                    Winner: {match.winner}
                                   </div>
                                 )}
                             </div>
@@ -1185,9 +1280,8 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                 </div>
               </div>
             </div>
-            
-            {/* Medal Podium Section - Absolutely positioned */}
-            <div className="absolute bottom-4 right-4 w-[200px] shadow-md z-20">
+              {/* Medal Podium Section - Absolutely positioned */}
+            <div className="absolute bottom-4 right-4 z-20">
               <MedalPodium bracketData={bracketData} />
             </div>
           </div>
@@ -1199,14 +1293,11 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm Winner</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to set {selectedWinner} as the winner?
-              {selectedMatch?.winner &&
-                selectedMatch.winner !== selectedWinner && (
-                  <span className="font-semibold block mt-2">
-                    This will change the current winner from{" "}
-                    {selectedMatch.winner} to {selectedWinner}.
-                  </span>
-                )}
+              {selectedMatchInfo && selectedMatchInfo.match && selectedMatchInfo.winner ? (
+                `Are you sure you want to set ${selectedMatchInfo.winner} as the winner for the match between ${selectedMatchInfo.match.participants[0]} and ${selectedMatchInfo.match.participants[1]}?`
+              ) : (
+                "Please select a valid match and winner."
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1217,87 +1308,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      {/* Print-specific styles - added to the page via style tag */}{" "}
-      <style
-        id="bracket-print-styles"
-        dangerouslySetInnerHTML={{
-          __html: `
-  /* Hide everything when printing */
-  @media print {
-    body * {
-      visibility: hidden;
-    }
-    .print-header, .bracket-display, .bracket-display * {
-      visibility: visible;
-    }
-    .print-header {
-      position: absolute;
-      top: 10mm;
-      left: 0;
-      width: 100%;
-    }
-    .bracket-display {
-      width: 1000px !important;
-      min-width: 1000px !important;
-      max-width: 1000px !important;
-      transform: scale(0.8); /* Optional, you can adjust */
-      transform-origin: top left;
-    }
-
-    .bracket-match {
-      page-break-inside: avoid;
-      break-inside: avoid;
-    }
-    @page {
-      size: ${printOrientation}; /* dynamic print orientation */
-      margin: 0.9cm;
-    }
-  }
-  
-  /* Winner connector styles */
-  .connector-winner {
-    border-color: #22c55e !important; /* Green color for winner connectors */
-    animation: pulse-connector 2s infinite;
-    z-index: 1;
-  }
-  
-  @keyframes pulse-connector {
-    0% {
-      opacity: 0.7;
-    }
-    50% {
-      opacity: 1;
-    }
-    100% {
-      opacity: 0.7;
-    }
-  }
-`,
-        }}
-      />
-      {/* Define bracket connector styles */}
-      <style>
-        {`
-          .bracket-connector {
-            position: absolute;
-            background-color: #94a3b8;
-            z-index: 100;
-          }
-          .connector-horizontal {
-            height: 2px;
-          }
-          .connector-vertical {
-            width: 2px;
-            transform: translateX(-1px);
-          }
-          .participant {
-            transition: background-color 0.2s;
-          }
-          .participant:hover {
-            background-color: #e2e8f0;
-          }
-        `}
-      </style>
+      
     </div>
   );
 };

@@ -1,0 +1,104 @@
+{
+  "announcements": [
+    {
+      "id": "1",
+      "title": "Tournament Schedule Update",
+      "content": "The final round will start at 2:00 PM instead of 1:30 PM due to lunch break extension. Please ensure you arrive 15 minutes before your scheduled match time.",
+      "date": "2025-06-05T10:30:00.000Z",
+      "isPinned": true,
+      "priority": "high",
+      "category": "schedule",
+      "authorName": "Tournament Director",
+      "isArchived": false,
+      "views": 45
+    },
+    {
+      "id": "2",
+      "title": "Water Stations and Safety",
+      "content": "Water stations have been set up near each court. Please stay hydrated throughout the tournament. First aid stations are located at the main entrance and near Court 3.",
+      "date": "2025-06-04T14:15:00.000Z",
+      "isPinned": false,
+      "priority": "medium",
+      "category": "general",
+      "authorName": "Safety Officer",
+      "isArchived": false,
+      "views": 28
+    },
+    {
+      "id": "3",
+      "title": "Welcome to the Tournament",
+      "content": "Welcome to our tournament! Registration opens at 8:00 AM. Please arrive 30 minutes before your scheduled match time. Check-in at the main registration desk.",
+      "date": "2025-06-03T08:00:00.000Z",
+      "isPinned": false,
+      "priority": "medium",
+      "category": "general",
+      "authorName": "Registration Team",
+      "isArchived": false,
+      "views": 67
+    },
+    {
+      "id": "4",
+      "title": "Equipment Check Reminder",
+      "content": "All participants must complete equipment check before their first match. Protective gear will be inspected for safety compliance.",
+      "date": "2025-06-05T09:00:00.000Z",
+      "isPinned": false,
+      "priority": "high",
+      "category": "rules",
+      "authorName": "Equipment Inspector",
+      "isArchived": false,
+      "views": 23
+    }
+  ],
+  "templates": [
+    {
+      "id": "welcome",
+      "name": "Welcome Message",
+      "title": "Welcome to {tournamentName}",
+      "content": "Welcome to our tournament! Registration opens at {time}. Please arrive 30 minutes before your scheduled match time. Check-in at the main registration desk.",
+      "category": "general",
+      "priority": "medium",
+      "isUserCreated": false,
+      "isActive": true
+    },
+    {
+      "id": "schedule_change",
+      "name": "Schedule Change",
+      "title": "Schedule Update - {matchType}",
+      "content": "The {matchType} will start at {newTime} instead of {oldTime} due to {reason}. Please ensure you arrive 15 minutes before your scheduled match time.",
+      "category": "schedule",
+      "priority": "high",
+      "isUserCreated": false,
+      "isActive": true
+    },
+    {
+      "id": "safety",
+      "name": "Safety Notice",
+      "title": "Safety Information",
+      "content": "Water stations have been set up near each court. Please stay hydrated throughout the tournament. First aid stations are located at {locations}.",
+      "category": "general",
+      "priority": "medium",
+      "isUserCreated": false,
+      "isActive": true
+    },
+    {
+      "id": "results",
+      "name": "Results Announcement",
+      "title": "{matchType} Results",
+      "content": "Congratulations to all participants! {matchType} results are now available. Winners will be announced at the award ceremony at {time}.",
+      "category": "results",
+      "priority": "medium",
+      "isUserCreated": false,
+      "isActive": true
+    },
+    {
+      "id": "emergency",
+      "name": "Emergency Notice",
+      "title": "Important: {emergencyType}",
+      "content": "URGENT: {details}. Please follow instructions from tournament officials. For questions, contact tournament control immediately.",
+      "category": "emergency",
+      "priority": "urgent",
+      "isUserCreated": false,
+      "isActive": true
+    }
+  ]
+}

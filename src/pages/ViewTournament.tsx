@@ -18,10 +18,11 @@ import {
   Award,
   Save
 } from "lucide-react";
-import { useBracketPDF } from "@/hooks/useBracketPDF";
+import { useBracketPDF, PDFGenOptions } from "@/hooks/useBracketPDF"; // PDFGenOptions already imported
 import { cn } from "@/lib/utils";
 import { RoundsConfigModal } from "@/components/RoundsConfigModal";
 import { MatchScoringModal } from "@/components/MatchScoringModal";
+import { PDFDownloadDialog } from "@/components/PDFDownloadDialog"; // Import the new dialog
 
 // Interface for match info used in the scoring modal
 interface MatchInfo {
@@ -31,8 +32,7 @@ interface MatchInfo {
 }
 
 const ViewTournament = () => {
-  const [, navigate] = useLocation();
-  const {
+  const [, navigate] = useLocation();  const {
     bracketData,
     tournamentName,
     participantCount,
@@ -40,13 +40,15 @@ const ViewTournament = () => {
     internalRoundsPerMatch,
     saveMatchResult,
     matchResults,
-    exportMatchDataAsJson
+    exportMatchDataAsJson,
+    setCurrentMatch
   } = useTournamentStore();
   
   const { generateBracketPDF, previewBracketPDF, orientation, toggleOrientation } = useBracketPDF();
   
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [pdfDialogOptionsOpen, setPdfDialogOptionsOpen] = useState(false); // State for new dialog
   
   // New state for modals
   const [configModalOpen, setConfigModalOpen] = useState(false);
@@ -107,26 +109,53 @@ const ViewTournament = () => {
     }
   };
 
-  // Handler for direct PDF generation
-  const handleDirectPDFExport = () => {
+  // Handler for direct PDF generation - now opens the dialog
+  const handleOpenPDFDialog = () => {
+    setPdfDialogOptionsOpen(true);
+  };
+
+  // Handler for PDF generation with custom options from dialog
+  const handlePDFExportWithOptions = (options: PDFGenOptions) => {
     if (bracketData) {
-      generateBracketPDF(bracketData, tournamentName, participantCount);
+      // Ensure tournamentName from store is used if header is empty, or use the one from dialog
+      const header = options.tournamentHeader || tournamentName;
+      generateBracketPDF(bracketData, header, participantCount, options);
     }
   };
-  
+
+  // Handler for PDF preview with custom options from dialog
+  const handlePDFPreviewWithOptions = (options: PDFGenOptions) => {
+    if (bracketData) {
+      // Ensure tournamentName from store is used if header is empty, or use the one from dialog
+      const header = options.tournamentHeader || tournamentName;
+      // console.log("Previewing PDF with options:", options);
+      
+      previewBracketPDF(bracketData, header, participantCount, options);
+    }
+  };
+
   // Handler for PDF preview
   const handlePreviewPDF = () => {
     if (bracketData) {
-      previewBracketPDF(bracketData, tournamentName, participantCount);
+      // Pass the current orientation from the hook explicitly to ensure the preview uses it
+      previewBracketPDF(bracketData, tournamentName, participantCount, { pdfOrientation: orientation });
+    }
+  };
+  
+  // Handler for closing the scoring modal
+  const handleScoringModalClose = (open: boolean) => {
+    setScoringModalOpen(open);
+    if (!open) {
+      setCurrentMatch(null);
+      setSelectedMatch(null);
     }
   };
   
   if (!bracketData) {
     return null; // Will redirect in useEffect
   }
-  
-  return (
-    <div className="p-3 space-y-3 relative">
+    return (
+    <div className="p-2 sm:p-3 space-y-3 relative">
     <div className="flex flex-col  ">
       <div className="flex-1 ">
         {/* Main Bracket Display - ensuring no scrolling */}
@@ -137,6 +166,7 @@ const ViewTournament = () => {
               header={tournamentName}
               onMatchClick={(matchId, player1, player2) => {
                 setSelectedMatch({ matchId, player1, player2 });
+                setCurrentMatch(matchId);
                 setScoringModalOpen(true);
               }}
             />
@@ -252,7 +282,7 @@ const ViewTournament = () => {
                   </Button>
                   
                   <Button 
-                    onClick={handleDirectPDFExport}
+                    onClick={handleOpenPDFDialog} // Changed from handleDirectPDFExport
                     variant="outline" 
                     className="w-full justify-start"
                   >
@@ -278,10 +308,23 @@ const ViewTournament = () => {
                     )}
                   </Button>
                 </div>
-              </div>
-            </SheetContent>
+              </div>            </SheetContent>
           </Sheet>
         </div>
+
+        {/* Floating PDF Download FAB - bottom right */}
+        {bracketData && (
+          <div className="fixed bottom-6 right-6 z-40 md:hidden">
+            <Button 
+              onClick={handleOpenPDFDialog}
+              size="lg"
+              className="h-14 w-14 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700 text-white border-0 transition-all duration-200 hover:scale-105"
+            >
+              <Download className="h-6 w-6" />
+              <span className="sr-only">Download PDF</span>
+            </Button>
+          </div>
+        )}
       </div>
     </div>
       {/* Rounds configuration modal */}
@@ -289,12 +332,21 @@ const ViewTournament = () => {
       open={configModalOpen} 
       onOpenChange={setConfigModalOpen}
     />
-    
-    {/* Match scoring modal - pass selectedMatch details */}
+    {/* PDF Download Options Modal */}
+    <PDFDownloadDialog
+      open={pdfDialogOptionsOpen}
+      onOpenChange={setPdfDialogOptionsOpen}
+      defaultTournamentName={tournamentName}
+      defaultOrientation={orientation}
+      defaultOrganizerName="Professional Taekwondo Academy"
+      onDownload={handlePDFExportWithOptions}
+      onPreview={handlePDFPreviewWithOptions} // Pass the new preview handler
+    />
+      {/* Match scoring modal - pass selectedMatch details */}
     {selectedMatch && (
       <MatchScoringModal 
         open={scoringModalOpen} 
-        onOpenChange={setScoringModalOpen} 
+        onOpenChange={handleScoringModalClose} 
         match={selectedMatch}
         onScoringComplete={saveMatchResult}
       />

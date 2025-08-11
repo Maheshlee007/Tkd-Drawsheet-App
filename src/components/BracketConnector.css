@@ -4,14 +4,14 @@
 .bracket-connector {
   transition: all 0.5s ease-in-out;
   position: absolute;
-  border-color: #cbd5e1;
-  z-index: 1;
+  border-color: #cbd5e1 !important;
+    z-index: 1;
 }
 
 /* Winner connector styling with animation */
 .connector-winner {
   border-color: #22c55e !important;
-  animation: pulse-connector 3s infinite; /* Adjusted animation (3s instead of 4s) */
+  /* animation: pulse-connector 3s infinite; Adjusted animation (3s instead of 4s) */
   z-index: 2;
   transition: border-color 0.5s ease-in-out;
 }
@@ -30,6 +30,41 @@
   100% {
     opacity: 0.7;
     border-width: 2px;
+  }
+}
+
+/* Fixed height dropdown with internal scroll */
+.dropdown-with-scroll {
+  height: auto;
+}
+
+/* Apply this style to the dropdown when it's open */
+.dropdown-with-scroll option {
+  padding: 8px 12px;
+}
+
+/* Limit height and enable scrolling */
+select.dropdown-with-scroll[size]:not([size="1"]) {
+  height: auto;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* Pulse highlight animation for match navigation */
+.pulse-highlight {
+  animation: pulse-highlight 1s ease-in-out;
+  box-shadow: 0 0 0 0 rgba(99, 102, 241, 1);
+}
+
+@keyframes pulse-highlight {
+  0% {
+    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(99, 102, 241, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
   }
 }
 
