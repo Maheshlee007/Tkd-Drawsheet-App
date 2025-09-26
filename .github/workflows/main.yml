@@ -1,0 +1,43 @@
+name: Deploy React to S3 + CloudFront
+
+on:
+  push:
+    branches:
+      - main    # or whichever branch you want auto-deploy
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'    # or your version
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build
+      run: npm run build
+
+    - name: Configure AWS credentials via OIDC
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        role-to-assume: arn:aws:iam::045669744415:oidc-provider/token.actions.githubusercontent.com
+        aws-region: us-east-1     # or your AWS region
+
+    - name: Sync build to S3
+      run: |
+        aws s3 sync build/ s3://my-tkd-react-app --delete
+
+    - name: Invalidate CloudFront cache
+      run: |
+        aws cloudfront create-invalidation --distribution-id EA55WDJY60IT --paths "/*"
