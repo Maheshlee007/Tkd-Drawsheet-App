@@ -44,7 +44,7 @@ jobs:
 
     - name: Sync build to S3
       run: |
-        aws s3 sync build/ s3://my-tkd-react-app --delete
+        aws s3 sync dist/ s3://my-tkd-react-app --delete
 
     - name: Invalidate CloudFront cache
       run: |
