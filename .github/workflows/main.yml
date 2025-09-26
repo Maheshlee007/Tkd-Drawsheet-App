@@ -31,7 +31,7 @@ jobs:
     - name: Configure AWS credentials via OIDC
       uses: aws-actions/configure-aws-credentials@v2
       with:
-        role-to-assume: arn:aws:iam::045669744415:role/GitHubAction-AssumeRoleWithAction
+        role-to-assume: arn:aws:iam::045669744415:role/reactAppCICD
         aws-region: us-east-1     # or your AWS region
         audience: sts.amazonaws.com 
     - name: Debug — who am I
