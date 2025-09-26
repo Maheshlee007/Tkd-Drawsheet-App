@@ -31,8 +31,16 @@ jobs:
     - name: Configure AWS credentials via OIDC
       uses: aws-actions/configure-aws-credentials@v2
       with:
-        role-to-assume: arn:aws:iam::045669744415:oidc-provider/token.actions.githubusercontent.com
+        role-to-assume: arn:aws:iam::045669744415:role/GitHubAction-AssumeRoleWithAction
         aws-region: us-east-1     # or your AWS region
+        
+    - name: Debug — who am I
+      run: aws sts get-caller-identity
+      
+    - name: Print role-to-assume
+      run: echo "Role to assume is ${{ github.actor }} etc."  # or echo the literal you passed
+
+
 
     - name: Sync build to S3
       run: |
