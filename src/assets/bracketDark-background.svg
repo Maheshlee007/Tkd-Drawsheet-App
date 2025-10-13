@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 800" width="1400" height="800" preserveAspectRatio="xMidYMid meet">
+  <defs>
+<!--Background gradient (unchanged)-->
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a0000; stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#00001a; stop-opacity:1"/>
+    </linearGradient>
+<!--subtle center halo (now toned to fit background)-->
+    <radialGradient id="trophyHalo" cx="50%" cy="42%" r="45%">
+      <stop offset="0%" style="stop-color:#ff2fa8; stop-opacity:0.28"/>
+      <stop offset="35%" style="stop-color:#8a00ff; stop-opacity:0.16"/>
+      <stop offset="100%" style="stop-color:#0040ff; stop-opacity:0.06"/>
+    </radialGradient>
+<!--small subtle neon ring for the trophy (blurred)-->
+    <filter id="blurGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="14" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+<!--Grey shaded rectangles-->
+    <linearGradient id="rectFill" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#333; stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#444; stop-opacity:1"/>
+    </linearGradient>
+    <style>
+      <![CDATA[
+      .box { fill: url(#rectFill); stroke: rgba(255,255,255,0.92); stroke-width:2; rx:6; }
+      .connector { fill:none; stroke: rgba(255,255,255,0.92); stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+      .connector-faint { fill:none; stroke: rgba(255,255,255,0.42); stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+      .title { font-family: Arial, Helvetica, sans-serif; font-weight:700; fill:#ffffff; }
+    ]]>
+    </style>
+  </defs>
+<!--Background-->
+  <rect width="100%" height="100%" fill="url(#bgGradient)"/>
+<!--LEFT SIDE: 4 top + 4 bottom-->
+<!--Round 1 (left)-->
+  <g id="left-round1">
+    <rect class="box" x="60" y="90" width="140" height="40"/>
+    <rect class="box" x="60" y="150" width="140" height="40"/>
+    <rect class="box" x="60" y="210" width="140" height="40"/>
+    <rect class="box" x="60" y="270" width="140" height="40"/>
+    <rect class="box" x="60" y="470" width="140" height="40"/>
+    <rect class="box" x="60" y="530" width="140" height="40"/>
+    <rect class="box" x="60" y="590" width="140" height="40"/>
+    <rect class="box" x="60" y="650" width="140" height="40"/>
+  </g>
+<!--LEFT ROUND 2-->
+  <g id="left-round2">
+    <rect class="box" x="280" y="120" width="140" height="40"/>
+    <rect class="box" x="280" y="240" width="140" height="40"/>
+    <rect class="box" x="280" y="500" width="140" height="40"/>
+    <rect class="box" x="280" y="620" width="140" height="40"/>
+  </g>
+<!--LEFT ROUND 3-->
+  <g id="left-round3">
+    <rect class="box" x="500" y="180" width="140" height="40"/>
+    <rect class="box" x="500" y="560" width="140" height="40"/>
+  </g>
+<!--RIGHT SIDE (mirrored left)-->
+<!--Round 1 (right)-->
+  <g id="right-round1">
+    <rect class="box" x="1200" y="90" width="140" height="40"/>
+    <rect class="box" x="1200" y="150" width="140" height="40"/>
+    <rect class="box" x="1200" y="210" width="140" height="40"/>
+    <rect class="box" x="1200" y="270" width="140" height="40"/>
+    <rect class="box" x="1200" y="470" width="140" height="40"/>
+    <rect class="box" x="1200" y="530" width="140" height="40"/>
+    <rect class="box" x="1200" y="590" width="140" height="40"/>
+    <rect class="box" x="1200" y="650" width="140" height="40"/>
+  </g>
+<!--RIGHT ROUND 2-->
+  <g id="right-round2">
+    <rect class="box" x="980" y="120" width="140" height="40"/>
+    <rect class="box" x="980" y="240" width="140" height="40"/>
+    <rect class="box" x="980" y="500" width="140" height="40"/>
+    <rect class="box" x="980" y="620" width="140" height="40"/>
+  </g>
+<!--RIGHT ROUND 3-->
+  <g id="right-round3">
+    <rect class="box" x="760" y="180" width="140" height="40"/>
+    <rect class="box" x="760" y="560" width="140" height="40"/>
+  </g>
+<!--CONNECTORS - LEFT (top pair, second pair, bottom pairs)-->
+  <g id="connectors-left" stroke-linecap="round" stroke-linejoin="round">
+<!--Round1 -> Round2 (top four)-->
+    <polyline class="connector" points="200,110 240,110 240,140 280,140"/>
+    <polyline class="connector" points="200,170 240,170 240,140 280,140"/>
+    <polyline class="connector" points="200,230 240,230 240,260 280,260"/>
+    <polyline class="connector" points="200,290 240,290 240,260 280,260"/>
+<!--Round1 -> Round2 (bottom four)-->
+    <polyline class="connector" points="200,490 240,490 240,520 280,520"/>
+    <polyline class="connector" points="200,550 240,550 240,520 280,520"/>
+    <polyline class="connector" points="200,610 240,610 240,640 280,640"/>
+    <polyline class="connector" points="200,670 240,670 240,640 280,640"/>
+<!--Round2 -> Round3 (top)-->
+    <polyline class="connector" points="420,140 460,140 460,200 500,200"/>
+    <polyline class="connector" points="420,260 460,260 460,200 500,200"/>
+<!--Round2 -> Round3 (bottom)-->
+    <polyline class="connector" points="420,520 460,520 460,580 500,580"/>
+    <polyline class="connector" points="420,640 460,640 460,580 500,580"/>
+<!--Round3 -> center trophy (left side)-->
+    <polyline class="connector" points="640,200 680,200 680,320 700,320"/>
+    <polyline class="connector" points="640,580 680,580 680,320 700,320"/>
+  </g>
+<!--CONNECTORS - RIGHT (mirror of left; calculated by x' = 1400 - x)-->
+  <g id="connectors-right" stroke-linecap="round" stroke-linejoin="round">
+<!--Round1 -> Round2 (top)-->
+    <polyline class="connector" points="1200,110 1160,110 1160,140 1120,140"/>
+    <polyline class="connector" points="1200,170 1160,170 1160,140 1120,140"/>
+    <polyline class="connector" points="1200,230 1160,230 1160,260 1120,260"/>
+    <polyline class="connector" points="1200,290 1160,290 1160,260 1120,260"/>
+<!--bottom-->
+    <polyline class="connector" points="1200,490 1160,490 1160,520 1120,520"/>
+    <polyline class="connector" points="1200,550 1160,550 1160,520 1120,520"/>
+    <polyline class="connector" points="1200,610 1160,610 1160,640 1120,640"/>
+    <polyline class="connector" points="1200,670 1160,670 1160,640 1120,640"/>
+<!--Round2 -> Round3-->
+    <polyline class="connector" points="980,140 940,140 940,200 900,200"/>
+    <polyline class="connector" points="980,260 940,260 940,200 900,200"/>
+    <polyline class="connector" points="980,520 940,520 940,580 900,580"/>
+    <polyline class="connector" points="980,640 940,640 940,580 900,580"/>
+<!--Round3 -> center trophy (right side)-->
+    <polyline class="connector" points="760,200 720,200 720,320 700,320"/>
+    <polyline class="connector" points="760,580 720,580 720,320 700,320"/>
+  </g>
+<!--CENTER TROPHY + IMPROVED HALO-->
+  <g id="center-trophy">
+<!--Halo (soft, subtle to match background)-->
+    <circle cx="700" cy="400" r="120" fill="url(#trophyHalo)" opacity="0.72"/>
+<!--blurred ring for gentle neon-->
+    <circle cx="700" cy="400" r="150" fill="none" stroke="#8a00ff" stroke-width="18" opacity="0.08" filter="url(#blurGlow)"/>
+    <circle cx="700" cy="400" r="165" fill="none" stroke="#0040ff" stroke-width="28" opacity="0.04" filter="url(#blurGlow)"/>
+<!--trophy cup (simple cup icon, no shield/laurel)-->
+<!--<g transform="translate(640,360)" fill="none" stroke="rgba(255,255,255,0.96)" stroke-width="2">
+      <path d="M20,16 q0,28 34,28 q34,0 34,-28 v-44 h-68 z" fill="#00" style="opacity:0.95"/>
+      <path d="M19,0 q-12,-4 -14,10 q10,6 14,6" stroke="rgba(255,255,255,0.56)" fill="none"/>
+      <path d="M90,0 q12,-4 14,10 q-10,6 -14,6" stroke="rgba(255,255,255,0.56)" fill="none"/>
+      base
+      <rect x="40" y="56" width="40" height="8" rx="3" fill="rgba(0,0,0,0.18)"/>
+      <rect x="26" y="66" width="68" height="12" rx="6" fill="rgba(255,255,255,0.04)"/>
+    </g>-->
+  </g>
+<!--Title-->
+  <text x="700" y="48" text-anchor="middle" class="title" font-size="32">TOURNAMENT BRACKET</text>
+</svg>

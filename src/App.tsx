@@ -2,6 +2,7 @@ import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
+import { ToastProvider } from "@/components/ToastProvider";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/Home";
 import CreateTournament from "@/pages/CreateTournament";
@@ -12,44 +13,78 @@ import AnnouncementsPage from "@/pages/AnnouncementsPage";
 import StatisticsPage from "@/pages/StatisticsPage";
 import SettingsPage from "@/pages/SettingsPage";
 import LiveFeedPage from "@/pages/LiveFeedPage";
-import { ToastProvider } from "@/components/ToastProvider";
-import { AppLayout } from "@/components/AppLayout";
+import LoginPage from "@/pages/LoginPage";
+import LogoutPage from "@/pages/LogoutPage";
+import ProtectedRoute from "@/components/ProtectedRoute";
 
 function Router() {
   return (
-    <AppLayout>
+    <>
       <Switch>
+        {/* Public routes */}
+        <Route path="/login">
+          <LoginPage />
+        </Route>
+        <Route path="/logout">
+          <LogoutPage />
+        </Route>
+
+        {/* Protected routes */}
         <Route path="/">
-          {(params) => <Home />}
+          <ProtectedRoute>
+            <Home />
+          </ProtectedRoute>
         </Route>
         <Route path="/create">
-          {(params) => <CreateTournament />}
+          <ProtectedRoute>
+            <CreateTournament />
+          </ProtectedRoute>
         </Route>
         <Route path="/view">
-          {(params) => <ViewTournament />}
+          <ProtectedRoute>
+            <ViewTournament />
+          </ProtectedRoute>
         </Route>
         <Route path="/participants">
-          {(params) => <ParticipantsPage />}
+          <ProtectedRoute>
+            <ParticipantsPage />
+          </ProtectedRoute>
         </Route>
         <Route path="/participant/:name">
-          {(params) => <ParticipantDetailsPage />}
+          <ProtectedRoute>
+            <ParticipantDetailsPage />
+          </ProtectedRoute>
         </Route>
         <Route path="/statistics">
-          {(params) => <StatisticsPage />}
+          <ProtectedRoute>
+            <StatisticsPage />
+          </ProtectedRoute>
         </Route>
         <Route path="/announcements">
-          {(params) => <AnnouncementsPage />}
-        </Route>        <Route path="/live-feed">
-          {(params) => <LiveFeedPage />}          
+          <ProtectedRoute>
+            <AnnouncementsPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/live-feed">
+          <ProtectedRoute>
+            <LiveFeedPage />
+          </ProtectedRoute>
         </Route>
         <Route path="/settings">
-          {(params) => <SettingsPage />}
+          <ProtectedRoute>
+            <SettingsPage />
+          </ProtectedRoute>
         </Route>
+
+        {/* 404 route */}
         <Route path="/:rest*">
-          {(params) => <NotFound />}
+          <NotFound />
         </Route>
       </Switch>
-    </AppLayout>    
+      
+      {/* Global providers after routing */}
+      <ToastProvider />
+    </>
   );
 }
 
@@ -58,7 +93,6 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <Router />
       <Toaster />
-      <ToastProvider />
     </QueryClientProvider>
   );
 }

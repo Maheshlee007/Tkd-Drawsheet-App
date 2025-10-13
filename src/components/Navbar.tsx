@@ -14,7 +14,8 @@ import {
   Megaphone,
   Settings,
   ClipboardList,
-  RadioTower // Added RadioTower icon for Live Feed
+  RadioTower, // Added RadioTower icon for Live Feed
+  LogOut
 } from "lucide-react";
 import {
   Sheet,
@@ -24,7 +25,18 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+
 import { useTournamentStore } from "@/store/useTournamentStore";
+import { useAuthStore } from "@/store/useAuthStore";
 import { useState, useEffect } from "react";
 import { PDFDownloadDialog } from "@/components/PDFDownloadDialog"; // Import the new dialog
 import { PDFGenOptions, useBracketPDF } from "@/hooks/useBracketPDF";
@@ -35,6 +47,20 @@ const Navbar = () => {
   const { bracketData, exportAsPDF, tournamentName,participantCount } = useTournamentStore();
   const { generateBracketPDF, previewBracketPDF, orientation, toggleOrientation } = useBracketPDF();
   const [pdfDialogOptionsOpen, setPdfDialogOptionsOpen] = useState(false); // State for new dialog
+  const { user, logout } = useAuthStore();
+
+  // Get user initials for Avatar fallback
+  const getInitials = (name: string) => {
+    const names = name.split(' ');
+    if (names.length > 1) {
+      return `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase();
+    }
+    return name.substring(0, 2).toUpperCase();
+  };
+
+  const handleLogout = () => {
+    navigate('/logout');
+  };
 
   // Update fullscreen state when user uses F11 or Esc
   useEffect(() => {
@@ -176,6 +202,35 @@ const Navbar = () => {
             <RadioTower className="mr-2 h-4 w-4" />
             Live Feed
           </Button>
+
+          {/* User Avatar Dropdown */}
+          {user && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={user.picture} alt={user.name} />
+                    <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-56" align="end" forceMount>
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">{user.name}</p>
+                    <p className="text-xs leading-none text-muted-foreground">
+                      {user.email}
+                    </p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout}>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Log out</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
           {/* Mobile menu - now on the right side */}
         <div className="md:hidden ">
@@ -309,6 +364,33 @@ const Navbar = () => {
                     </Button>
                   )}
                 </div>
+
+                {/* User Section */}
+                {user && (
+                  <div className="border-t pt-4 space-y-1">
+                    <h4 className="text-sm font-medium text-slate-600 mb-3">Account</h4>
+                    
+                    <div className="flex items-center space-x-3 p-2 rounded-md bg-slate-50">
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={user.picture} alt={user.name} />
+                        <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-900 truncate">{user.name}</p>
+                        <p className="text-xs text-slate-600 truncate">{user.email}</p>
+                      </div>
+                    </div>
+                    
+                    <Button 
+                      onClick={handleLogout}
+                      variant="outline" 
+                      className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Log out
+                    </Button>
+                  </div>
+                )}
               </div>
             </SheetContent>
           </Sheet>
