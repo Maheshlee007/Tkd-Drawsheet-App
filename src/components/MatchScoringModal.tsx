@@ -35,18 +35,18 @@ const WIN_METHODS = [
   { value: "DQBOTH", label: "DQBOTH: Both Players Disqualified", requiresScore: false, matchEnding: true, noWinner: true }
 ];
 
-// Taekwondo-specific default reasons for PUN decisions
+// Taekwondo-specific superiority decision criteria per WT Competition Rules
 const PUN_DEFAULT_REASONS = [
-  "Superior technique and precision throughout the match",
-  "More aggressive and effective attacks",
-  "Better control and tactical awareness", 
-  "Higher quality scoring techniques",
-  "More dynamic and varied attack combinations",
-  "Better defensive skills and counter-attacks",
-  "Superior high kicking techniques",
-  "More consistent performance across all rounds",
-  "Better ring management and positioning",
-  "More effective use of distance and timing",
+  "Superiority: More scoring kicks to the head (Eolgul)",
+  "Superiority: More spinning/turning kick techniques (Dollyo Chagi, etc.)",
+  "Superiority: More total scoring actions initiated",
+  "Superiority: Fewer penalties (Gam-jeom) received",
+  "Superiority: More aggressive and initiative-based attacking",
+  "Superiority: Better technical quality and precision of techniques",
+  "Superiority: More effective attack combinations and variety",
+  "Superiority: Better defensive skills and counter-attacks",
+  "Superiority: Better ring management and positioning",
+  "Referee panel consensus / Judge's discretion",
   "Other (specify custom reason)"
 ] as const;
 
@@ -260,11 +260,12 @@ export function MatchScoringModal({
           } else {
             // This is a tie - explicitly mark it as null but highlight it for resolution
             newRounds[roundIndex].winner = null; // Tie
-            
-            // For ties in the final round (e.g., round 3 of 3) or critical rounds, 
-            // auto-suggest PUN for tie resolution
-            const isFinalRound = roundIndex === internalRoundsPerMatch - 1;
-            const isDecisiveRound = roundIndex === 0 && internalRoundsPerMatch === 1;
+
+            // For ties in the final round or any decisive round,
+            // auto-suggest tie resolution (PUN or extra round)
+            // Use newRounds.length instead of internalRoundsPerMatch to detect extra rounds too
+            const isFinalRound = roundIndex === newRounds.length - 1;
+            const isDecisiveRound = roundIndex === 0 && newRounds.length === 1;
               if (isFinalRound || isDecisiveRound) {
               // Keep scoring information but prompt for tie resolution
               // The winner will need to be chosen with PUN or RSC
@@ -391,93 +392,82 @@ export function MatchScoringModal({
   // Function to check if match needs tiebreaker decision
   const needsMatchLevelDecision = (): boolean => {
     if (!match) return false;
-    
+
     // Count rounds with clear winners (not tied)
     const roundsWithWinners = rounds.filter(r => r.winner && r.winner !== "NO_WINNER");
     const player1Wins = roundsWithWinners.filter(r => r.winner === match.player1).length;
     const player2Wins = roundsWithWinners.filter(r => r.winner === match.player2).length;
-    
-    // Count tied rounds (same score, no winner decided)
-    const tiedRounds = rounds.filter(r => 
-      r.player1Score !== null && 
-      r.player2Score !== null && 
-      r.player1Score === r.player2Score &&
-      !r.winner &&
-      (!r.winMethod || r.winMethod === "PTF")
-    ).length;
-    
+
     // Count rounds that need completion (no scores entered yet)
-    const incompleteRounds = rounds.filter(r => 
+    const incompleteRounds = rounds.filter(r =>
       r.player1Score === null || r.player2Score === null
     ).length;
-    
+
     // Only consider decision needed if all rounds have been attempted
     if (incompleteRounds > 0) return false;
-    
+
     const totalRounds = rounds.length;
     const majority = Math.ceil(totalRounds / 2);
-    
-    // Case 1: Single round match - if tied, need decision
-    if (totalRounds === 1) {
-      return tiedRounds === 1;
-    }
-    
-    // Case 2 & 3 & beyond: Multiple rounds
-    // If neither player has a clear majority and there are tied rounds OR equal wins
-    const hasNoMajorityWinner = player1Wins < majority && player2Wins < majority;
-    const hasEqualWins = player1Wins === player2Wins;
-    
-    // Need decision if:
-    // - No majority winner AND there are ties, OR
-    // - Players have equal wins (whether from ties or 1-1 scenario)
-    return hasNoMajorityWinner && (tiedRounds > 0 || hasEqualWins);
+
+    // If one player has strictly more wins AND has reached majority, no decision needed
+    // (e.g., 2-0 in a 3-round match, or 2-1 in a 3-round match)
+    if (player1Wins > player2Wins && player1Wins >= majority) return false;
+    if (player2Wins > player1Wins && player2Wins >= majority) return false;
+
+    // If one player has strictly more wins overall (all rounds complete), no decision needed
+    // (e.g., 1-0 with 1 tied round in a 2-round match)
+    if (player1Wins !== player2Wins) return false;
+
+    // Equal wins (0-0 all ties, 1-1, etc.) -> decision needed
+    // This covers: 2-round match with 1-1 split, 3-round match with 1-1-tie, all-tied rounds, etc.
+    return true;
   };  const determineMatchWinner = (): string | null => {
     if (!match) return null;
-    
-    // Check for match-level decision first
+
+    // Check for match-level decision first (PUN tie resolution)
     if (matchLevelDecision.method === 'PUN' && matchLevelDecision.winner) {
       return matchLevelDecision.winner;
     }
-    
+
     // Check for match-ending win methods first (highest priority)
     const matchEndingWin = rounds.find(r => {
       if (!r.winMethod) return false;
       const methodInfo = WIN_METHODS.find(m => m.value === r.winMethod);
       return methodInfo?.matchEnding && (r.winner || r.winner === "NO_WINNER");
     });
-    
+
     if (matchEndingWin) {
       return matchEndingWin.winner;
     }
-    
+
     // Count only rounds that have explicit winners (not ties or NO_WINNER)
     const roundsWithWinners = rounds.filter(r => r.winner && r.winner !== "NO_WINNER");
     const player1Wins = roundsWithWinners.filter(r => r.winner === match.player1).length;
     const player2Wins = roundsWithWinners.filter(r => r.winner === match.player2).length;
-    
+
     const totalRounds = rounds.length;
     const majority = Math.ceil(totalRounds / 2);
-    
-    // Check if either player has majority
-    if (player1Wins >= majority) return match.player1;
-    if (player2Wins >= majority) return match.player2;
-    
-    // If no majority and all rounds are complete, check if match-level decision is needed
-    const incompleteRounds = rounds.filter(r => 
+
+    // Early winner: if a player has strictly more wins AND has reached majority,
+    // they win even if some rounds are incomplete (e.g., 2-0 in a best-of-3)
+    if (player1Wins > player2Wins && player1Wins >= majority) return match.player1;
+    if (player2Wins > player1Wins && player2Wins >= majority) return match.player2;
+
+    // If there are incomplete rounds and no early winner, no result yet
+    const incompleteRounds = rounds.filter(r =>
       r.player1Score === null || r.player2Score === null
     ).length;
-    
-    // If there are incomplete rounds, no winner yet
+
     if (incompleteRounds > 0) return null;
-    
-    // If all rounds complete but no majority winner, and needsMatchLevelDecision() returns true,
-    // then we need a match-level decision
-    if (needsMatchLevelDecision()) {
-      return null; // No winner until match-level decision is made
-    }
-    
-    // This shouldn't happen, but fallback to no winner
-    return null;  };const handleSubmit = () => {
+
+    // All rounds complete: player with strictly more wins is the winner
+    if (player1Wins > player2Wins) return match.player1;
+    if (player2Wins > player1Wins) return match.player2;
+
+    // Equal wins (0-0, 1-1, etc.) -> no winner until match-level decision is made
+    // The Match Decision tab will prompt the user for PUN or extra round
+    return null;
+  };const handleSubmit = () => {
     if (!match) return;
     
     // Check for PUN or RSC methods without reasons
@@ -501,7 +491,7 @@ export function MatchScoringModal({
     
     // Check if match is tied and needs decision
     if (!winner && needsMatchLevelDecision()) {
-      alert("Match is tied! Please either:\n1. Use 'Match-Level PUN' to declare an overall winner\n2. Add an extra round to continue the match");
+      alert("Match is tied! Please either:\n1. Add a Golden Round (extra round) to continue the match\n2. Use Superiority Decision (PUN) to declare an overall winner based on WT criteria");
       return;
     }
     
@@ -893,27 +883,53 @@ export function MatchScoringModal({
           })}            <TabsContent value="match-decision">
             <div className="space-y-4">
               <div className="bg-yellow-50 p-4 rounded-md border border-yellow-200">
-                <h3 className="font-medium text-yellow-800 mb-2">⚠️ Match is Tied - Decision Required</h3>
+                <h3 className="font-medium text-yellow-800 mb-2">Match is Tied - Superiority Decision Required</h3>
                 <p className="text-sm text-yellow-700 mb-2">
-                  Both players have won the same number of rounds. You must choose how to resolve this tie:
+                  Both players have equal round wins. Per WT Competition Rules, resolve the tie using one of the following:
                 </p>
                 <div className="bg-blue-50 border border-blue-200 rounded p-2 mb-4">
                   <p className="text-xs text-blue-700">
-                    💡 <strong>Tip:</strong> Click on the Round tabs above to review individual round scores and details before making your decision.
+                    <strong>Tip:</strong> Click on the Round tabs above to review individual round scores and details before making your decision.
                   </p>
                 </div>
-                
+
                 <div className="space-y-4">
-                  {/* Option 1: Match-Level PUN */}
-                  <div className="border rounded-md p-3 bg-white">
-                    <h4 className="font-medium mb-2">Option 1: Match-Level PUN Decision</h4>
-                    <p className="text-sm text-gray-600 mb-3">
-                      Judge declares an overall winner based on performance across all rounds
+                  {/* Option 1: Add Golden Round - shown first and prominently */}
+                  <div className="border-2 border-amber-400 rounded-md p-3 bg-amber-50">
+                    <h4 className="font-medium mb-2 text-amber-900">Option 1: Golden Round (Extra Round)</h4>
+                    <p className="text-sm text-gray-700 mb-3">
+                      Continue the match with an additional round. First player to score wins the round and the match.
                     </p>
-                    
+
+                    <Button
+                      onClick={() => {
+                        handleMatchLevelDecision('EXTRA_ROUND');
+                        addExtraRound();
+                      }}
+                      className="w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold"
+                    >
+                      Add Golden Round (Round {rounds.length + 1})
+                    </Button>
+                  </div>
+
+                  {/* Option 2: Superiority Decision (PUN) */}
+                  <div className="border rounded-md p-3 bg-white">
+                    <h4 className="font-medium mb-2">Option 2: Superiority Decision (PUN)</h4>
+                    <p className="text-sm text-gray-600 mb-1">
+                      Referee panel declares an overall winner based on WT Superiority Decision criteria:
+                    </p>
+                    <ul className="text-xs text-gray-500 list-disc pl-5 mb-3 space-y-0.5">
+                      <li>More scoring kicks to the head (Eolgul)</li>
+                      <li>More spinning/turning kick techniques</li>
+                      <li>More total scoring actions initiated</li>
+                      <li>Fewer penalties (Gam-jeom) received</li>
+                      <li>More aggressive and initiative-based attacking</li>
+                      <li>Referee panel consensus</li>
+                    </ul>
+
                     <div className="space-y-3">
                       <Label>Select Overall Match Winner</Label>
-                      <RadioGroup 
+                      <RadioGroup
                         value={matchLevelDecision.method === 'PUN' ? matchLevelDecision.winner || "" : ""}
                         onValueChange={(value) => handleMatchLevelDecision('PUN', value)}
                         className="grid grid-cols-1 gap-2"
@@ -930,7 +946,7 @@ export function MatchScoringModal({
                         {matchLevelDecision.method === 'PUN' && matchLevelDecision.winner && (
                         <div className="mt-3 space-y-3">
                           <Label htmlFor="match-pun-reason-select" className="text-sm font-medium block mb-1">
-                            Reason for Match Decision (Required)
+                            Superiority Criteria Used (Required)
                           </Label>
                           
                           <Select
@@ -990,25 +1006,6 @@ export function MatchScoringModal({
                         </div>
                       )}
                     </div>
-                  </div>
-                  
-                  {/* Option 2: Add Extra Round */}
-                  <div className="border rounded-md p-3 bg-white">
-                    <h4 className="font-medium mb-2">Option 2: Add Extra Round</h4>
-                    <p className="text-sm text-gray-600 mb-3">
-                      Continue the match with an additional round to determine the winner
-                    </p>
-                    
-                    <Button 
-                      onClick={() => {
-                        handleMatchLevelDecision('EXTRA_ROUND');
-                        addExtraRound();
-                      }}
-                      variant="outline"
-                      className="w-full"
-                    >
-                      Add Round {rounds.length + 1}
-                    </Button>
                   </div>
                 </div>
                 
@@ -1101,11 +1098,11 @@ export function MatchScoringModal({
                 {matchLevelDecision.method === 'PUN' && matchLevelDecision.winner && (
                   <div className="mt-2 p-2 bg-yellow-50 rounded border border-yellow-200">
                     <p className="text-sm text-yellow-800">
-                      <strong>Match-Level PUN Decision:</strong> {matchLevelDecision.winner} declared winner
+                      <strong>Superiority Decision (PUN):</strong> {matchLevelDecision.winner} declared winner
                     </p>
                     {matchLevelDecision.reason && (
                       <p className="text-xs text-yellow-700 mt-1 italic">
-                        Reason: {matchLevelDecision.reason}
+                        Criteria: {matchLevelDecision.reason}
                       </p>
                     )}
                   </div>

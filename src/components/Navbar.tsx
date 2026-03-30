@@ -1,20 +1,21 @@
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { 
-  FileText, 
-  Home as HomeIcon, 
-  Download, 
-  Maximize, 
-  Minimize, 
-  Menu, 
-  Plus, 
+import {
+  FileText,
+  Home as HomeIcon,
+  Download,
+  Maximize,
+  Minimize,
+  Menu,
+  Plus,
   RefreshCw,
   Users,
   BarChart2,
   Megaphone,
   Settings,
   ClipboardList,
-  RadioTower, // Added RadioTower icon for Live Feed
+  RadioTower,
+  UserPlus,
   LogOut
 } from "lucide-react";
 import {
@@ -310,13 +311,22 @@ const Navbar = () => {
                     Announcements
                   </Button>
                   
-                  <Button 
+                  <Button
                     onClick={() => navigate("/settings")}
                     variant={location === "/settings" ? "default" : "ghost"}
                     className="w-full justify-start"
                   >
                     <Settings className="mr-2 h-4 w-4" />
                     Settings
+                  </Button>
+
+                  <Button
+                    onClick={() => navigate("/register")}
+                    variant={location === "/register" ? "default" : "ghost"}
+                    className="w-full justify-start"
+                  >
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    Player Registration
                   </Button>
                 </div>
 

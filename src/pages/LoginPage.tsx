@@ -17,6 +17,7 @@ const LoginPage: React.FC = () => {
   const { toast } = useToast();
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const devLoginEnabled = import.meta.env.VITE_DEV_LOGIN_ENABLED === 'true';
 
   // Handle successful Google login
   const handleGoogleSuccess = (credentialResponse: CredentialResponse) => {
@@ -167,7 +168,15 @@ const LoginPage: React.FC = () => {
               />
           </div>
         </CardContent>
-        <CardFooter className="text-center">
+        <CardFooter className="flex flex-col gap-3 text-center">
+          <div className="flex gap-3 w-full">
+            <Button variant="outline" className="flex-1" onClick={() => navigate('/guest')}>
+              Quick Drawsheet
+            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => navigate('/register')}>
+              Player Registration
+            </Button>
+          </div>
           <p className="text-xs text-gray-500">
             By signing in, you agree to our terms of service.
           </p>

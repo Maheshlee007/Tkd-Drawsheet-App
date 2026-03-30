@@ -1,18 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
-import { 
-  FileText, 
-  Home, 
-  Users, 
-  Award, 
-  Megaphone, 
-  BarChart2, 
+import {
+  FileText,
+  Home,
+  Users,
+  Award,
+  Megaphone,
+  BarChart2,
   ClipboardList,
   Settings,
   X,
   ChevronLeft,
   ChevronRight,
-  RadioTower
+  RadioTower,
+  UserPlus
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTournamentStore } from '@/store/useTournamentStore';
@@ -27,9 +28,23 @@ type SideNavProps = {
 export function SideNav({ className, onClose, onCollapse }: SideNavProps) {
   const [location, navigate] = useLocation();
   const bracketData = useTournamentStore((state) => state.bracketData);
-  const [collapsed, setCollapsed] = useState(true);
+  // Default to expanded on large screens (>=1280px), collapsed otherwise
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth < 1280;
+    }
+    return true;
+  });
   // Keep isOpen state for mobile only
   const [isOpen, setIsOpen] = useState(false);
+
+  // Sync initial collapse state with parent on mount
+  useEffect(() => {
+    if (onCollapse) {
+      onCollapse(collapsed);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const navItems = [
     {
@@ -63,6 +78,11 @@ export function SideNav({ className, onClose, onCollapse }: SideNavProps) {
       name: 'Live Feed',
       href: '/live-feed',
       icon: RadioTower,
+    },
+    {
+      name: 'Registration',
+      href: '/register',
+      icon: UserPlus,
     },
     {
       name: 'Settings',

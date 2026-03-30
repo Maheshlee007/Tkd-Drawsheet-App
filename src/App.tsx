@@ -15,6 +15,8 @@ import SettingsPage from "@/pages/SettingsPage";
 import LiveFeedPage from "@/pages/LiveFeedPage";
 import LoginPage from "@/pages/LoginPage";
 import LogoutPage from "@/pages/LogoutPage";
+import GuestPage from "@/pages/GuestPage";
+import PlayerRegistrationPage from "@/pages/PlayerRegistrationPage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
 function Router() {
@@ -27,6 +29,15 @@ function Router() {
         </Route>
         <Route path="/logout">
           <LogoutPage />
+        </Route>
+        <Route path="/guest">
+          <GuestPage />
+        </Route>
+        <Route path="/register">
+          <PlayerRegistrationPage />
+        </Route>
+        <Route path="/register/:tournamentCode">
+          <PlayerRegistrationPage />
         </Route>
 
         {/* Protected routes */}

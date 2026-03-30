@@ -56,7 +56,18 @@ const CanvasBracket: React.FC<CanvasBracketProps> = ({
   >([]);
 
   // State for pulse animation
-  const [pulseMatchId, setPulseMatchId] = useState<string | null>(null);// Function to get match color scheme based on state and win method
+  const [pulseMatchId, setPulseMatchId] = useState<string | null>(null);
+
+  // Zoom level state
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const lastPinchDistRef = useRef<number | null>(null);
+
+  const handleZoomIn = () => setZoomLevel(prev => Math.min(2.0, +(prev + 0.1).toFixed(1)));
+  const handleZoomOut = () => setZoomLevel(prev => Math.max(0.5, +(prev - 0.1).toFixed(1)));
+  const handleZoomReset = () => setZoomLevel(1);
+
+  // Function to get match color scheme based on state and win method
   // Function to check if a match should be highlighted (part of participant's path)
   const isMatchHighlighted = (match: BracketMatch): boolean => {
     if (!highlightedParticipant) return false;
@@ -811,14 +822,23 @@ const CanvasBracket: React.FC<CanvasBracketProps> = ({
         return "#64748b";
     }
   };
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setZoomLevel(prev => Math.min(2.0, Math.max(0.5, +(prev + delta).toFixed(1))));
+    }
+  };
+
     // Handle mouse move to detect hovering over matches
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!canvasRef.current) return;
-    
+
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / scale;
-    const y = (e.clientY - rect.top) / scale;
+    // Account for CSS transform: scale(zoomLevel) which scales getBoundingClientRect
+    const x = (e.clientX - rect.left) / zoomLevel;
+    const y = (e.clientY - rect.top) / zoomLevel;
     
     // Check if mouse is over any match
     let hoveredMatchFound = false;
@@ -852,34 +872,56 @@ const CanvasBracket: React.FC<CanvasBracketProps> = ({
       setHoveredMatch(null);
       canvas.style.cursor = "default";
     }
-  };  // Handle click on a match
-  const handleClick = () => {
-    if (hoveredMatch) {
-      const matchData = matchPositions.find(m => m.id === hoveredMatch.id);
-      if (!matchData) return;
-      
-      const participant = matchData.participants[hoveredMatch.participantIndex];
-      const otherParticipant = matchData.participants[hoveredMatch.participantIndex ? 0 : 1];
-      
-      // Skip if participant is null, undefined, or a bye
-      if (!participant || participant === "(bye)") return;
-        // Validate that both participants are present for winner declaration
-      if (!otherParticipant || otherParticipant === "(bye)") {
-        console.warn("Cannot set winner: Both participants must be present to set a winner.");
-        return;
+  };
+
+  const findMatchAtPosition = (clientX: number, clientY: number) => {
+    if (!canvasRef.current) return null;
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    // Account for CSS transform: scale(zoomLevel) which scales getBoundingClientRect
+    const x = (clientX - rect.left) / zoomLevel;
+    const y = (clientY - rect.top) / zoomLevel;
+
+    for (const match of matchPositions) {
+      if (x >= match.x && x <= match.x + match.width && y >= match.y && y <= match.y + match.height) {
+        const participantIndex = y >= match.y + match.height / 2 ? 1 : 0;
+        const participant = match.participants[participantIndex];
+        if (participant && participant !== "(bye)") {
+          return { match, participantIndex: participantIndex as 0 | 1 };
+        }
       }
-        // If we have an onMatchClick handler (new scoring system), use that
-      if (onMatchClick && 
-          matchData.participants[0] && 
-          matchData.participants[0] !== "(bye)" &&
-          matchData.participants[1] && 
-          matchData.participants[1] !== "(bye)") {
-        onMatchClick(hoveredMatch.id, matchData.participants[0], matchData.participants[1]);
+    }
+    return null;
+  };
+
+  // Handle click on a match
+  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    let targetMatch = hoveredMatch;
+
+    if (!targetMatch) {
+      const found = findMatchAtPosition(e.clientX, e.clientY);
+      if (found) {
+        targetMatch = { id: found.match.id, participantIndex: found.participantIndex };
       }
-      // Otherwise, use the onUpdateMatch handler for direct winner declaration
-      else if (onUpdateMatch) {
-        onUpdateMatch(hoveredMatch.id, participant);
-      }
+    }
+
+    if (!targetMatch) return;
+
+    const matchData = matchPositions.find(m => m.id === targetMatch!.id);
+    if (!matchData) return;
+
+    const participant = matchData.participants[targetMatch.participantIndex];
+    const otherParticipant = matchData.participants[targetMatch.participantIndex ? 0 : 1];
+
+    if (!participant || participant === "(bye)") return;
+    if (!otherParticipant || otherParticipant === "(bye)") return;
+
+    if (onMatchClick &&
+        matchData.participants[0] && matchData.participants[0] !== "(bye)" &&
+        matchData.participants[1] && matchData.participants[1] !== "(bye)") {
+      onMatchClick(targetMatch.id, matchData.participants[0], matchData.participants[1]);
+    } else if (onUpdateMatch) {
+      onUpdateMatch(targetMatch.id, participant);
     }
   };
   
@@ -889,6 +931,58 @@ const CanvasBracket: React.FC<CanvasBracketProps> = ({
     if (canvasRef.current) {
       canvasRef.current.style.cursor = "default";
     }
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length === 1) {
+      touchStartRef.current = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+        time: Date.now()
+      };
+    } else if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      lastPinchDistRef.current = Math.sqrt(dx * dx + dy * dy);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length === 2 && lastPinchDistRef.current !== null) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const delta = (dist - lastPinchDistRef.current) / 100;
+      setZoomLevel(prev => Math.min(2.0, Math.max(0.5, +(prev + delta).toFixed(1))));
+      lastPinchDistRef.current = dist;
+      touchStartRef.current = null;
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    lastPinchDistRef.current = null;
+    if (touchStartRef.current && e.changedTouches.length === 1) {
+      const touch = e.changedTouches[0];
+      const dx = touch.clientX - touchStartRef.current.x;
+      const dy = touch.clientY - touchStartRef.current.y;
+      const dt = Date.now() - touchStartRef.current.time;
+      if (dt < 300 && Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+        const found = findMatchAtPosition(touch.clientX, touch.clientY);
+        if (found) {
+          const matchData = found.match;
+          const p = matchData.participants[found.participantIndex];
+          const op = matchData.participants[found.participantIndex ? 0 : 1];
+          if (p && p !== "(bye)" && op && op !== "(bye)") {
+            if (onMatchClick) {
+              onMatchClick(matchData.id, matchData.participants[0]!, matchData.participants[1]!);
+            } else if (onUpdateMatch) {
+              onUpdateMatch(matchData.id, p);
+            }
+          }
+        }
+      }
+    }
+    touchStartRef.current = null;
   };
   
   // Calculate canvas size based on bracket data
@@ -983,27 +1077,58 @@ const CanvasBracket: React.FC<CanvasBracketProps> = ({
   const { width: canvasWidth, height: canvasHeight } = getCanvasSize();
   
   return (
-    <div 
+    <div
       ref={containerRef}
-      className="canvas-bracket-container" 
-      style={{ 
+      className="canvas-bracket-container relative"
+      style={{
         width: '100%',
         overflowX: 'auto',
         overflowY: 'auto',
-        maxHeight: '80vh' // Make it scrollable when taller than viewport
+        WebkitOverflowScrolling: 'touch',
       }}
+      onWheel={handleWheel}
     >
-      <canvas
-        ref={canvasRef}
-        onMouseMove={handleMouseMove}
-        onClick={handleClick}
-        onMouseLeave={handleMouseLeave}
-        style={{ 
-          display: "block", 
-          minWidth: `${canvasWidth}px`,
-          minHeight: `${canvasHeight}px`
-        }}
-      />
+      {/* Zoom Controls */}
+      {!printMode && (
+        <div className="sticky top-2 z-10 flex gap-1 justify-end mb-1 pr-2">
+          <button
+            onClick={handleZoomOut}
+            className="h-7 w-7 flex items-center justify-center rounded bg-white border border-slate-300 shadow-sm text-slate-600 hover:bg-slate-50 text-sm font-bold"
+            title="Zoom out"
+          >{'\u2212'}</button>
+          <button
+            onClick={handleZoomReset}
+            className="h-7 px-2 flex items-center justify-center rounded bg-white border border-slate-300 shadow-sm text-slate-600 hover:bg-slate-50 text-xs"
+            title="Reset zoom"
+          >{Math.round(zoomLevel * 100)}%</button>
+          <button
+            onClick={handleZoomIn}
+            className="h-7 w-7 flex items-center justify-center rounded bg-white border border-slate-300 shadow-sm text-slate-600 hover:bg-slate-50 text-sm font-bold"
+            title="Zoom in"
+          >+</button>
+        </div>
+      )}
+      <div style={{
+        transform: `scale(${zoomLevel})`,
+        transformOrigin: 'top left',
+        width: zoomLevel !== 1 ? `${100 / zoomLevel}%` : undefined,
+      }}>
+        <canvas
+          ref={canvasRef}
+          onMouseMove={handleMouseMove}
+          onClick={handleClick}
+          onMouseLeave={handleMouseLeave}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          style={{
+            display: "block",
+            minWidth: `${canvasWidth}px`,
+            minHeight: `${canvasHeight}px`,
+            touchAction: 'manipulation',
+          }}
+        />
+      </div>
     </div>
   );
 };

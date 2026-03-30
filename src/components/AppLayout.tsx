@@ -15,7 +15,13 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [open, setOpen] = useState(false);
   const [location] = useLocation();
   
-  const [collapsed, setCollapsed] = useState(true);
+  // Default to expanded on large screens (>=1280px), matching SideNav initial state
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth < 1280;
+    }
+    return true;
+  });
   
   // Don't show the navigation on the initial home page
   const showNavigation = location !== "/";
@@ -29,7 +35,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       <Navbar />      <div className="flex flex-1 scrollbar-hide">
         {/* Sidebar for desktop */}
         {showNavigation && (
-          <aside className={cn("hidden border-r bg-muted/40 md:block ",collapsed ? "w-20" : "w-64")}>
+          <aside className={cn("hidden border-r bg-muted/40 md:block transition-all duration-300", collapsed ? "w-20" : "w-64")}>
             <SideNav className="w-full" onCollapse={handleCollapse}  />
           </aside>
         )}
@@ -37,7 +43,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         {/* Mobile sheet navigation - REMOVED since navigation is now consolidated in Navbar */}
         
         {/* Main content */}
-        <main className={cn("flex-1 container", showNavigation ? "md:ml-0" : "")}>
+        <main className={cn("flex-1 min-w-0 overflow-auto", showNavigation ? "md:ml-0" : "")}>
           {children}
         </main>
       </div>

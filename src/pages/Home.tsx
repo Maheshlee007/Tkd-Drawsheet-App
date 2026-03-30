@@ -9,7 +9,7 @@ const Home: React.FC = () => {
   const bracketData = useTournamentStore(state => state.bracketData);
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col w-dvw">
+    <div className="min-h-screen bg-slate-50 flex flex-col w-full">
       <div className="flex-1 p-6">
         <div className="max-w-6xl mx-auto">          <div className="text-center mb-8">
             <h1 className="text-3xl font-bold mb-2">Tournament Bracket Manager</h1>

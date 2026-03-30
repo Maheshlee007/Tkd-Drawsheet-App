@@ -36,7 +36,6 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { useTournament } from "@/hooks/useTournament";
 import { useToast } from "@/hooks/use-toast";
 import CanvasBracket from "./CanvasBracket";
 import MedalPodium from "./MedalPodium";
@@ -147,7 +146,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
   const fullScreenRef = useRef<HTMLDivElement>(null);
 
   const { toast } = useToast();
-  const { updateTournamentMatch } = useTournament();
+  const updateTournamentMatch = useTournamentStore((state) => state.updateTournamentMatch);
   // Get match results from tournament store
   const matchResults = useTournamentStore((state) => state.matchResults || {});
   
@@ -788,15 +787,15 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
         </div>
 
         {/* Desktop Layout: Single-line header */}
-        <div className="hidden sm:flex items-center justify-between">
+        <div className="hidden sm:flex items-center justify-between flex-wrap gap-2">
           {/* Desktop Left: Tournament name */}
-          <h2 className="text-xl font-semibold text-slate-800">
+          <h2 className="text-xl font-semibold text-slate-800 shrink-0">
             {header ? header : "Tournament Bracket"}
           </h2>
 
-          <div className="flex items-center">
+          <div className="flex items-center flex-wrap gap-2">
           {/* Desktop Center: Search bar */}
-          <div className="relative w-[300px] mx-4" ref={dropdownRef}>
+          <div className="relative w-[300px] min-w-[180px] mx-2" ref={dropdownRef}>
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
             <input
               ref={searchInputRef}
@@ -853,7 +852,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
           </div>
           
           {/* Desktop Right: Controls */}
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-2 shrink-0">
             {/* Canvas/DOM Toggle */}
             <div className="flex items-center space-x-2 bg-slate-100 p-2 rounded-md">
               <Grid
@@ -937,8 +936,8 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                         key={`header-${roundIndex}`}
                         className="flex-shrink-0"
                         style={{
-                          width: "260px", // Increased to match new bracket width
-                          marginLeft: roundIndex > 0 ? "50px" : "0", // Increased spacing to match rounds below
+                          width: window.innerWidth < 640 ? "200px" : "260px",
+                          marginLeft: roundIndex > 0 ? (window.innerWidth < 640 ? "30px" : "50px") : "0",
                         }}
                       >                        <div className="w-full">
                           <div
@@ -970,8 +969,8 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                         key={`round-${roundIndex}`}
                         className="bracket-round"
                         style={{
-                          width: "260px", // Increased width for more spacious bracket layout
-                          marginLeft: roundIndex > 0 ? "50px" : "0", // Significantly increased spacing between rounds
+                          width: window.innerWidth < 640 ? "200px" : "260px",
+                          marginLeft: roundIndex > 0 ? (window.innerWidth < 640 ? "30px" : "50px") : "0",
                         }}
                       >
                         {round.map((match, matchIndex) => {
@@ -1028,7 +1027,7 @@ const BracketDisplay: React.FC<BracketDisplayProps> = ({
                               }
                             >
                               {/* Match Number Display */}
-                              {(!isByeMatch(match) || (match.participants[0] && match.participants[1])) && (
+                              {!isByeMatch(match) && (
                                 <div
                                   className={`absolute -top-5 left-1/2 transform -translate-x-1/2 bg-slate-100 border border-slate-300 text-slate-500 text-xs font-semibold px-1.5 py-0.5 rounded-sm shadow-sm z-10 ${
                                     isByeMatch(match) ? "opacity-50" : ""

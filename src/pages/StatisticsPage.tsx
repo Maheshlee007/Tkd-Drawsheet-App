@@ -273,15 +273,15 @@ const StatisticsPage = () => {
   };
   
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       <div className="pb-4 mb-6 border-b">
-        <h1 className="text-3xl font-bold tracking-tight">{tournamentName} Statistics</h1>
-        <p className="text-muted-foreground mt-1 text-lg">
+        <h1 className="text-xl sm:text-3xl font-bold tracking-tight">{tournamentName} Statistics</h1>
+        <p className="text-muted-foreground mt-1 text-sm sm:text-lg">
           An overview of the tournament's progress and participant performance metrics.
         </p>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Participants</CardTitle>
@@ -395,7 +395,7 @@ const StatisticsPage = () => {
           <CardTitle>Round Progress</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-80">
+          <div className="h-60 sm:h-80">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={roundStatsData}>
                 <XAxis dataKey="name" />
@@ -416,7 +416,7 @@ const StatisticsPage = () => {
           <CardDescription>Top 10 participants by wins.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
+          <div className="overflow-x-auto rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>

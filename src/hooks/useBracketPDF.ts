@@ -494,7 +494,10 @@ export const useBracketPDF = () => {
       let globalMatchCounter = 1;
       bracketData.forEach(round => {
         round.forEach(match => {
-          allMatchSequentialIds.set(match.id, globalMatchCounter++);
+          const isBye = match.participants[0] === "(bye)" || match.participants[1] === "(bye)";
+          if (!isBye) {
+            allMatchSequentialIds.set(match.id, globalMatchCounter++);
+          }
         });
       });
       
@@ -1180,7 +1183,10 @@ export const useBracketPDF = () => {
       let globalMatchCounterPreview = 1;
       bracketData.forEach(round => {
         round.forEach(match => {
-          allMatchSequentialIdsPreview.set(match.id, globalMatchCounterPreview++);
+          const isBye = match.participants[0] === "(bye)" || match.participants[1] === "(bye)";
+          if (!isBye) {
+            allMatchSequentialIdsPreview.set(match.id, globalMatchCounterPreview++);
+          }
         });
       });
 
@@ -1291,6 +1297,123 @@ export const useBracketPDF = () => {
     }
   }, [toast, orientation, loadTkdLogo]);
 
+  /**
+   * Generate PDF as a data URI string (for inline preview in iframe)
+   */
+  const generatePDFDataUri = useCallback(async (
+    bracketData: BracketMatch[][],
+    title = "Tournament Bracket",
+    participantCount: number = 0,
+    options: Partial<PDFGenOptions> = {}
+  ): Promise<string | null> => {
+    try {
+      const logoData = await loadTkdLogo();
+      const finalOrientation = options.pdfOrientation || orientation;
+      const organizedByText = options.organizedBy || "Professional TKD Academy";
+      const noColor = !!options.noColorMode;
+      const lineView = !!options.lineViewMode;
+
+      const currentDate = formatDate(new Date());
+
+      const allMatchSequentialIdsDataUri = new Map<string, number>();
+      let globalMatchCounterDataUri = 1;
+      bracketData.forEach(round => {
+        round.forEach(match => {
+          const isBye = match.participants[0] === "(bye)" || match.participants[1] === "(bye)";
+          if (!isBye) {
+            allMatchSequentialIdsDataUri.set(match.id, globalMatchCounterDataUri++);
+          }
+        });
+      });
+
+      const paginatedBracket = splitBracketForPagination(bracketData, participantCount, title);
+
+      const pdf = new jsPDF({
+        orientation: finalOrientation,
+        unit: "mm",
+        format: "a4"
+      });
+
+      const isOverallBracketSinglePage = paginatedBracket.pages.length === 1;
+
+      paginatedBracket.pages.forEach((pageBracketData: BracketMatch[][], pageIndex: number) => {
+        if (pageIndex > 0) {
+          pdf.addPage();
+        }
+
+        const matchSequentialIdsForPage = new Map<string, number>();
+        pageBracketData.forEach(round => {
+          round.forEach(match => {
+            const seqId = allMatchSequentialIdsDataUri.get(match.id);
+            if (seqId !== undefined) {
+              matchSequentialIdsForPage.set(match.id, seqId);
+            }
+          });
+        });
+
+        const currentPageTitle = paginatedBracket.pageTitles[pageIndex] || title;
+        const isCurrentPageFinals = paginatedBracket.isFinalsPage[pageIndex] || false;
+        const currentOverallTournamentRounds = paginatedBracket.overallTournamentRounds;
+        const currentFirstRoundIndexOnPage = paginatedBracket.firstRoundIndexOnPage[pageIndex] !== undefined
+                                              ? paginatedBracket.firstRoundIndexOnPage[pageIndex]
+                                              : 0;
+        const isSegmentPageForRoundNaming = !isCurrentPageFinals && !isOverallBracketSinglePage;
+
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const margin = 10;
+        const contentWidth = pageWidth - (margin * 2);
+        const contentHeight = pageHeight - (margin * 2);
+
+        pdf.setFontSize(16);
+        pdf.setFont("helvetica", "bold");
+        pdf.text(currentPageTitle, pageWidth / 2, margin + 5, { align: "center" });
+
+        pdf.setFontSize(10);
+        pdf.setFont("helvetica", "normal");
+        pdf.text(`Participants: ${participantCount}`, pageWidth - margin - 40, margin + 5, { align: "right" });
+        pdf.text(`Date: ${currentDate}`, margin, margin + 5);
+
+        if (paginatedBracket.pages.length > 1) {
+          pdf.setFontSize(9);
+          pdf.text(`Page ${pageIndex + 1} of ${paginatedBracket.pages.length}`, pageWidth / 2, margin + 12, { align: "center" });
+          if (!isCurrentPageFinals) {
+            pdf.setFont("helvetica", "italic");
+            pdf.setFont("helvetica", "normal");
+          } else {
+            pdf.setFont("helvetica", "italic");
+            pdf.text(`Final Playoff Rounds`, pageWidth / 2, margin + 17, { align: "center" });
+            pdf.setFont("helvetica", "normal");
+          }
+        }
+
+        addPlacementBox(pdf, pageWidth, pageHeight, margin, noColor);
+        renderBracket(
+          pdf,
+          pageBracketData,
+          margin,
+          contentWidth,
+          contentHeight,
+          finalOrientation,
+          noColor,
+          lineView,
+          isCurrentPageFinals,
+          currentOverallTournamentRounds,
+          currentFirstRoundIndexOnPage,
+          isSegmentPageForRoundNaming,
+          matchSequentialIdsForPage,
+          !!options.hideBye
+        );
+        addPDFFooter(pdf, pageWidth, pageHeight, margin, pageIndex + 1, paginatedBracket.pages.length, organizedByText, logoData || undefined);
+      });
+
+      return pdf.output('datauristring');
+    } catch (error) {
+      console.error("Error generating PDF data URI:", error);
+      return null;
+    }
+  }, [orientation, loadTkdLogo]);
+
   // Function to toggle orientation
   const toggleOrientation = useCallback(() => {
     setOrientation(prev => prev === "landscape" ? "portrait" : "landscape");
@@ -1299,6 +1422,7 @@ export const useBracketPDF = () => {
   return {
     generateBracketPDF,
     previewBracketPDF,
+    generatePDFDataUri,
     orientation,
     toggleOrientation, // Ensure toggleOrientation is returned
     loadTkdLogo // if it needs to be exposed

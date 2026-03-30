@@ -211,7 +211,7 @@ const ParticipantsPage = () => {  const [, navigate] = useLocation();
   );
   
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       <div className="sticky top-0 z-20 bg-white dark:bg-gray-950 p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Participants</h1>
@@ -252,16 +252,16 @@ const ParticipantsPage = () => {  const [, navigate] = useLocation();
         </div>
       </div>
       
-      {/* New scroll container for the Table */}
-      <div className="overflow-y-auto h-[60vh] rounded-md border shadow-sm bg-white dark:bg-slate-900">
+      {/* Scroll container for the Table */}
+      <div className="overflow-x-auto overflow-y-auto h-[60vh] rounded-md border shadow-sm bg-white dark:bg-slate-900">
         <Table>
           {/* Updated TableHeader for sticky positioning and consistent dark mode background */}
           <TableHeader className="sticky top-0 bg-white dark:bg-gray-950 z-10">
             <TableRow>
               <TableHead>Name</TableHead>
-              <TableHead className="w-[160px]">Wins</TableHead>
-              <TableHead className="w-[160px]">Losses</TableHead>
-              <TableHead className="w-[180px] text-right">Actions</TableHead>
+              <TableHead className="w-[80px] sm:w-[160px]">Wins</TableHead>
+              <TableHead className="w-[80px] sm:w-[160px]">Losses</TableHead>
+              <TableHead className="w-[100px] sm:w-[180px] text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
