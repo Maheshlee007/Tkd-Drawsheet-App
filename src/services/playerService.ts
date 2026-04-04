@@ -1,4 +1,5 @@
 import { PlayerRegistration } from '@/store/usePlayerStore';
+import { apiRequest, isApiConfigured } from './api';
 
 const STORAGE_KEY = 'tkd-players';
 
@@ -13,20 +14,46 @@ function setStoredPlayers(players: PlayerRegistration[]): void {
 
 export const playerService = {
   async getAll(): Promise<PlayerRegistration[]> {
+    if (isApiConfigured()) {
+      try {
+        const res = await apiRequest<{ data: PlayerRegistration[] }>('/api/players');
+        return res.data;
+      } catch { /* fallback to localStorage */ }
+    }
     return getStoredPlayers();
   },
 
   async getByCode(playerCode: string): Promise<PlayerRegistration | null> {
+    if (isApiConfigured()) {
+      try {
+        const res = await apiRequest<{ data: PlayerRegistration }>(`/api/players/${playerCode}`);
+        return res.data;
+      } catch { /* fallback */ }
+    }
     const players = getStoredPlayers();
     return players.find(p => p.playerCode === playerCode) || null;
   },
 
   async getByTournament(tournamentCode: string): Promise<PlayerRegistration[]> {
+    if (isApiConfigured()) {
+      try {
+        const res = await apiRequest<{ data: PlayerRegistration[] }>(`/api/players?tournamentId=${tournamentCode}`);
+        return res.data;
+      } catch { /* fallback */ }
+    }
     const players = getStoredPlayers();
     return players.filter(p => p.tournamentCode === tournamentCode);
   },
 
   async getByCategory(tournamentCode: string, weightCategory: string, ageCategory: string): Promise<PlayerRegistration[]> {
+    if (isApiConfigured()) {
+      try {
+        const res = await apiRequest<{ data: PlayerRegistration[] }>(
+          `/api/players?tournamentId=${tournamentCode}&weightCategory=${encodeURIComponent(weightCategory)}&ageCategory=${encodeURIComponent(ageCategory)}`
+        );
+        return res.data;
+      } catch { /* fallback */ }
+    }
     const players = getStoredPlayers();
     return players.filter(
       p => p.tournamentCode === tournamentCode &&
@@ -36,6 +63,14 @@ export const playerService = {
   },
 
   async create(player: PlayerRegistration): Promise<PlayerRegistration> {
+    if (isApiConfigured()) {
+      try {
+        const res = await apiRequest<{ data: PlayerRegistration }>('/api/players/register', {
+          method: 'POST', body: player,
+        });
+        return res.data;
+      } catch { /* fallback */ }
+    }
     const players = getStoredPlayers();
     players.push(player);
     setStoredPlayers(players);
@@ -43,6 +78,14 @@ export const playerService = {
   },
 
   async update(playerCode: string, updates: Partial<PlayerRegistration>): Promise<PlayerRegistration | null> {
+    if (isApiConfigured()) {
+      try {
+        const res = await apiRequest<{ data: PlayerRegistration }>(`/api/players/${playerCode}`, {
+          method: 'PATCH', body: updates,
+        });
+        return res.data;
+      } catch { /* fallback */ }
+    }
     const players = getStoredPlayers();
     const index = players.findIndex(p => p.playerCode === playerCode);
     if (index === -1) return null;
@@ -52,6 +95,12 @@ export const playerService = {
   },
 
   async remove(playerCode: string): Promise<boolean> {
+    if (isApiConfigured()) {
+      try {
+        await apiRequest(`/api/players/${playerCode}`, { method: 'DELETE' });
+        return true;
+      } catch { /* fallback */ }
+    }
     const players = getStoredPlayers();
     const filtered = players.filter(p => p.playerCode !== playerCode);
     if (filtered.length === players.length) return false;
@@ -61,19 +110,16 @@ export const playerService = {
 
   // Mock verification services
   async verifyAadhaar(_aadhaarNumber: string): Promise<{ verified: boolean; name?: string; dob?: string }> {
-    // Mock: simulate 2s API call, always returns success
     await new Promise(resolve => setTimeout(resolve, 2000));
     return { verified: true };
   },
 
   async sendEmailOtp(_email: string): Promise<{ sent: boolean }> {
-    // Mock: simulate 1.5s API call
     await new Promise(resolve => setTimeout(resolve, 1500));
     return { sent: true };
   },
 
   async verifyEmailOtp(_email: string, _otp: string): Promise<{ verified: boolean }> {
-    // Mock: accept any 6-digit OTP
     await new Promise(resolve => setTimeout(resolve, 1000));
     return { verified: true };
   },

@@ -18,6 +18,8 @@ import LogoutPage from "@/pages/LogoutPage";
 import GuestPage from "@/pages/GuestPage";
 import PlayerRegistrationPage from "@/pages/PlayerRegistrationPage";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import WeightCategoriesPage from "@/pages/WeightCategoriesPage";
+import MatchOverviewPage from "@/pages/MatchOverviewPage";
 
 function Router() {
   return (
@@ -84,6 +86,16 @@ function Router() {
         <Route path="/settings">
           <ProtectedRoute>
             <SettingsPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/weight-categories">
+          <ProtectedRoute>
+            <WeightCategoriesPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/match-overview">
+          <ProtectedRoute>
+            <MatchOverviewPage />
           </ProtectedRoute>
         </Route>
 

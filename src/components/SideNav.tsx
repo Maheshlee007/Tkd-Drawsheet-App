@@ -13,7 +13,9 @@ import {
   ChevronLeft,
   ChevronRight,
   RadioTower,
-  UserPlus
+  UserPlus,
+  Scale,
+  BarChart3
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTournamentStore } from '@/store/useTournamentStore';
@@ -83,6 +85,16 @@ export function SideNav({ className, onClose, onCollapse }: SideNavProps) {
       name: 'Registration',
       href: '/register',
       icon: UserPlus,
+    },
+    {
+      name: 'Weight Categories',
+      href: '/weight-categories',
+      icon: Scale,
+    },
+    {
+      name: 'Match Overview',
+      href: '/match-overview',
+      icon: BarChart3,
     },
     {
       name: 'Settings',

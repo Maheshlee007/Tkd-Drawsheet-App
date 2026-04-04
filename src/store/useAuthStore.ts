@@ -5,12 +5,14 @@ import { generateFingerprint, validateFingerprint } from '@/utils/fingerprint';
 import { generateSessionId, validateSession } from '@/utils/sessionManager';
 import { getActivityMonitor, cleanupActivityMonitor } from '@/utils/activityMonitor';
 import { getTabSynchronizer } from '@/utils/tabSync';
-import { log } from 'console';
+import { apiRequest, setStoredTokens, clearStoredTokens } from '@/services/api';
 
 interface User {
   name: string;
   email?: string;
   picture?: string;
+  roles?: string[];
+  permissions?: string[];
 }
 
 interface AuthState {
@@ -20,6 +22,8 @@ interface AuthState {
   loginTime: number;
   browserFingerprint: string | null;
   login: (userData: User | string) => Promise<void>;
+  loginWithCredentials: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: (googleToken: string) => Promise<void>;
   logout: () => void;
   isAuthenticated: () => boolean;
   refreshActivity: () => void;
@@ -97,13 +101,48 @@ export const useAuthStore = create<AuthState>()(
           console.error('Login failed:', error);
         }
       },
+
+      loginWithCredentials: async (email: string, password: string) => {
+        const res = await apiRequest<{ data: { accessToken: string; refreshToken: string; user: { email: string; firstName: string; lastName: string; roles: string[]; permissions: string[] } } }>('/api/auth/login', {
+          method: 'POST',
+          body: { email, password },
+          skipAuth: true,
+        });
+        const { accessToken, refreshToken, user: apiUser } = res.data;
+        setStoredTokens(accessToken, refreshToken);
+        const user: User = {
+          name: `${apiUser.firstName} ${apiUser.lastName}`,
+          email: apiUser.email,
+          roles: apiUser.roles,
+          permissions: apiUser.permissions,
+        };
+        await get().login(user);
+      },
+
+      loginWithGoogle: async (googleToken: string) => {
+        const res = await apiRequest<{ data: { accessToken: string; refreshToken: string; user: { email: string; firstName: string; lastName: string; roles: string[]; permissions: string[] } } }>('/api/auth/google', {
+          method: 'POST',
+          body: { idToken: googleToken },
+          skipAuth: true,
+        });
+        const { accessToken, refreshToken, user: apiUser } = res.data;
+        setStoredTokens(accessToken, refreshToken);
+        const user: User = {
+          name: `${apiUser.firstName} ${apiUser.lastName}`,
+          email: apiUser.email,
+          roles: apiUser.roles,
+          permissions: apiUser.permissions,
+        };
+        await get().login(user);
+      },
       
       logout: () => {
         // Cleanup activity monitoring
         cleanupActivityMonitor();
         
-        // Clear fingerprint
+        // Clear fingerprint and tokens
         localStorage.removeItem(FINGERPRINT_KEY);
+        clearStoredTokens();
         
         // Broadcast logout to other tabs
         const tabSync = getTabSynchronizer();
@@ -229,6 +268,8 @@ export const useAuth = () => {
     user: store.user,
     isAuthenticated: store.isAuthenticated(),
     login: store.login,
+    loginWithCredentials: store.loginWithCredentials,
+    loginWithGoogle: store.loginWithGoogle,
     logout: store.logout,
     refreshActivity: store.refreshActivity,
     sessionInfo: store.getSessionInfo(),

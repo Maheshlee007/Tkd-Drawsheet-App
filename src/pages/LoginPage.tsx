@@ -12,38 +12,51 @@ import { AlertCircle, Shield, Trophy, Eye, EyeOff } from 'lucide-react';
 // import bracketBackground from "../assets/samplebracket.svg";
 
 const LoginPage: React.FC = () => {
-  const { login, isAuthenticated } = useAuthStore();
+  const { login, loginWithCredentials, loginWithGoogle, isAuthenticated } = useAuthStore();
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const devLoginEnabled = import.meta.env.VITE_DEV_LOGIN_ENABLED === 'true';
 
   // Handle successful Google login
-  const handleGoogleSuccess = (credentialResponse: CredentialResponse) => {
+  const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
     if (credentialResponse.credential) {
-      login(credentialResponse.credential);
+      setIsLoading(true);
+      try {
+        await loginWithGoogle(credentialResponse.credential);
+      } catch {
+        // Fallback: use the JWT directly (offline mode)
+        login(credentialResponse.credential);
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
   // Handle local form login
-  const handleLocalLogin = (event: React.FormEvent) => {
+  const handleLocalLogin = async (event: React.FormEvent) => {
     event.preventDefault();
-    setError(''); // Clear previous errors
+    setError('');
+    setIsLoading(true);
     const formData = new FormData(event.target as HTMLFormElement);
-    const username = formData.get('username') as string;
+    const email = formData.get('username') as string;
     const password = formData.get('password') as string;
 
-    if (username === 'mahesh' && password === 'Mahesh@007') {
-      login({ name: username });
-    } else {
-      const errorMessage = 'Invalid username or password.';
-      setError(errorMessage);
-      toast({
-        variant: 'destructive',
-        title: 'Login Failed',
-        description: errorMessage,
-      });
+    try {
+      await loginWithCredentials(email, password);
+    } catch (err: any) {
+      // Fallback to legacy hardcoded login for dev
+      if (devLoginEnabled && email === 'mahesh' && password === 'Mahesh@007') {
+        login({ name: email });
+      } else {
+        const errorMessage = err.message || 'Invalid credentials.';
+        setError(errorMessage);
+        toast({ variant: 'destructive', title: 'Login Failed', description: errorMessage });
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
