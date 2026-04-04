@@ -23,6 +23,7 @@ export default defineConfig({
     port: 4001,
     host: true,
     open: true,
+    strictPort: true,
   },
   // root: path.resolve(__dirname, "."),
   // build: {

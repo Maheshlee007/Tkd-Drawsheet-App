@@ -172,14 +172,19 @@ export default function WeightCategoriesPage() {
             </div>
             <div>
               <Label className="mb-1">Gender</Label>
-              <Select value={filterGender} onValueChange={setFilterGender}>
-                <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="male">Male</SelectItem>
-                  <SelectItem value="female">Female</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex gap-1">
+                {(['all', 'male', 'female'] as const).map(g => (
+                  <Button
+                    key={g}
+                    size="sm"
+                    variant={filterGender === g ? 'default' : 'outline'}
+                    onClick={() => setFilterGender(g)}
+                    className="capitalize"
+                  >
+                    {g === 'all' ? 'All' : g === 'male' ? '♂ Male' : '♀ Female'}
+                  </Button>
+                ))}
+              </div>
             </div>
             <Badge variant="secondary">{filtered.length} categories</Badge>
           </div>
@@ -205,7 +210,6 @@ export default function WeightCategoriesPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Age</TableHead>
-                      <TableHead>Gender</TableHead>
                       <TableHead>Class</TableHead>
                       <TableHead className="text-right">Min (kg)</TableHead>
                       <TableHead className="text-right">Max (kg)</TableHead>
@@ -214,13 +218,8 @@ export default function WeightCategoriesPage() {
                   </TableHeader>
                   <TableBody>
                     {(grouped[assoc] ?? []).map(cat => (
-                      <TableRow key={cat.id}>
+                      <TableRow key={cat.id} className={cat.gender === 'male' ? 'border-l-4 border-l-blue-400' : 'border-l-4 border-l-pink-400'}>
                         <TableCell>{cat.age_category}</TableCell>
-                        <TableCell>
-                          <Badge variant={cat.gender === 'male' ? 'default' : 'secondary'}>
-                            {cat.gender}
-                          </Badge>
-                        </TableCell>
                         <TableCell className="font-medium">{cat.weight_class}</TableCell>
                         <TableCell className="text-right">{Number(cat.min_weight_kg) === 0 ? '-' : cat.min_weight_kg}</TableCell>
                         <TableCell className="text-right">{Number(cat.max_weight_kg) >= 999 ? '+' : cat.max_weight_kg}</TableCell>

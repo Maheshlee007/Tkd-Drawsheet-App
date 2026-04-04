@@ -5,7 +5,6 @@ import { Menu } from "lucide-react";
 import { SideNav } from "./SideNav";
 import Navbar from "./Navbar";
 import { cn } from "@/lib/utils";
-import { useLocation } from "wouter";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -13,37 +12,38 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   const [open, setOpen] = useState(false);
-  const [location] = useLocation();
-  
-  // Default to expanded on large screens (>=1280px), matching SideNav initial state
   const [collapsed, setCollapsed] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return window.innerWidth < 1280;
-    }
+    if (typeof window !== 'undefined') return window.innerWidth < 1280;
     return true;
   });
-  
-  // Don't show the navigation on the initial home page
-  const showNavigation = location !== "/";
 
-  // Listen for collapse state changes from SideNav
   const handleCollapse = (isCollapsed: boolean) => {
     setCollapsed(isCollapsed);
   };
+
   return (
     <div className="flex h-screen flex-col overflow-auto scroll-smooth scrollbar-hide">
-      <Navbar />      <div className="flex flex-1 scrollbar-hide">
-        {/* Sidebar for desktop */}
-        {showNavigation && (
-          <aside className={cn("hidden border-r bg-muted/40 md:block transition-all duration-300", collapsed ? "w-20" : "w-64")}>
-            <SideNav className="w-full" onCollapse={handleCollapse}  />
-          </aside>
-        )}
+      <Navbar />
+      <div className="flex flex-1 scrollbar-hide">
+        {/* Sidebar for desktop — always visible */}
+        <aside className={cn("hidden border-r bg-muted/40 md:block transition-all duration-300", collapsed ? "w-20" : "w-64")}>
+          <SideNav className="w-full" onCollapse={handleCollapse} />
+        </aside>
 
-        {/* Mobile sheet navigation - REMOVED since navigation is now consolidated in Navbar */}
-        
+        {/* Mobile sidebar via Sheet */}
+        <Sheet open={open} onOpenChange={setOpen}>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon" className="fixed bottom-4 left-4 z-50 md:hidden rounded-full shadow-lg bg-primary text-primary-foreground">
+              <Menu className="h-5 w-5" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="w-[280px] p-0">
+            <SideNav onClose={() => setOpen(false)} />
+          </SheetContent>
+        </Sheet>
+
         {/* Main content */}
-        <main className={cn("flex-1 min-w-0 overflow-auto", showNavigation ? "md:ml-0" : "")}>
+        <main className="flex-1 min-w-0 overflow-auto">
           {children}
         </main>
       </div>
