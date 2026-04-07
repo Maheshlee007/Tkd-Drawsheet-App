@@ -27,6 +27,8 @@ export interface Tournament {
   is_public: boolean;
   max_participants: number | null;
   entry_fee: number;
+  first_event_fee: number;
+  additional_event_fee: number;
   association_type: string | null;
   created_by: string | null;
   created_at: string;
@@ -67,6 +69,11 @@ export const tournamentService = {
 
   async getTournament(id: string): Promise<Tournament> {
     const res = await apiRequest<{ data: Tournament }>(`/api/tournaments/${id}`);
+    return res.data;
+  },
+
+  async getByCode(code: string): Promise<Tournament> {
+    const res = await apiRequest<{ data: Tournament }>(`/api/tournaments/code/${encodeURIComponent(code)}`);
     return res.data;
   },
 

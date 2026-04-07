@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocation, useParams } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,7 +14,8 @@ import {
   Trophy, ArrowLeft, ArrowRight, CheckCircle, Loader2, Download, LogIn, Copy, AlertTriangle, ExternalLink,
 } from 'lucide-react';
 import { usePlayerStore, PlayerRegistration } from '@/store/usePlayerStore';
-import { playerService } from '@/services/playerService';
+import { playerService, type RegisteredPlayer, type TeamEntryPayload } from '@/services/playerService';
+import { tournamentService, type Tournament } from '@/services/tournamentService';
 import {
   BELT_LEVELS, getAgeCategory, getWeightCategory, isMinor, isValidAadhaarFormat, calculateAge,
 } from '@/utils/categoryUtils';
@@ -31,26 +32,86 @@ const EVENT_OPTIONS = [
   { value: 'freestyle_poomsae', label: 'Freestyle Poomsae' },
 ];
 
+const GROUP_EVENT_OPTIONS = ['poomsae_pair', 'poomsae_group'];
+
+interface TeamEntryFormState {
+  teamName: string;
+  members: string[];
+}
+
 const PlayerRegistrationPage: React.FC = () => {
   const [, navigate] = useLocation();
   const params = useParams<{ tournamentCode?: string }>();
-  const tournamentCode = params?.tournamentCode || '';
+  const routeTournamentCode = params?.tournamentCode || '';
   const { toast } = useToast();
   const addPlayer = usePlayerStore((s) => s.addPlayer);
 
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
-  const [registeredPlayer, setRegisteredPlayer] = useState<PlayerRegistration | null>(null);
+  const [registeredPlayer, setRegisteredPlayer] = useState<RegisteredPlayer | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [showErrors, setShowErrors] = useState(false);
+  const [tournamentCodeInput, setTournamentCodeInput] = useState(routeTournamentCode);
+  const [resolvedTournament, setResolvedTournament] = useState<Tournament | null>(null);
+  const [loadingTournament, setLoadingTournament] = useState(false);
+  const [tournamentError, setTournamentError] = useState('');
 
   // Selected events for multi-event support
   const [selectedEvents, setSelectedEvents] = useState<string[]>(['kyorugi']);
+  const [teamEntries, setTeamEntries] = useState<Record<string, TeamEntryFormState>>({});
 
   function toggleEvent(value: string) {
     setSelectedEvents(prev =>
       prev.includes(value) ? prev.filter(e => e !== value) : [...prev, value]
     );
+  }
+
+  function upsertTeamEntry(eventType: string, updater: (prev: TeamEntryFormState) => TeamEntryFormState) {
+    setTeamEntries(prev => ({
+      ...prev,
+      [eventType]: updater(prev[eventType] ?? { teamName: '', members: [''] }),
+    }));
+  }
+
+  function resolveTournamentPricing() {
+    const firstEventFee = Number(resolvedTournament?.first_event_fee ?? resolvedTournament?.entry_fee ?? 500);
+    const additionalEventFee = Number(resolvedTournament?.additional_event_fee ?? 300);
+    const eventFees = selectedEvents.map((_, index) => (index === 0 ? firstEventFee : additionalEventFee));
+    return {
+      firstEventFee,
+      additionalEventFee,
+      eventFees,
+      totalFee: eventFees.reduce((sum, fee) => sum + fee, 0),
+    };
+  }
+
+  const pricingPreview = resolveTournamentPricing();
+
+  useEffect(() => {
+    if (!routeTournamentCode) return;
+    void handleTournamentLookup(routeTournamentCode);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeTournamentCode]);
+
+  async function handleTournamentLookup(rawCode?: string) {
+    const code = (rawCode ?? tournamentCodeInput).trim().toUpperCase();
+    if (!code) {
+      setTournamentError('Tournament code is required');
+      return;
+    }
+
+    setLoadingTournament(true);
+    setTournamentError('');
+    try {
+      const tournament = await tournamentService.getByCode(code);
+      setResolvedTournament(tournament);
+      setTournamentCodeInput(code);
+    } catch (error: any) {
+      setResolvedTournament(null);
+      setTournamentError(error.message || 'Tournament not found');
+    } finally {
+      setLoadingTournament(false);
+    }
   }
 
   // Basic info
@@ -87,7 +148,10 @@ const PlayerRegistrationPage: React.FC = () => {
   const needsGuardian = dateOfBirth ? isMinor(dateOfBirth) : false;
   const age = dateOfBirth ? calculateAge(dateOfBirth) : null;
   const canProceedStep0 = fullName.trim() && dateOfBirth && phone.trim() && email.trim() && (!needsGuardian || guardianName.trim());
-  const canProceedStep1 = beltColor && weight > 0 && selectedEvents.length > 0;
+  const groupEventValidationPassed = selectedEvents
+    .filter(eventType => GROUP_EVENT_OPTIONS.includes(eventType))
+    .every(eventType => (teamEntries[eventType]?.members ?? []).filter(name => name.trim()).length > 0);
+  const canProceedStep1 = !!resolvedTournament && beltColor && weight > 0 && selectedEvents.length > 0 && groupEventValidationPassed;
 
   const handleMockAadhaarVerify = async () => {
     if (!isValidAadhaarFormat(aadhaarNumber)) {
@@ -126,7 +190,7 @@ const PlayerRegistrationPage: React.FC = () => {
     setSubmitting(true);
     try {
       const playerData = {
-        tournamentCode,
+        tournamentCode: resolvedTournament?.tournament_code ?? tournamentCodeInput,
         fullName, dateOfBirth, gender,
         guardianName: needsGuardian ? guardianName : undefined,
         phone, email,
@@ -145,18 +209,29 @@ const PlayerRegistrationPage: React.FC = () => {
         aadhaarVerified, emailVerified,
         dobVerified: aadhaarVerified,
         events: selectedEvents,
+        teamEntries: selectedEvents
+          .filter(eventType => GROUP_EVENT_OPTIONS.includes(eventType))
+          .map<TeamEntryPayload>(eventType => ({
+            eventType,
+            teamName: teamEntries[eventType]?.teamName?.trim() || undefined,
+            members: (teamEntries[eventType]?.members ?? [])
+              .map(memberName => memberName.trim())
+              .filter(Boolean)
+              .map(memberName => ({ memberName })),
+          }))
+          .filter(entry => entry.members.length > 0),
       };
       // Try API first, fall back to localStorage
-      let player: PlayerRegistration;
+      let player: RegisteredPlayer;
       try {
-        player = await playerService.create(playerData as any);
+        player = await playerService.create(playerData);
       } catch {
         player = addPlayer(playerData);
       }
       setRegisteredPlayer(player);
       try {
         const QRCode = await import('qrcode');
-        const qrText = `${player.playerCode}|${tournamentCode}|${fullName}`;
+        const qrText = `${player.playerCode}|${resolvedTournament?.tournament_code ?? tournamentCodeInput}|${fullName}`;
         const url = await QRCode.toDataURL(qrText, { width: 200, margin: 1 });
         setQrDataUrl(url);
       } catch { /* QR non-critical */ }
@@ -184,6 +259,7 @@ const PlayerRegistrationPage: React.FC = () => {
     setEmailOtp(''); setTermsAccepted(false);
     setAddress(''); setState(''); setDistrict(''); setPincode('');
     setOccupation(''); setSelectedEvents(['kyorugi']);
+    setTeamEntries({});
   };
 
   if (registeredPlayer) {
@@ -214,6 +290,7 @@ const PlayerRegistrationPage: React.FC = () => {
                 <p><span className="font-medium">Name:</span> {registeredPlayer.fullName}</p>
                 <p><span className="font-medium">Category:</span> {registeredPlayer.ageCategory} - {registeredPlayer.weightCategory}</p>
                 <p><span className="font-medium">Belt:</span> {registeredPlayer.beltColor}</p>
+                {registeredPlayer.pricing && <p><span className="font-medium">Registration Fee:</span> Rs. {registeredPlayer.pricing.totalFee}</p>}
                 {registeredPlayer.club && <p><span className="font-medium">Club:</span> {registeredPlayer.club}</p>}
                 {registeredPlayer.state && <p><span className="font-medium">Location:</span> {registeredPlayer.district ? `${registeredPlayer.district}, ` : ''}{registeredPlayer.state}</p>}
               </div>
@@ -235,6 +312,52 @@ const PlayerRegistrationPage: React.FC = () => {
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
       <Header onLogin={() => navigate('/login')} />
       <div className="max-w-3xl mx-auto px-4 py-6">
+        {!resolvedTournament && (
+          <Card className="mb-4 border-blue-200 bg-blue-50">
+            <CardHeader>
+              <CardTitle className="text-lg">Tournament Code Required</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-blue-900">
+                Registration is tournament-specific. Enter the tournament code from the organizer link to continue.
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  value={tournamentCodeInput}
+                  onChange={(e) => setTournamentCodeInput(e.target.value.toUpperCase())}
+                  placeholder="e.g. TKD-2026-TEST1"
+                  className="font-mono bg-white"
+                  onKeyDown={(e) => e.key === 'Enter' && void handleTournamentLookup()}
+                />
+                <Button onClick={() => void handleTournamentLookup()} disabled={loadingTournament}>
+                  {loadingTournament ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Continue'}
+                </Button>
+              </div>
+              {tournamentError && <p className="text-sm text-red-600">{tournamentError}</p>}
+            </CardContent>
+          </Card>
+        )}
+
+        {resolvedTournament && (
+          <Card className="mb-4 border-emerald-200 bg-emerald-50">
+            <CardContent className="pt-4 space-y-2 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-emerald-900">{resolvedTournament.name}</p>
+                  <p className="text-emerald-700 font-mono text-xs">{resolvedTournament.tournament_code}</p>
+                </div>
+                <Badge variant="secondary" className="capitalize">{resolvedTournament.status.replace('_', ' ')}</Badge>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-emerald-900">
+                <p><span className="font-medium">Venue:</span> {resolvedTournament.venue || '-'}{resolvedTournament.city ? `, ${resolvedTournament.city}` : ''}</p>
+                <p><span className="font-medium">Dates:</span> {resolvedTournament.start_date} to {resolvedTournament.end_date}</p>
+                <p><span className="font-medium">First Event:</span> Rs. {pricingPreview.firstEventFee}</p>
+                <p><span className="font-medium">Additional Event:</span> Rs. {pricingPreview.additionalEventFee}</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Manual form notice */}
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 flex items-start gap-3">
           <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
@@ -268,7 +391,7 @@ const PlayerRegistrationPage: React.FC = () => {
 
         <Card>
           <CardHeader><CardTitle className="text-lg">{STEPS[step]}</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className={`space-y-4 ${!resolvedTournament ? 'opacity-60 pointer-events-none' : ''}`}>
             {step === 0 && (
               <div className="space-y-4">
                 <div>
@@ -399,6 +522,81 @@ const PlayerRegistrationPage: React.FC = () => {
                     <p className="text-xs text-red-500 mt-1">Please select at least one event</p>
                   )}
                 </div>
+                {selectedEvents.filter(eventType => GROUP_EVENT_OPTIONS.includes(eventType)).map(eventType => {
+                  const teamEntry = teamEntries[eventType] ?? { teamName: '', members: [''] };
+                  const label = EVENT_OPTIONS.find(option => option.value === eventType)?.label || eventType;
+                  return (
+                    <div key={eventType} className="border-t pt-4 space-y-3">
+                      <div>
+                        <Label>{label} Team Name</Label>
+                        <Input
+                          value={teamEntry.teamName}
+                          onChange={(e) => upsertTeamEntry(eventType, prev => ({ ...prev, teamName: e.target.value }))}
+                          placeholder="Optional team / pair name"
+                          className="mt-1"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label>Additional Team Members *</Label>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => upsertTeamEntry(eventType, prev => ({ ...prev, members: [...prev.members, ''] }))}
+                          >
+                            Add Member
+                          </Button>
+                        </div>
+                        {teamEntry.members.map((member, memberIndex) => (
+                          <div key={`${eventType}-${memberIndex}`} className="flex gap-2">
+                            <Input
+                              value={member}
+                              onChange={(e) => upsertTeamEntry(eventType, prev => ({
+                                ...prev,
+                                members: prev.members.map((entry, index) => index === memberIndex ? e.target.value : entry),
+                              }))}
+                              placeholder={eventType === 'poomsae_pair' ? 'Partner full name' : `Team member ${memberIndex + 1}`}
+                            />
+                            {teamEntry.members.length > 1 && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => upsertTeamEntry(eventType, prev => ({
+                                  ...prev,
+                                  members: prev.members.filter((_, index) => index !== memberIndex),
+                                }))}
+                              >
+                                Remove
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                        {showErrors && (teamEntry.members.filter(name => name.trim()).length === 0) && (
+                          <p className="text-xs text-red-500">Add at least one additional member for {label.toLowerCase()}.</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {resolvedTournament && (
+                  <div className="rounded-lg border bg-slate-50 p-3 text-sm">
+                    <p className="font-medium text-slate-700 mb-2">Pricing Preview</p>
+                    <div className="space-y-1 text-slate-600">
+                      {selectedEvents.map((eventType, index) => (
+                        <div key={eventType} className="flex justify-between gap-3">
+                          <span>{EVENT_OPTIONS.find(option => option.value === eventType)?.label || eventType}</span>
+                          <span>Rs. {pricingPreview.eventFees[index] ?? 0}</span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between gap-3 border-t pt-2 font-semibold text-slate-900">
+                        <span>Total</span>
+                        <span>Rs. {pricingPreview.totalFee}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -469,6 +667,8 @@ const PlayerRegistrationPage: React.FC = () => {
                       {club && <div className="flex justify-between sm:block"><span className="text-slate-500">Club</span><span className="font-medium sm:ml-2">{club}</span></div>}
                       {coach && <div className="flex justify-between sm:block"><span className="text-slate-500">Coach</span><span className="font-medium sm:ml-2">{coach}</span></div>}
                       {experience && <div className="flex justify-between sm:block"><span className="text-slate-500">Experience</span><span className="font-medium sm:ml-2">{experience}</span></div>}
+                      {resolvedTournament && <div className="flex justify-between sm:block"><span className="text-slate-500">Tournament</span><span className="font-medium sm:ml-2">{resolvedTournament.name}</span></div>}
+                      {resolvedTournament && <div className="flex justify-between sm:block"><span className="text-slate-500">Registration Fee</span><span className="font-medium sm:ml-2">Rs. {pricingPreview.totalFee}</span></div>}
                     </div>
                   </div>
                   <div className="border-t pt-2 mt-2 flex gap-2">
@@ -489,6 +689,17 @@ const PlayerRegistrationPage: React.FC = () => {
                       }
                     </div>
                   </div>
+                  {selectedEvents.filter(eventType => GROUP_EVENT_OPTIONS.includes(eventType)).length > 0 && (
+                    <div className="border-t pt-3 mt-2 space-y-2">
+                      <p className="text-slate-500 text-xs font-medium">Group Event Members</p>
+                      {selectedEvents.filter(eventType => GROUP_EVENT_OPTIONS.includes(eventType)).map(eventType => (
+                        <div key={eventType} className="text-xs text-slate-700">
+                          <span className="font-medium">{EVENT_OPTIONS.find(option => option.value === eventType)?.label || eventType}:</span>
+                          <span className="ml-2">{(teamEntries[eventType]?.members ?? []).filter(Boolean).join(', ') || 'No members added'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-start gap-2">
                   <Checkbox id="terms" checked={termsAccepted} onCheckedChange={(v) => setTermsAccepted(v === true)} />
@@ -512,11 +723,11 @@ const PlayerRegistrationPage: React.FC = () => {
                   }
                   setShowErrors(false);
                   setStep(step + 1);
-                }}>
+                }} disabled={!resolvedTournament}>
                   Next <ArrowRight className="h-4 w-4 ml-1" />
                 </Button>
               ) : (
-                <Button onClick={handleSubmit} disabled={!termsAccepted || submitting}>
+                <Button onClick={handleSubmit} disabled={!resolvedTournament || !termsAccepted || submitting}>
                   {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
                   Submit Registration
                 </Button>
