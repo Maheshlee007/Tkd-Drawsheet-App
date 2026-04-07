@@ -25,3 +25,11 @@ dist-ssr
 
 .env
 *.env
+
+# Sensitive docs
+LOGIN_DOCS.md
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/

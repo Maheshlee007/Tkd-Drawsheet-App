@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useLocation } from 'wouter';
+import { useLocation, useParams } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,8 @@ const BELT_RANKS = ['White', 'Yellow', 'Green', 'Blue', 'Red', 'Black 1st Dan', 
 
 export default function CoachRegistrationPage() {
   const [, navigate] = useLocation();
+  const params = useParams<{ tournamentCode?: string }>();
+  const tournamentCode = params?.tournamentCode;
   const [form, setForm] = useState({
     firstName: '',
     lastName: '',
@@ -86,6 +88,11 @@ export default function CoachRegistrationPage() {
               <CardDescription>Register as a coach to manage your players</CardDescription>
             </div>
           </div>
+          {tournamentCode && (
+            <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-sm text-blue-800">
+              Registering for tournament: <span className="font-mono font-semibold">{tournamentCode}</span>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {error && <div className="bg-destructive/10 text-destructive p-3 rounded-md text-sm mb-4">{error}</div>}

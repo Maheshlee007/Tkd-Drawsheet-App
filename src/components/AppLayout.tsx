@@ -22,12 +22,12 @@ export function AppLayout({ children }: AppLayoutProps) {
   };
 
   return (
-    <div className="flex h-screen flex-col overflow-auto scroll-smooth scrollbar-hide">
+    <div className="flex h-screen flex-col overflow-hidden">
       <Navbar />
-      <div className="flex flex-1 scrollbar-hide">
-        {/* Sidebar for desktop — always visible */}
-        <aside className={cn("hidden border-r bg-muted/40 md:block transition-all duration-300", collapsed ? "w-20" : "w-64")}>
-          <SideNav className="w-full" onCollapse={handleCollapse} />
+      <div className="flex flex-1 min-h-0">
+        {/* Sidebar for desktop — fixed width, internal scroll */}
+        <aside className={cn("hidden border-r bg-muted/40 md:flex md:flex-col md:flex-shrink-0 transition-all duration-300 overflow-hidden", collapsed ? "w-20" : "w-64")}>
+          <SideNav className="w-full h-full" onCollapse={handleCollapse} />
         </aside>
 
         {/* Mobile sidebar via Sheet */}
@@ -42,8 +42,8 @@ export function AppLayout({ children }: AppLayoutProps) {
           </SheetContent>
         </Sheet>
 
-        {/* Main content */}
-        <main className="flex-1 min-w-0 overflow-auto">
+        {/* Main content — scrollable independently */}
+        <main className="flex-1 min-w-0 overflow-auto scroll-smooth">
           {children}
         </main>
       </div>

@@ -27,6 +27,11 @@ import VerifyPage from "@/pages/VerifyPage";
 import JuryPortalPage from "@/pages/JuryPortalPage";
 import JuryManagementPage from "@/pages/JuryManagementPage";
 import BoardPage from "@/pages/BoardPage";
+import StaffAssignmentPage from "@/pages/StaffAssignmentPage";
+import MatchDashboardPage from "@/pages/MatchDashboardPage";
+import PasswordResetPage from "@/pages/PasswordResetPage";
+import AdminTournamentPage from "@/pages/AdminTournamentPage";
+import PlayersListPage from "@/pages/PlayersListPage";
 
 function Router() {
   return (
@@ -49,6 +54,9 @@ function Router() {
           <PlayerRegistrationPage />
         </Route>
         <Route path="/coach-register">
+          <CoachRegistrationPage />
+        </Route>
+        <Route path="/coach-register/:tournamentCode">
           <CoachRegistrationPage />
         </Route>
         <Route path="/board">
@@ -132,6 +140,31 @@ function Router() {
         <Route path="/jury-management">
           <ProtectedRoute>
             <JuryManagementPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/staff-assignment">
+          <ProtectedRoute>
+            <StaffAssignmentPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/match-dashboard">
+          <ProtectedRoute>
+            <MatchDashboardPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/password-reset">
+          <ProtectedRoute>
+            <PasswordResetPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/admin/tournaments">
+          <ProtectedRoute>
+            <AdminTournamentPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/players">
+          <ProtectedRoute>
+            <PlayersListPage />
           </ProtectedRoute>
         </Route>
 

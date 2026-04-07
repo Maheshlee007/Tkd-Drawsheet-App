@@ -61,8 +61,11 @@ export const judgeService = {
     });
   },
 
-  async getMyMatches(): Promise<JudgeAssignment[]> {
-    const res = await apiRequest<{ data: JudgeAssignment[] }>('/api/matches/judge/me');
+  async getMyMatches(tournamentId?: string): Promise<JudgeAssignment[]> {
+    const url = tournamentId
+      ? `/api/matches/judge/me?tournamentId=${tournamentId}`
+      : '/api/matches/judge/me';
+    const res = await apiRequest<{ data: JudgeAssignment[] }>(url);
     return res.data;
   },
 };

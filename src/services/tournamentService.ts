@@ -9,6 +9,30 @@ interface SavedTournament {
   bracketData: BracketMatch[][];
 }
 
+export interface Tournament {
+  id: string;
+  tournament_code: string;
+  name: string;
+  description: string | null;
+  venue: string | null;
+  city: string | null;
+  state: string | null;
+  start_date: string;
+  end_date: string;
+  registration_deadline: string | null;
+  organizer_name: string | null;
+  organizer_email: string | null;
+  organizer_phone: string | null;
+  status: string;
+  is_public: boolean;
+  max_participants: number | null;
+  entry_fee: number;
+  association_type: string | null;
+  created_by: string | null;
+  created_at: string;
+  stats?: Record<string, number>;
+}
+
 const STORAGE_KEY = 'tournament-history';
 
 function getStoredTournaments(): SavedTournament[] {
@@ -29,6 +53,50 @@ export const tournamentService = {
       } catch { /* fallback */ }
     }
     return getStoredTournaments();
+  },
+
+  /** Get all tournaments with full API details */
+  async listTournaments(opts?: { status?: string; limit?: number }): Promise<Tournament[]> {
+    const params = new URLSearchParams();
+    if (opts?.status) params.set('status', opts.status);
+    if (opts?.limit) params.set('limit', String(opts.limit));
+    const qs = params.toString();
+    const res = await apiRequest<{ data: Tournament[] }>(`/api/tournaments${qs ? '?' + qs : ''}`);
+    return res.data ?? [];
+  },
+
+  async getTournament(id: string): Promise<Tournament> {
+    const res = await apiRequest<{ data: Tournament }>(`/api/tournaments/${id}`);
+    return res.data;
+  },
+
+  async createTournament(data: Record<string, unknown>): Promise<Tournament> {
+    const res = await apiRequest<{ data: Tournament }>('/api/tournaments', {
+      method: 'POST',
+      body: data,
+    });
+    return res.data;
+  },
+
+  async updateTournament(id: string, data: Record<string, unknown>): Promise<Tournament> {
+    const res = await apiRequest<{ data: Tournament }>(`/api/tournaments/${id}`, {
+      method: 'PATCH',
+      body: data,
+    });
+    return res.data;
+  },
+
+  async updateStatus(id: string, status: string): Promise<Tournament> {
+    const res = await apiRequest<{ data: Tournament }>(`/api/tournaments/${id}/status`, {
+      method: 'PATCH',
+      body: { status },
+    });
+    return res.data;
+  },
+
+  async getCategories(tournamentId: string): Promise<any[]> {
+    const res = await apiRequest<{ data: any[] }>(`/api/tournaments/${tournamentId}/categories`);
+    return res.data ?? [];
   },
 
   async getById(id: string): Promise<SavedTournament | null> {

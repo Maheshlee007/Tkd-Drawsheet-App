@@ -4,9 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, Pencil, Trash2, Scale, Filter } from 'lucide-react';
 import { weightCategoryService, type WeightCategory } from '@/services/weightCategoryService';
@@ -48,6 +47,10 @@ export default function WeightCategoriesPage() {
       ]);
       setCategories(cats);
       setAssociations(assocs);
+      // Default filter to first association instead of 'all'
+      if (assocs.length > 0) {
+        setFilterAssoc(prev => prev === 'all' ? assocs[0] : prev);
+      }
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -70,7 +73,7 @@ export default function WeightCategoriesPage() {
 
   function openAdd() {
     setEditingId(null);
-    setForm({ association: '', age_category: '', gender: 'male', weight_class: '', min_weight_kg: 0, max_weight_kg: 0, sort_order: 0 });
+    setForm({ association: filterAssoc !== 'all' ? filterAssoc : (associations[0] ?? ''), age_category: '', gender: 'male', weight_class: '', min_weight_kg: 0, max_weight_kg: 0, sort_order: 0 });
     setDialogOpen(true);
   }
 
@@ -97,6 +100,17 @@ export default function WeightCategoriesPage() {
       }
       setDialogOpen(false);
       await loadData();
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }
+
+  async function handleCopyToAssociation(targetAssoc: string) {
+    if (!editingId) return;
+    try {
+      await weightCategoryService.create({ ...form, association: targetAssoc } as any);
+      await loadData();
+      alert(`Copied to ${targetAssoc}`);
     } catch (e: any) {
       setError(e.message);
     }
@@ -155,8 +169,7 @@ export default function WeightCategoriesPage() {
               <Select value={filterAssoc} onValueChange={setFilterAssoc}>
                 <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  {associations.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+                  {associations.map(a => <SelectItem key={a} value={a}>{a === 'State' ? 'State Association' : a}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -191,11 +204,11 @@ export default function WeightCategoriesPage() {
         </CardContent>
       </Card>
 
-      {/* Table view */}
-      <Tabs defaultValue={associations[0] ?? 'WT'}>
+      {/* Chips view grouped by age */}
+      <Tabs value={filterAssoc} onValueChange={setFilterAssoc}>
         <TabsList className="flex-wrap h-auto">
           {associations.map(a => (
-            <TabsTrigger key={a} value={a}>{a}</TabsTrigger>
+            <TabsTrigger key={a} value={a}>{a === 'State' ? 'State Association' : a}</TabsTrigger>
           ))}
         </TabsList>
 
@@ -203,42 +216,57 @@ export default function WeightCategoriesPage() {
           <TabsContent key={assoc} value={assoc}>
             <Card>
               <CardHeader>
-                <CardTitle>{assoc} Weight Categories</CardTitle>
+                <CardTitle>{assoc === 'State' ? 'State Association' : assoc} Weight Categories</CardTitle>
               </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Age</TableHead>
-                      <TableHead>Class</TableHead>
-                      <TableHead className="text-right">Min (kg)</TableHead>
-                      <TableHead className="text-right">Max (kg)</TableHead>
-                      {isOrganizer && <TableHead className="text-right">Actions</TableHead>}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(grouped[assoc] ?? []).map(cat => (
-                      <TableRow key={cat.id} className={cat.gender === 'male' ? 'border-l-4 border-l-blue-400' : 'border-l-4 border-l-pink-400'}>
-                        <TableCell>{cat.age_category}</TableCell>
-                        <TableCell className="font-medium">{cat.weight_class}</TableCell>
-                        <TableCell className="text-right">{Number(cat.min_weight_kg) === 0 ? '-' : cat.min_weight_kg}</TableCell>
-                        <TableCell className="text-right">{Number(cat.max_weight_kg) >= 999 ? '+' : cat.max_weight_kg}</TableCell>
-                        {isOrganizer && (
-                          <TableCell className="text-right space-x-1">
-                            <Button variant="ghost" size="icon" onClick={() => openEdit(cat)}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            {isAdmin && (
-                              <Button variant="ghost" size="icon" onClick={() => handleDelete(cat.id)}>
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
-                            )}
-                          </TableCell>
-                        )}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              <CardContent className="space-y-4">
+                {/* Chips grouped by age category */}
+                {Array.from(new Set((grouped[assoc] ?? []).map(c => c.age_category))).sort().map(ageCat => {
+                  const cols = (grouped[assoc] ?? []).filter(c => c.age_category === ageCat);
+                  const males = cols.filter(c => c.gender === 'male');
+                  const females = cols.filter(c => c.gender === 'female');
+                  return (
+                    <div key={ageCat} className="space-y-2">
+                      <p className="text-sm font-semibold text-slate-700 border-b pb-1">{ageCat}</p>
+                      {males.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 items-center">
+                          <span className="text-xs text-blue-600 font-medium w-14">♂ Male</span>
+                          {males.sort((a, b) => a.sort_order - b.sort_order).map(cat => (
+                            <Badge
+                              key={cat.id}
+                              variant="outline"
+                              className="border-blue-200 bg-blue-50 text-blue-800 cursor-pointer hover:bg-blue-100"
+                              onClick={() => isOrganizer ? openEdit(cat) : undefined}
+                            >
+                              {cat.weight_class}
+                              {Number(cat.min_weight_kg) > 0 ? ` (${cat.min_weight_kg}` : ' (0'}
+                              -{Number(cat.max_weight_kg) >= 999 ? '+' : cat.max_weight_kg}kg)
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                      {females.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 items-center">
+                          <span className="text-xs text-pink-600 font-medium w-14">♀ Female</span>
+                          {females.sort((a, b) => a.sort_order - b.sort_order).map(cat => (
+                            <Badge
+                              key={cat.id}
+                              variant="outline"
+                              className="border-pink-200 bg-pink-50 text-pink-800 cursor-pointer hover:bg-pink-100"
+                              onClick={() => isOrganizer ? openEdit(cat) : undefined}
+                            >
+                              {cat.weight_class}
+                              {Number(cat.min_weight_kg) > 0 ? ` (${cat.min_weight_kg}` : ' (0'}
+                              -{Number(cat.max_weight_kg) >= 999 ? '+' : cat.max_weight_kg}kg)
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {(grouped[assoc] ?? []).length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4">No categories for this association/filter</p>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -255,7 +283,12 @@ export default function WeightCategoriesPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Association</Label>
-                <Input value={form.association} onChange={e => setForm({ ...form, association: e.target.value })} placeholder="e.g. WT, SGFI" />
+                <Select value={form.association} onValueChange={v => setForm({ ...form, association: v })}>
+                  <SelectTrigger><SelectValue placeholder="Select association" /></SelectTrigger>
+                  <SelectContent>
+                    {associations.map(a => <SelectItem key={a} value={a}>{a === 'State' ? 'State Association' : a}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label>Age Category</Label>
@@ -298,7 +331,17 @@ export default function WeightCategoriesPage() {
               </div>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            {editingId && associations.filter(a => a !== form.association).length > 0 && (
+              <div className="flex items-center gap-2 mr-auto">
+                <span className="text-xs text-muted-foreground">Copy to:</span>
+                {associations.filter(a => a !== form.association).map(a => (
+                  <Button key={a} size="sm" variant="outline" className="text-xs h-7" onClick={() => handleCopyToAssociation(a)}>
+                    {a === 'State' ? 'State Assoc.' : a}
+                  </Button>
+                ))}
+              </div>
+            )}
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleSave}>{editingId ? 'Update' : 'Create'}</Button>
           </DialogFooter>

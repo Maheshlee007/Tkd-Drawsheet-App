@@ -56,7 +56,8 @@ export async function apiRequest<T = unknown>(
   const { method = 'GET', body, headers = {}, skipAuth = false } = options;
 
   const buildConfig = (token?: string | null): RequestInit => {
-    const h: Record<string, string> = { 'Content-Type': 'application/json', ...headers };
+    const h: Record<string, string> = { ...headers };
+    if (body) h['Content-Type'] = 'application/json';
     if (!skipAuth && token) h['Authorization'] = `Bearer ${token}`;
     const config: RequestInit = { method, headers: h, credentials: 'include' };
     if (body) config.body = JSON.stringify(body);
@@ -84,4 +85,27 @@ export async function apiRequest<T = unknown>(
 
 export function isApiConfigured(): boolean {
   return !!API_BASE_URL;
+}
+
+// --- Silent token refresh (runs every 50 minutes for 1hr sessions) ---
+let silentRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
+export function startSilentRefresh() {
+  stopSilentRefresh();
+  silentRefreshTimer = setInterval(async () => {
+    const { refreshToken } = getStoredTokens();
+    if (!refreshToken) { stopSilentRefresh(); return; }
+    try {
+      await refreshAccessToken();
+    } catch {
+      // If refresh fails, user will be prompted to login on next request
+    }
+  }, 50 * 60 * 1000); // 50 minutes
+}
+
+export function stopSilentRefresh() {
+  if (silentRefreshTimer) {
+    clearInterval(silentRefreshTimer);
+    silentRefreshTimer = null;
+  }
 }

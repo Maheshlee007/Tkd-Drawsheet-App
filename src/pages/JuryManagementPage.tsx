@@ -7,12 +7,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Shield, Plus, Copy, CheckCircle } from 'lucide-react';
+import { Shield, Plus, Copy, CheckCircle, Users } from 'lucide-react';
 import { judgeService, type JuryMember } from '@/services/judgeService';
 import { tournamentService } from '@/services/tournamentService';
 
 export default function JuryManagementPage() {
-  const [tournaments, setTournaments] = useState<Array<{ id: string; name: string }>>([]);
+  const [tournaments, setTournaments] = useState<Array<{ id: string; name: string; judgeCount?: number }>>([]);
   const [selectedTournament, setSelectedTournament] = useState('');
   const [judges, setJudges] = useState<JuryMember[]>([]);
   const [loading, setLoading] = useState(false);
@@ -26,10 +26,20 @@ export default function JuryManagementPage() {
   const [copiedCode, setCopiedCode] = useState(false);
 
   useEffect(() => {
-    tournamentService.getAll().then(data => {
+    tournamentService.getAll().then(async (data: any[]) => {
       const list = data.map((t: any) => ({ id: t.id, name: t.name || t.tournament_name }));
       setTournaments(list);
-      if (list.length > 0) setSelectedTournament(list[0].id);
+      if (list.length > 0) {
+        setSelectedTournament(list[0].id);
+        // Load judge counts for all tournaments
+        const counts = await Promise.all(
+          list.map((t: any) => judgeService.listByTournament(t.id).then(j => ({ id: t.id, count: j.length })).catch(() => ({ id: t.id, count: 0 })))
+        );
+        setTournaments(list.map((t: any) => ({
+          ...t,
+          judgeCount: counts.find(c => c.id === t.id)?.count ?? 0,
+        })));
+      }
     }).catch(() => {});
   }, []);
 
@@ -92,9 +102,20 @@ export default function JuryManagementPage() {
       <div>
         <Label>Tournament</Label>
         <Select value={selectedTournament} onValueChange={setSelectedTournament}>
-          <SelectTrigger className="w-[300px]"><SelectValue placeholder="Select tournament" /></SelectTrigger>
+          <SelectTrigger className="w-[360px]"><SelectValue placeholder="Select tournament" /></SelectTrigger>
           <SelectContent>
-            {tournaments.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+            {tournaments.map(t => (
+              <SelectItem key={t.id} value={t.id}>
+                <span className="flex items-center gap-2">
+                  {t.name}
+                  {t.judgeCount !== undefined && (
+                    <Badge variant="secondary" className="ml-auto text-[10px] font-normal">
+                      <Users className="h-2.5 w-2.5 mr-0.5" />{t.judgeCount}
+                    </Badge>
+                  )}
+                </span>
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

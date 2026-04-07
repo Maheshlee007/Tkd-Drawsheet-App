@@ -7,8 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { AlertCircle, Shield, Trophy, Eye, EyeOff } from 'lucide-react';
+import { AlertCircle, Shield, Trophy, Eye, EyeOff, UserPlus, UserCog } from 'lucide-react';
 // import bracketBackground from "../assets/samplebracket.svg";
 
 const LoginPage: React.FC = () => {
@@ -19,6 +20,11 @@ const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const devLoginEnabled = import.meta.env.VITE_DEV_LOGIN_ENABLED === 'true';
+
+  // Registration modal
+  const [regDialogOpen, setRegDialogOpen] = useState(false);
+  const [regType, setRegType] = useState<'player' | 'coach'>('player');
+  const [regCode, setRegCode] = useState('');
 
   // Handle successful Google login
   const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
@@ -65,6 +71,22 @@ const LoginPage: React.FC = () => {
     const searchParams = new URLSearchParams(window.location.search);
     const redirectUrl = searchParams.get('redirect') || '/';
     return <Redirect to={redirectUrl} />;
+  }
+
+  function openRegDialog(type: 'player' | 'coach') {
+    setRegType(type);
+    setRegCode('');
+    setRegDialogOpen(true);
+  }
+
+  function goToRegistration() {
+    const code = regCode.trim().toUpperCase();
+    if (regType === 'player') {
+      navigate(code ? `/register/${code}` : '/register');
+    } else {
+      navigate(code ? `/coach-register/${code}` : '/coach-register');
+    }
+    setRegDialogOpen(false);
   }
 
   return (
@@ -186,8 +208,13 @@ const LoginPage: React.FC = () => {
             <Button variant="outline" className="flex-1" onClick={() => navigate('/guest')}>
               Quick Drawsheet
             </Button>
-            <Button variant="outline" className="flex-1" onClick={() => navigate('/register')}>
-              Player Registration
+          </div>
+          <div className="flex gap-3 w-full">
+            <Button variant="outline" className="flex-1 border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => openRegDialog('player')}>
+              <UserPlus className="h-4 w-4 mr-2" /> Player Registration
+            </Button>
+            <Button variant="outline" className="flex-1 border-green-200 text-green-700 hover:bg-green-50" onClick={() => openRegDialog('coach')}>
+              <UserCog className="h-4 w-4 mr-2" /> Coach Registration
             </Button>
           </div>
           <p className="text-xs text-gray-500">
@@ -195,6 +222,36 @@ const LoginPage: React.FC = () => {
           </p>
         </CardFooter>
       </Card>
+
+      {/* Registration navigation dialog */}
+      <Dialog open={regDialogOpen} onOpenChange={setRegDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {regType === 'player' ? '🥋 Player Registration' : '🏆 Coach Registration'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              If you have a tournament registration code, enter it below. Otherwise leave blank to register without a specific tournament.
+            </p>
+            <div>
+              <Label>Tournament Code (optional)</Label>
+              <Input
+                value={regCode}
+                onChange={e => setRegCode(e.target.value.toUpperCase())}
+                placeholder="e.g. TKD-2025-ABCD"
+                className="mt-1 font-mono"
+                onKeyDown={e => e.key === 'Enter' && goToRegistration()}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRegDialogOpen(false)}>Cancel</Button>
+            <Button onClick={goToRegistration}>Continue</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

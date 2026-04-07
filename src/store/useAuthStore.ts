@@ -5,7 +5,7 @@ import { generateFingerprint, validateFingerprint } from '@/utils/fingerprint';
 import { generateSessionId, validateSession } from '@/utils/sessionManager';
 import { getActivityMonitor, cleanupActivityMonitor } from '@/utils/activityMonitor';
 import { getTabSynchronizer } from '@/utils/tabSync';
-import { apiRequest, setStoredTokens, clearStoredTokens } from '@/services/api';
+import { apiRequest, setStoredTokens, clearStoredTokens, startSilentRefresh, stopSilentRefresh } from '@/services/api';
 
 interface User {
   name: string;
@@ -18,6 +18,7 @@ interface User {
 interface AuthState {
   sessionId: string | null;
   user: User | null;
+  activeRole: string | null; // current active role for nav filtering
   lastActivity: number;
   loginTime: number;
   browserFingerprint: string | null;
@@ -27,6 +28,8 @@ interface AuthState {
   logout: () => void;
   isAuthenticated: () => boolean;
   refreshActivity: () => void;
+  setActiveRole: (role: string | null) => void;
+  refreshProfile: () => Promise<void>;
   getSessionInfo: () => SessionInfo;
 }
 
@@ -40,13 +43,14 @@ interface SessionInfo {
 
 const STORAGE_KEY = 'tournament-auth';
 const FINGERPRINT_KEY = 'tournament-fp';
-const SESSION_DURATION = 12 * 60 * 60 * 1000; // 12 hours
+const SESSION_DURATION = 1 * 60 * 60 * 1000; // 1 hour (extended silently via refresh)
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       sessionId: null,
       user: null,
+      activeRole: null,
       lastActivity: Date.now(),
       loginTime: 0,
       browserFingerprint: null,
@@ -97,6 +101,8 @@ export const useAuthStore = create<AuthState>()(
           tabSync.broadcastLogin(sessionId);
           
           console.log('🔐 Secure login successful');
+          // Start silent token refresh
+          startSilentRefresh();
         } catch (error) {
           console.error('Login failed:', error);
         }
@@ -140,6 +146,9 @@ export const useAuthStore = create<AuthState>()(
         // Cleanup activity monitoring
         cleanupActivityMonitor();
         
+        // Stop silent refresh
+        stopSilentRefresh();
+        
         // Clear fingerprint and tokens
         localStorage.removeItem(FINGERPRINT_KEY);
         clearStoredTokens();
@@ -152,12 +161,39 @@ export const useAuthStore = create<AuthState>()(
         set({ 
           sessionId: null, 
           user: null, 
+          activeRole: null,
           lastActivity: 0,
           loginTime: 0,
           browserFingerprint: null 
         });
         
         console.log('🚪 Secure logout completed');
+      },
+
+      setActiveRole: (role: string | null) => {
+        set({ activeRole: role });
+      },
+
+      refreshProfile: async () => {
+        const state = get();
+        if (!state.user) return;
+        try {
+          const res = await apiRequest<{ data: { email: string; firstName: string; lastName: string; roles: string[]; permissions: string[] } }>('/api/auth/me');
+          const apiUser = res.data;
+          const nextUser: User = {
+            ...state.user,
+            name: `${apiUser.firstName} ${apiUser.lastName}`,
+            email: apiUser.email,
+            roles: apiUser.roles,
+            permissions: apiUser.permissions,
+          };
+          const nextActiveRole = state.activeRole && apiUser.roles.includes(state.activeRole)
+            ? state.activeRole
+            : null;
+          set({ user: nextUser, activeRole: nextActiveRole });
+        } catch {
+          // Ignore transient profile refresh errors to avoid logout loops.
+        }
       },
       
       refreshActivity: () => {
@@ -222,6 +258,7 @@ export const useAuthStore = create<AuthState>()(
       partialize: (state) => ({
         sessionId: state.sessionId,
         user: state.user,
+        activeRole: state.activeRole,
         lastActivity: state.lastActivity,
         loginTime: state.loginTime,
         browserFingerprint: state.browserFingerprint
@@ -254,6 +291,9 @@ export const useAuthStore = create<AuthState>()(
               state.refreshActivity();
             }
           );
+
+          // Sync latest roles/permissions after reload.
+          state.refreshProfile();
         }
       },
     }

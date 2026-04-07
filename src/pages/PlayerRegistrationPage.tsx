@@ -14,6 +14,7 @@ import {
   Trophy, ArrowLeft, ArrowRight, CheckCircle, Loader2, Download, LogIn, Copy, AlertTriangle, ExternalLink,
 } from 'lucide-react';
 import { usePlayerStore, PlayerRegistration } from '@/store/usePlayerStore';
+import { playerService } from '@/services/playerService';
 import {
   BELT_LEVELS, getAgeCategory, getWeightCategory, isMinor, isValidAadhaarFormat, calculateAge,
 } from '@/utils/categoryUtils';
@@ -21,6 +22,14 @@ import { useToast } from '@/hooks/use-toast';
 import { generateRegistrationPDF } from '@/utils/registrationPDF';
 
 const STEPS = ['Basic Info', 'TKD Details', 'Verification', 'Review & Submit'];
+
+const EVENT_OPTIONS = [
+  { value: 'kyorugi', label: 'Kyorugi (Sparring)' },
+  { value: 'poomsae', label: 'Poomsae (Individual)' },
+  { value: 'poomsae_pair', label: 'Poomsae Pair' },
+  { value: 'poomsae_group', label: 'Poomsae Group' },
+  { value: 'freestyle_poomsae', label: 'Freestyle Poomsae' },
+];
 
 const PlayerRegistrationPage: React.FC = () => {
   const [, navigate] = useLocation();
@@ -34,6 +43,15 @@ const PlayerRegistrationPage: React.FC = () => {
   const [registeredPlayer, setRegisteredPlayer] = useState<PlayerRegistration | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [showErrors, setShowErrors] = useState(false);
+
+  // Selected events for multi-event support
+  const [selectedEvents, setSelectedEvents] = useState<string[]>(['kyorugi']);
+
+  function toggleEvent(value: string) {
+    setSelectedEvents(prev =>
+      prev.includes(value) ? prev.filter(e => e !== value) : [...prev, value]
+    );
+  }
 
   // Basic info
   const [fullName, setFullName] = useState('');
@@ -69,7 +87,7 @@ const PlayerRegistrationPage: React.FC = () => {
   const needsGuardian = dateOfBirth ? isMinor(dateOfBirth) : false;
   const age = dateOfBirth ? calculateAge(dateOfBirth) : null;
   const canProceedStep0 = fullName.trim() && dateOfBirth && phone.trim() && email.trim() && (!needsGuardian || guardianName.trim());
-  const canProceedStep1 = beltColor && weight > 0;
+  const canProceedStep1 = beltColor && weight > 0 && selectedEvents.length > 0;
 
   const handleMockAadhaarVerify = async () => {
     if (!isValidAadhaarFormat(aadhaarNumber)) {
@@ -107,7 +125,7 @@ const PlayerRegistrationPage: React.FC = () => {
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      const player = addPlayer({
+      const playerData = {
         tournamentCode,
         fullName, dateOfBirth, gender,
         guardianName: needsGuardian ? guardianName : undefined,
@@ -126,7 +144,15 @@ const PlayerRegistrationPage: React.FC = () => {
         aadhaarNumber: aadhaarNumber || undefined,
         aadhaarVerified, emailVerified,
         dobVerified: aadhaarVerified,
-      });
+        events: selectedEvents,
+      };
+      // Try API first, fall back to localStorage
+      let player: PlayerRegistration;
+      try {
+        player = await playerService.create(playerData as any);
+      } catch {
+        player = addPlayer(playerData);
+      }
       setRegisteredPlayer(player);
       try {
         const QRCode = await import('qrcode');
@@ -140,7 +166,7 @@ const PlayerRegistrationPage: React.FC = () => {
     } finally {
       setSubmitting(false);
     }
-  };
+  };;
 
   const copyPlayerCode = () => {
     if (registeredPlayer) {
@@ -157,7 +183,7 @@ const PlayerRegistrationPage: React.FC = () => {
     setAadhaarVerified(false); setEmailVerified(false); setEmailOtpSent(false);
     setEmailOtp(''); setTermsAccepted(false);
     setAddress(''); setState(''); setDistrict(''); setPincode('');
-    setOccupation('');
+    setOccupation(''); setSelectedEvents(['kyorugi']);
   };
 
   if (registeredPlayer) {
@@ -353,6 +379,26 @@ const PlayerRegistrationPage: React.FC = () => {
                     <Input id="coach" value={coach} onChange={(e) => setCoach(e.target.value)} placeholder="Optional" className="mt-1" />
                   </div>
                 </div>
+                <div className="border-t pt-4">
+                  <Label className="font-medium">Events to Participate *</Label>
+                  <p className="text-xs text-slate-500 mt-0.5 mb-2">Select all events you will compete in</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {EVENT_OPTIONS.map(opt => (
+                      <label key={opt.value} className={`flex items-center gap-2 border rounded-lg px-3 py-2.5 cursor-pointer transition-colors ${
+                        selectedEvents.includes(opt.value) ? 'bg-blue-50 border-blue-300' : 'hover:bg-slate-50'
+                      }`}>
+                        <Checkbox
+                          checked={selectedEvents.includes(opt.value)}
+                          onCheckedChange={() => toggleEvent(opt.value)}
+                        />
+                        <span className="text-sm">{opt.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {showErrors && selectedEvents.length === 0 && (
+                    <p className="text-xs text-red-500 mt-1">Please select at least one event</p>
+                  )}
+                </div>
               </div>
             )}
 
@@ -429,6 +475,19 @@ const PlayerRegistrationPage: React.FC = () => {
                     {aadhaarVerified && <Badge variant="secondary" className="text-xs"><CheckCircle className="h-3 w-3 mr-1" />Aadhaar</Badge>}
                     {emailVerified && <Badge variant="secondary" className="text-xs"><CheckCircle className="h-3 w-3 mr-1" />Email</Badge>}
                     {!aadhaarVerified && !emailVerified && <Badge variant="outline" className="text-xs">No verification</Badge>}
+                  </div>
+                  <div className="border-t pt-3 mt-2">
+                    <p className="text-slate-500 text-xs font-medium mb-2">Selected Events</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedEvents.length > 0
+                        ? selectedEvents.map(e => (
+                            <Badge key={e} variant="secondary" className="capitalize">
+                              {EVENT_OPTIONS.find(o => o.value === e)?.label || e}
+                            </Badge>
+                          ))
+                        : <span className="text-xs text-red-500">No events selected</span>
+                      }
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-start gap-2">

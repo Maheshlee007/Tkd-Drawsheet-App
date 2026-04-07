@@ -13,7 +13,20 @@ export interface StaffUser {
   last_login_at?: string;
   login_count: number;
   created_at: string;
-  roles: string[];
+  roles: string[] | null;
+}
+
+export interface RolePermission {
+  name: string;
+  description: string;
+}
+
+export interface RoleInfo {
+  id: number;
+  name: string;
+  description: string;
+  is_system: boolean;
+  permissions: RolePermission[] | null;
 }
 
 export interface AuditLog {
@@ -55,6 +68,25 @@ export const adminService = {
       method: 'PATCH',
       body: { role },
     });
+  },
+
+  async removeRole(userId: string, role: string): Promise<void> {
+    await apiRequest(`${ADMIN_PREFIX}/users/${userId}/role`, {
+      method: 'DELETE',
+      body: { role },
+    });
+  },
+
+  async toggleUserStatus(userId: string, isActive: boolean): Promise<void> {
+    await apiRequest(`${ADMIN_PREFIX}/users/${userId}/status`, {
+      method: 'PATCH',
+      body: { isActive },
+    });
+  },
+
+  async getRoles(): Promise<RoleInfo[]> {
+    const res = await apiRequest<{ data: RoleInfo[] }>(`${ADMIN_PREFIX}/roles`);
+    return res.data;
   },
 
   async getPlayers(filters?: Record<string, string>): Promise<any[]> {
