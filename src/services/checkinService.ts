@@ -27,6 +27,7 @@ export interface CheckinPlayer {
   events: Array<{
     id: string;
     event_type: string;
+    entry_fee_paid?: number;
     category_name?: string;
     age_category?: string;
     weight_category?: string;
@@ -73,7 +74,13 @@ export const checkinService = {
     return res.data;
   },
 
-  async updatePayment(checkinId: string, data: { amountPaid: number; paymentMethod?: string; paymentReference?: string }): Promise<any> {
+  async updatePayment(checkinId: string, data: {
+    amountPaid: number;
+    paymentMethod?: string;
+    paymentReference?: string;
+    reasonCode: string;
+    reasonNotes?: string;
+  }): Promise<any> {
     const res = await apiRequest<{ data: any }>(`/api/checkin/${checkinId}/payment`, {
       method: 'PATCH',
       body: data,

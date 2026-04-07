@@ -122,6 +122,12 @@ export default function VerifyPage() {
       const data = await checkinService.lookupPlayer(code.trim());
       setPlayer(data);
       if (data.player.weight_kg) setWeight(String(data.player.weight_kg));
+      if (!data.checkin) {
+        const calculatedFee = data.events.reduce((sum, event) => sum + Number(event.entry_fee_paid ?? 0), 0);
+        if (calculatedFee > 0) {
+          setTotalFee(String(calculatedFee));
+        }
+      }
     } catch (e: any) {
       setError(e.message || 'Player not found');
     } finally { setLoading(false); }
@@ -160,6 +166,8 @@ export default function VerifyPage() {
         amountPaid: parseFloat(payUpdateAmount),
         paymentMethod: payUpdateMethod,
         paymentReference: payUpdateRef || undefined,
+        reasonCode: payUpdateReason,
+        reasonNotes: payUpdateNotes || undefined,
       });
       toast({ title: 'Payment updated', description: `₹${payUpdateAmount} recorded via ${payUpdateMethod}` });
       setPayUpdateOpen(false);
