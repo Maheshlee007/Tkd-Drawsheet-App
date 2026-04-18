@@ -17,6 +17,7 @@ export interface Coach {
 
 export const coachService = {
   async register(data: {
+    tournamentCode: string;
     email: string;
     password: string;
     firstName: string;

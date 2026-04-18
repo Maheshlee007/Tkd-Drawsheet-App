@@ -5,12 +5,18 @@ import { useLocation, Redirect } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card, CardContent, CardDescription, CardHeader, CardTitle,
+} from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { AlertCircle, Shield, Trophy, Eye, EyeOff, UserPlus, UserCog } from 'lucide-react';
-// import bracketBackground from "../assets/samplebracket.svg";
+import {
+  AlertCircle, Trophy, Eye, EyeOff, UserPlus, UserCog, ScrollText,
+  Layout as LayoutIcon, ArrowRight, Shield, ExternalLink,
+} from 'lucide-react';
 
 const LoginPage: React.FC = () => {
   const { login, loginWithCredentials, loginWithGoogle, isAuthenticated } = useAuthStore();
@@ -21,27 +27,25 @@ const LoginPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const devLoginEnabled = import.meta.env.VITE_DEV_LOGIN_ENABLED === 'true';
 
-  // Registration modal
+  // Registration modal state
   const [regDialogOpen, setRegDialogOpen] = useState(false);
   const [regType, setRegType] = useState<'player' | 'coach'>('player');
   const [regCode, setRegCode] = useState('');
 
-  // Handle successful Google login
-  const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
-    if (credentialResponse.credential) {
-      setIsLoading(true);
-      try {
-        await loginWithGoogle(credentialResponse.credential);
-      } catch {
-        // Fallback: use the JWT directly (offline mode)
-        login(credentialResponse.credential);
-      } finally {
-        setIsLoading(false);
-      }
+  // ── Google login ──
+  const handleGoogleSuccess = async (cred: CredentialResponse) => {
+    if (!cred.credential) return;
+    setIsLoading(true);
+    try {
+      await loginWithGoogle(cred.credential);
+    } catch {
+      login(cred.credential);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // Handle local form login
+  // ── Form login ──
   const handleLocalLogin = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
@@ -53,23 +57,21 @@ const LoginPage: React.FC = () => {
     try {
       await loginWithCredentials(email, password);
     } catch (err: any) {
-      // Fallback to legacy hardcoded login for dev
       if (devLoginEnabled && email === 'mahesh' && password === 'Mahesh@007') {
         login({ name: email });
       } else {
-        const errorMessage = err.message || 'Invalid credentials.';
-        setError(errorMessage);
-        toast({ variant: 'destructive', title: 'Login Failed', description: errorMessage });
+        const msg = err.message || 'Invalid credentials.';
+        setError(msg);
+        toast({ variant: 'destructive', title: 'Login Failed', description: msg });
       }
     } finally {
       setIsLoading(false);
     }
   };
 
-  // If the user is already authenticated, redirect them.
   if (isAuthenticated()) {
-    const searchParams = new URLSearchParams(window.location.search);
-    const redirectUrl = searchParams.get('redirect') || '/';
+    const params = new URLSearchParams(window.location.search);
+    const redirectUrl = params.get('redirect') || '/';
     return <Redirect to={redirectUrl} />;
   }
 
@@ -81,90 +83,182 @@ const LoginPage: React.FC = () => {
 
   function goToRegistration() {
     const code = regCode.trim().toUpperCase();
-    if (regType === 'player') {
-      navigate(code ? `/register/${code}` : '/register');
-    } else {
-      navigate(code ? `/coach-register/${code}` : '/coach-register');
+    if (!code) {
+      toast({
+        variant: 'destructive',
+        title: 'Tournament code required',
+        description: 'Ask your organizer for the tournament code.',
+      });
+      return;
     }
+    navigate(regType === 'player' ? `/register/${code}` : `/coach-register/${code}`);
     setRegDialogOpen(false);
   }
 
+  // ── Quick links shown on the LEFT panel ──────────────────────────────────
+  const QUICK_LINKS = [
+    {
+      label: 'Quick Drawsheet',
+      description: 'Generate a draw without an account',
+      icon: LayoutIcon,
+      onClick: () => navigate('/guest'),
+      color: 'bg-amber-50 text-amber-700 border-amber-200',
+    },
+    {
+      label: 'Public tournaments',
+      description: 'Browse upcoming events',
+      icon: Trophy,
+      onClick: () => navigate('/guest'),
+      color: 'bg-blue-50 text-blue-700 border-blue-200',
+    },
+    {
+      label: 'Help / FAQ',
+      description: 'Registration & rules',
+      icon: ScrollText,
+      onClick: () => window.open('https://example.com/help', '_blank'),
+      color: 'bg-slate-50 text-slate-700 border-slate-200',
+    },
+  ];
+
   return (
-    <div className="flex items-center justify-center min-h-screen relative overflow-hidden" 
-         style={{
-           background: 'linear-gradient(to bottom, #86c7f2 0%, #e9f4fb 50%, #FFFFFF 100%)'
-         }}>
-      
-      {/* Subtle cloud-like background overlay */}
-      {/* <div className="absolute inset-0 opacity-20">
-        <div className="absolute top-1/4 left-1/6 w-32 h-16 bg-white/40 rounded-full blur-xl animate-pulse"></div>
-        <div className="absolute bottom-1/3 right-1/5 w-24 h-12 bg-white/30 rounded-full blur-lg animate-pulse delay-300"></div>
-        <div className="absolute top-1/2 left-1/3 w-40 h-20 bg-white/35 rounded-full blur-2xl animate-pulse delay-700"></div>
-        <div className="absolute bottom-1/4 right-1/4 w-28 h-14 bg-white/25 rounded-full blur-xl animate-pulse delay-1000"></div>
-        <div className="absolute top-3/4 left-1/5 w-36 h-18 bg-white/30 rounded-full blur-lg animate-pulse delay-1500"></div>
-      </div> */}
-      
-      {/* Floating sky-themed icons */}
-      {/* <div className="absolute top-1/5 left-1/5 text-black animate-pulse">
-        <Trophy className="w-10 h-10" />
-      </div>
-      <div className="absolute top-1/3 right-1/5 text-white/25 animate-pulse delay-500">
-        <Shield className="w-8 h-8" />
-      </div> */}
-      
-      <Card className="w-full max-w-md shadow-xl border border-gray-200/30 relative z-10 bg-gradient-to-b from-blue-100 to-white">
-        <CardHeader className="text-center space-y-3">
-          <div className="mx-auto w-16 h-16 bg-gradient-to-br from-gray-800 via-gray-700 to-black rounded-full flex items-center justify-center mb-2 shadow-lg">
-            <Trophy className="w-8 h-8 text-white" />
+    <div
+      className="min-h-screen w-full grid grid-cols-1 lg:grid-cols-2"
+      style={{
+        background: 'linear-gradient(to bottom, #86c7f2 0%, #e9f4fb 50%, #FFFFFF 100%)',
+      }}
+    >
+      {/* ── LEFT PANE: registration + quick links ─────────────────────────── */}
+      <section className="flex flex-col justify-center p-8 lg:p-12">
+        <div className="max-w-md w-full mx-auto space-y-6">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-slate-700">
+              <Trophy className="h-7 w-7 text-amber-500" />
+              <h1 className="text-2xl font-bold">TKD Tournament Hub</h1>
+            </div>
+            <p className="text-slate-600 text-sm">
+              Welcome! If you have a tournament code, register below. Internal
+              staff (admin / jury / verification / board) can sign in on the right.
+            </p>
           </div>
-          <CardTitle className="text-2xl font-bold text-gray-900">
-            Welcome Back
-          </CardTitle>
-          <CardDescription className="text-gray-500">
-            Sign in to manage your tournaments
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <form onSubmit={handleLocalLogin} className="space-y-4">
-            <div className="space-y-4">
+
+          {/* Player + Coach registration buttons */}
+          <div className="grid grid-cols-1 gap-3">
+            <button
+              type="button"
+              onClick={() => openRegDialog('player')}
+              className="group flex items-center justify-between gap-3 rounded-xl border-2 border-blue-200 bg-white p-4 text-left shadow-sm hover:border-blue-400 hover:shadow-md transition-all"
+            >
+              <div className="flex items-center gap-3">
+                <div className="h-11 w-11 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
+                  <UserPlus className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-800">Player Registration</p>
+                  <p className="text-xs text-slate-500">Register with your tournament code</p>
+                </div>
+              </div>
+              <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-blue-500 transition" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => openRegDialog('coach')}
+              className="group flex items-center justify-between gap-3 rounded-xl border-2 border-green-200 bg-white p-4 text-left shadow-sm hover:border-green-400 hover:shadow-md transition-all"
+            >
+              <div className="flex items-center gap-3">
+                <div className="h-11 w-11 rounded-lg bg-green-100 text-green-700 flex items-center justify-center">
+                  <UserCog className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-800">Coach Registration</p>
+                  <p className="text-xs text-slate-500">Register your academy & team</p>
+                </div>
+              </div>
+              <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-green-500 transition" />
+            </button>
+          </div>
+
+          <Separator className="my-2" />
+
+          {/* Quick links */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Quick links
+            </p>
+            <div className="grid grid-cols-1 gap-2">
+              {QUICK_LINKS.map((link) => {
+                const Icon = link.icon;
+                return (
+                  <button
+                    key={link.label}
+                    type="button"
+                    onClick={link.onClick}
+                    className={`flex items-center gap-3 rounded-lg border p-3 text-left text-sm hover:shadow-sm transition ${link.color}`}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <div className="flex-1">
+                      <p className="font-medium">{link.label}</p>
+                      <p className="text-xs opacity-80">{link.description}</p>
+                    </div>
+                    <ExternalLink className="h-3 w-3 opacity-60" />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── RIGHT PANE: staff login form ─────────────────────────────────── */}
+      <section className="flex items-center justify-center p-8 lg:p-12 bg-white/40 backdrop-blur-sm border-l border-white/60">
+        <Card className="w-full max-w-md shadow-xl border border-gray-200/40 bg-gradient-to-b from-white to-blue-50">
+          <CardHeader className="text-center space-y-3">
+            <div className="mx-auto w-14 h-14 bg-gradient-to-br from-gray-800 via-gray-700 to-black rounded-full flex items-center justify-center shadow-lg">
+              <Shield className="w-7 h-7 text-white" />
+            </div>
+            <CardTitle className="text-2xl font-bold text-gray-900">Staff Sign In</CardTitle>
+            <CardDescription className="text-gray-500">
+              For admins, organizers, jury, verification &amp; board operators.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <form onSubmit={handleLocalLogin} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="username" className="text-gray-500 font-medium">Username</Label>
-                <Input 
-                  id="username" 
-                  name="username" 
-                  placeholder="Enter your username" 
-                  className="bg-white border-gray-300 text-gray-900 placeholder:text-gray-400 focus:border-blue-400 focus:ring-blue-400/20 transition-all duration-200"
+                <Label htmlFor="username">Email or Username</Label>
+                <Input
+                  id="username"
+                  name="username"
+                  placeholder="you@example.com"
+                  autoComplete="username"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-gray-500 font-medium">Password</Label>
+                <Label htmlFor="password">Password</Label>
                 <div className="relative">
-                  <Input 
-                    id="password" 
-                    name="password" 
-                    type={showPassword ? "text" : "password"}
-                    placeholder="Enter your password" 
-                    className="bg-white border-gray-300 text-gray-900 placeholder:text-gray-400 focus:border-blue-400 focus:ring-blue-400/20 transition-all duration-200 pr-10"
+                  <Input
+                    id="password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Enter your password"
+                    autoComplete="current-password"
+                    className="pr-10"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 transition-colors"
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
                   >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
                 <div className="text-right">
-                  <a 
-                    href="#" 
-                    className="text-sm text-blue-600 hover:text-blue-800 hover:underline transition-colors duration-200"
+                  <button
+                    type="button"
+                    onClick={() => navigate('/password-reset')}
+                    className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
                   >
                     Forgot your password?
-                  </a>
+                  </button>
                 </div>
               </div>
               {error && (
@@ -173,24 +267,24 @@ const LoginPage: React.FC = () => {
                   <span>{error}</span>
                 </div>
               )}
-              <Button 
-                type="submit" 
-                className="w-full bg-gray-900 hover:bg-gray-800 text-white font-medium py-2.5 transition-all duration-200 shadow-lg hover:shadow-xl"
+              <Button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-gray-900 hover:bg-gray-800 text-white font-medium py-2.5"
               >
-                Sign In
+                {isLoading ? 'Signing in…' : 'Sign In'}
               </Button>
+            </form>
+
+            <div className="relative">
+              <Separator className="bg-gray-300" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="bg-white px-3 text-sm text-gray-500">or continue with</span>
+              </div>
             </div>
-          </form>
-          
-          <div className="relative">
-            <Separator className="bg-gray-300" />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="bg-white px-3 text-sm text-gray-500">or continue with</span>
-            </div>
-          </div>
-          
-          <div className="flex items-center justify-center">
-             <GoogleLogin
+
+            <div className="flex items-center justify-center">
+              <GoogleLogin
                 onSuccess={handleGoogleSuccess}
                 onError={() => {
                   toast({
@@ -201,29 +295,16 @@ const LoginPage: React.FC = () => {
                 }}
                 useOneTap
               />
-          </div>
-        </CardContent>
-        <CardFooter className="flex flex-col gap-3 text-center">
-          <div className="flex gap-3 w-full">
-            <Button variant="outline" className="flex-1" onClick={() => navigate('/guest')}>
-              Quick Drawsheet
-            </Button>
-          </div>
-          <div className="flex gap-3 w-full">
-            <Button variant="outline" className="flex-1 border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => openRegDialog('player')}>
-              <UserPlus className="h-4 w-4 mr-2" /> Player Registration
-            </Button>
-            <Button variant="outline" className="flex-1 border-green-200 text-green-700 hover:bg-green-50" onClick={() => openRegDialog('coach')}>
-              <UserCog className="h-4 w-4 mr-2" /> Coach Registration
-            </Button>
-          </div>
-          <p className="text-xs text-gray-500">
-            By signing in, you agree to our terms of service.
-          </p>
-        </CardFooter>
-      </Card>
+            </div>
 
-      {/* Registration navigation dialog */}
+            <p className="text-xs text-center text-gray-500">
+              By signing in, you agree to our terms of service.
+            </p>
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Tournament-code dialog */}
       <Dialog open={regDialogOpen} onOpenChange={setRegDialogOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -233,22 +314,28 @@ const LoginPage: React.FC = () => {
           </DialogHeader>
           <div className="space-y-3 py-2">
             <p className="text-sm text-muted-foreground">
-              If you have a tournament registration code, enter it below. Otherwise leave blank to register without a specific tournament.
+              Enter the tournament code provided by your organizer to continue.
+              Registration is only allowed against an existing tournament.
             </p>
             <div>
-              <Label>Tournament Code (optional)</Label>
+              <Label>Tournament Code *</Label>
               <Input
                 value={regCode}
-                onChange={e => setRegCode(e.target.value.toUpperCase())}
-                placeholder="e.g. TKD-2025-ABCD"
-                className="mt-1 font-mono"
-                onKeyDown={e => e.key === 'Enter' && goToRegistration()}
+                onChange={(e) => setRegCode(e.target.value.toUpperCase())}
+                placeholder="e.g. TKD-2026-ABCD"
+                className="mt-1 font-mono uppercase"
+                onKeyDown={(e) => e.key === 'Enter' && goToRegistration()}
+                autoFocus
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRegDialogOpen(false)}>Cancel</Button>
-            <Button onClick={goToRegistration}>Continue</Button>
+            <Button variant="outline" onClick={() => setRegDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={goToRegistration} disabled={!regCode.trim()}>
+              Continue
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

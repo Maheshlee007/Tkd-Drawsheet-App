@@ -16,6 +16,7 @@ import {
 import { usePlayerStore, PlayerRegistration } from '@/store/usePlayerStore';
 import { playerService, type RegisteredPlayer, type TeamEntryPayload } from '@/services/playerService';
 import { tournamentService, type Tournament } from '@/services/tournamentService';
+import { useAuthStore } from '@/store/useAuthStore';
 import {
   BELT_LEVELS, getAgeCategory, getWeightCategory, isMinor, isValidAadhaarFormat, calculateAge,
 } from '@/utils/categoryUtils';
@@ -45,6 +46,10 @@ const PlayerRegistrationPage: React.FC = () => {
   const routeTournamentCode = params?.tournamentCode || '';
   const { toast } = useToast();
   const addPlayer = usePlayerStore((s) => s.addPlayer);
+  const authUser = useAuthStore((s) => s.user);
+  const isInternalUser = !!authUser?.roles?.some((r) =>
+    ['admin', 'organizer', 'manager'].includes(String(r).toLowerCase())
+  );
 
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
@@ -265,7 +270,11 @@ const PlayerRegistrationPage: React.FC = () => {
   if (registeredPlayer) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-        <Header onLogin={() => navigate('/login')} />
+        <RegistrationTopBar
+          isInternal={isInternalUser}
+          tournament={resolvedTournament}
+          onBack={() => isInternalUser ? navigate('/') : navigate('/login')}
+        />
         <div className="max-w-2xl mx-auto px-4 py-8">
           <Card>
             <CardContent className="pt-6 text-center space-y-6">
@@ -310,8 +319,19 @@ const PlayerRegistrationPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-      <Header onLogin={() => navigate('/login')} />
-      <div className="max-w-3xl mx-auto px-4 py-6">
+      <RegistrationTopBar
+        isInternal={isInternalUser}
+        tournament={resolvedTournament}
+        onBack={() => isInternalUser ? navigate('/') : navigate('/login')}
+      />
+      <div className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-10 gap-6">
+        {/* Left aside (30%) — required docs / info */}
+        <aside className="lg:col-span-3 space-y-4">
+          <RegistrationInfoPanel tournament={resolvedTournament} pricing={pricingPreview} />
+        </aside>
+
+        {/* Right (70%) — actual stepped form */}
+        <div className="lg:col-span-7">
         {!resolvedTournament && (
           <Card className="mb-4 border-blue-200 bg-blue-50">
             <CardHeader>
@@ -735,6 +755,7 @@ const PlayerRegistrationPage: React.FC = () => {
             </div>
           </CardContent>
         </Card>
+        </div>
       </div>
     </div>
   );
@@ -758,5 +779,117 @@ const Header: React.FC<{ onLogin: () => void }> = ({ onLogin }) => (
     </div>
   </div>
 );
+
+// ─── Top bar with back navigation (replaces public Header for new layout) ────
+const RegistrationTopBar: React.FC<{
+  isInternal: boolean;
+  tournament: Tournament | null;
+  onBack: () => void;
+}> = ({ isInternal, tournament, onBack }) => (
+  <div className="bg-white border-b shadow-sm sticky top-0 z-10">
+    <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="sm" onClick={onBack}>
+          <ArrowLeft className="h-4 w-4 mr-1" />
+          {isInternal ? 'Back to Panel' : 'Back to Login'}
+        </Button>
+        <div className="h-9 w-9 rounded-full bg-gradient-to-br from-blue-600 to-red-500 flex items-center justify-center">
+          <Trophy className="h-5 w-5 text-white" />
+        </div>
+        <div>
+          <h1 className="text-base font-bold text-slate-800">Player Registration</h1>
+          {tournament && (
+            <p className="text-xs text-slate-500 font-mono">{tournament.tournament_code}</p>
+          )}
+        </div>
+      </div>
+      {tournament && (
+        <div className="hidden md:block text-sm text-slate-600 truncate max-w-xs">
+          {tournament.name}
+        </div>
+      )}
+    </div>
+  </div>
+);
+
+// ─── Left aside (30%) — required docs / tournament info / pricing ───────────
+const RegistrationInfoPanel: React.FC<{
+  tournament: Tournament | null;
+  pricing: { firstEventFee: number; additionalEventFee: number; totalFee: number };
+}> = ({ tournament, pricing }) => {
+  const REQUIRED_DOCS = [
+    'Aadhaar / Government Photo ID (mandatory)',
+    'Recent passport-size photograph',
+    'Belt / Dan certificate',
+    'Guardian consent (if minor)',
+    'Medical fitness declaration',
+  ];
+  return (
+    <>
+      <Card className="border-blue-100">
+        <CardContent className="pt-5 space-y-3">
+          <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+            <CheckCircle className="h-4 w-4 text-green-600" /> Documents required
+          </h3>
+          <ul className="text-sm text-slate-700 space-y-1.5 list-disc pl-5">
+            {REQUIRED_DOCS.map((d) => <li key={d}>{d}</li>)}
+          </ul>
+          <p className="text-xs text-slate-500">
+            Originals must be presented at the venue for verification before check-in.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card className="border-amber-100 bg-amber-50/40">
+        <CardContent className="pt-5 space-y-2">
+          <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+            <Download className="h-4 w-4 text-amber-700" /> Forms to download
+          </h3>
+          <a
+            href="/forms/player-registration.pdf"
+            download
+            className="block text-sm text-blue-700 hover:underline"
+          >
+            Player registration form
+          </a>
+          <a
+            href="/forms/medical-fitness.pdf"
+            download
+            className="block text-sm text-blue-700 hover:underline"
+          >
+            Medical fitness declaration
+          </a>
+          <a
+            href="/forms/guardian-consent.pdf"
+            download
+            className="block text-sm text-blue-700 hover:underline"
+          >
+            Guardian consent form
+          </a>
+        </CardContent>
+      </Card>
+
+      {tournament && (
+        <Card>
+          <CardContent className="pt-5 space-y-2 text-sm">
+            <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+              <Trophy className="h-4 w-4 text-amber-500" /> Tournament
+            </h3>
+            <div className="text-slate-600 space-y-1">
+              <div><span className="text-slate-400">Code:</span> <span className="font-mono">{tournament.tournament_code}</span></div>
+              <div><span className="text-slate-400">Name:</span> {tournament.name}</div>
+              {tournament.venue && <div><span className="text-slate-400">Venue:</span> {tournament.venue}</div>}
+              <div><span className="text-slate-400">Dates:</span> {tournament.start_date} → {tournament.end_date}</div>
+            </div>
+            <div className="border-t pt-2 mt-2 text-slate-700">
+              <div className="flex justify-between"><span>First event</span><span>₹ {pricing.firstEventFee}</span></div>
+              <div className="flex justify-between"><span>Additional event</span><span>₹ {pricing.additionalEventFee}</span></div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </>
+  );
+};
 
 export default PlayerRegistrationPage;
