@@ -4,6 +4,20 @@ import { apiRequest } from './api';
 type ApiResponse<T = any> = { success: boolean; data: T; message?: string };
 
 export const passwordService = {
+  requestReset: (data: { email: string }) =>
+    apiRequest<ApiResponse<{ resetToken?: string; expiresInMinutes?: number }>>('/api/password/request-reset', {
+      method: 'POST',
+      body: data,
+      skipAuth: true,
+    }),
+
+  completeReset: (data: { email: string; resetToken: string; newPassword: string }) =>
+    apiRequest<ApiResponse>('/api/password/complete-reset', {
+      method: 'PATCH',
+      body: data,
+      skipAuth: true,
+    }),
+
   resetPassword: (data: { userId: string; newPassword: string; mustChangeOnLogin?: boolean }) =>
     apiRequest<ApiResponse>('/api/password/reset', { method: 'PATCH', body: data }),
 

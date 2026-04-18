@@ -23,8 +23,8 @@ export default function WeightCategoriesPage() {
 
   // Filters
   const [filterAssoc, setFilterAssoc] = useState<string>('all');
-  const [filterAge, setFilterAge] = useState<string>('all');
-  const [filterGender, setFilterGender] = useState<string>('all');
+  const [filterAge, setFilterAge] = useState<string>('');
+  const [filterGender, setFilterGender] = useState<'male' | 'female'>('male');
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -51,6 +51,10 @@ export default function WeightCategoriesPage() {
       if (assocs.length > 0) {
         setFilterAssoc(prev => prev === 'all' ? assocs[0] : prev);
       }
+      if (cats.length > 0 && !filterAge) {
+        const firstAge = Array.from(new Set(cats.map(c => c.age_category))).sort()[0];
+        if (firstAge) setFilterAge(firstAge);
+      }
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -61,8 +65,8 @@ export default function WeightCategoriesPage() {
   const filtered = useMemo(() => {
     return categories.filter(c => {
       if (filterAssoc !== 'all' && c.association !== filterAssoc) return false;
-      if (filterAge !== 'all' && c.age_category !== filterAge) return false;
-      if (filterGender !== 'all' && c.gender !== filterGender) return false;
+      if (filterAge && c.age_category !== filterAge) return false;
+      if (c.gender !== filterGender) return false;
       return true;
     });
   }, [categories, filterAssoc, filterAge, filterGender]);
@@ -178,7 +182,6 @@ export default function WeightCategoriesPage() {
               <Select value={filterAge} onValueChange={setFilterAge}>
                 <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
                   {ageCategories.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -186,7 +189,7 @@ export default function WeightCategoriesPage() {
             <div>
               <Label className="mb-1">Gender</Label>
               <div className="flex gap-1">
-                {(['all', 'male', 'female'] as const).map(g => (
+                {(['male', 'female'] as const).map(g => (
                   <Button
                     key={g}
                     size="sm"
@@ -194,7 +197,7 @@ export default function WeightCategoriesPage() {
                     onClick={() => setFilterGender(g)}
                     className="capitalize"
                   >
-                    {g === 'all' ? 'All' : g === 'male' ? '♂ Male' : '♀ Female'}
+                    {g === 'male' ? '♂ Male' : '♀ Female'}
                   </Button>
                 ))}
               </div>

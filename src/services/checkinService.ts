@@ -61,8 +61,9 @@ export interface CheckinData {
 }
 
 export const checkinService = {
-  async lookupPlayer(playerCode: string): Promise<CheckinPlayer> {
-    const res = await apiRequest<{ data: CheckinPlayer }>(`/api/checkin/player/${playerCode}`);
+  async lookupPlayer(playerCode: string, tournamentId?: string): Promise<CheckinPlayer> {
+    const qs = tournamentId ? `?tournamentId=${encodeURIComponent(tournamentId)}` : '';
+    const res = await apiRequest<{ data: CheckinPlayer }>(`/api/checkin/player/${playerCode}${qs}`);
     return res.data;
   },
 

@@ -17,6 +17,7 @@ import {
   AlertCircle, Trophy, Eye, EyeOff, UserPlus, UserCog, ScrollText,
   Layout as LayoutIcon, ArrowRight, Shield, ExternalLink,
 } from 'lucide-react';
+import { tournamentService } from '@/services/tournamentService';
 
 const LoginPage: React.FC = () => {
   const { login, loginWithCredentials, loginWithGoogle, isAuthenticated } = useAuthStore();
@@ -31,6 +32,7 @@ const LoginPage: React.FC = () => {
   const [regDialogOpen, setRegDialogOpen] = useState(false);
   const [regType, setRegType] = useState<'player' | 'coach'>('player');
   const [regCode, setRegCode] = useState('');
+  const [verifyingRegCode, setVerifyingRegCode] = useState(false);
 
   // ── Google login ──
   const handleGoogleSuccess = async (cred: CredentialResponse) => {
@@ -81,7 +83,7 @@ const LoginPage: React.FC = () => {
     setRegDialogOpen(true);
   }
 
-  function goToRegistration() {
+  async function goToRegistration() {
     const code = regCode.trim().toUpperCase();
     if (!code) {
       toast({
@@ -91,8 +93,24 @@ const LoginPage: React.FC = () => {
       });
       return;
     }
-    navigate(regType === 'player' ? `/register/${code}` : `/coach-register/${code}`);
-    setRegDialogOpen(false);
+
+    setVerifyingRegCode(true);
+    try {
+      await tournamentService.getByCode(code);
+      navigate(regType === 'player' ? `/register/${code}` : `/coach-register/${code}`);
+      setRegDialogOpen(false);
+    } catch (err: any) {
+      const rawMsg = String(err?.message || '');
+      toast({
+        variant: 'destructive',
+        title: 'Invalid tournament code',
+        description: rawMsg.toLowerCase().includes('tournament not found')
+          ? 'Please check the code and try again.'
+          : (rawMsg || 'Please check the code and try again.'),
+      });
+    } finally {
+      setVerifyingRegCode(false);
+    }
   }
 
   // ── Quick links shown on the LEFT panel ──────────────────────────────────
@@ -108,7 +126,7 @@ const LoginPage: React.FC = () => {
       label: 'Public tournaments',
       description: 'Browse upcoming events',
       icon: Trophy,
-      onClick: () => navigate('/guest'),
+      onClick: () => navigate('/public-tournaments'),
       color: 'bg-blue-50 text-blue-700 border-blue-200',
     },
     {
@@ -254,7 +272,7 @@ const LoginPage: React.FC = () => {
                 <div className="text-right">
                   <button
                     type="button"
-                    onClick={() => navigate('/password-reset')}
+                    onClick={() => navigate('/forgot-password')}
                     className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
                   >
                     Forgot your password?
@@ -324,7 +342,7 @@ const LoginPage: React.FC = () => {
                 onChange={(e) => setRegCode(e.target.value.toUpperCase())}
                 placeholder="e.g. TKD-2026-ABCD"
                 className="mt-1 font-mono uppercase"
-                onKeyDown={(e) => e.key === 'Enter' && goToRegistration()}
+                onKeyDown={(e) => e.key === 'Enter' && void goToRegistration()}
                 autoFocus
               />
             </div>
@@ -333,8 +351,8 @@ const LoginPage: React.FC = () => {
             <Button variant="outline" onClick={() => setRegDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={goToRegistration} disabled={!regCode.trim()}>
-              Continue
+            <Button onClick={() => void goToRegistration()} disabled={!regCode.trim() || verifyingRegCode}>
+              {verifyingRegCode ? 'Verifying...' : 'Continue'}
             </Button>
           </DialogFooter>
         </DialogContent>

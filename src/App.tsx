@@ -14,8 +14,10 @@ import StatisticsPage from "@/pages/StatisticsPage";
 import SettingsPage from "@/pages/SettingsPage";
 import LiveFeedPage from "@/pages/LiveFeedPage";
 import LoginPage from "@/pages/LoginPage";
+import ForgotPasswordPage from "@/pages/ForgotPasswordPage";
 import LogoutPage from "@/pages/LogoutPage";
 import GuestPage from "@/pages/GuestPage";
+import PublicTournamentPage from "@/pages/PublicTournamentPage";
 import PlayerRegistrationPage from "@/pages/PlayerRegistrationPage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import WeightCategoriesPage from "@/pages/WeightCategoriesPage";
@@ -41,11 +43,17 @@ function Router() {
         <Route path="/login">
           <LoginPage />
         </Route>
+        <Route path="/forgot-password">
+          <ForgotPasswordPage />
+        </Route>
         <Route path="/logout">
           <LogoutPage />
         </Route>
         <Route path="/guest">
           <GuestPage />
+        </Route>
+        <Route path="/public-tournaments">
+          <PublicTournamentPage />
         </Route>
         <Route path="/register">
           <PlayerRegistrationPage />

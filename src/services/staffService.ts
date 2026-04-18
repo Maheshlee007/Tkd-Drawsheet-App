@@ -27,6 +27,16 @@ export interface StaffUser {
   is_active: boolean;
 }
 
+export interface StaffTournamentScope {
+  id: string;
+  tournament_code: string;
+  name: string;
+  status: string;
+  start_date: string;
+  end_date: string;
+  assigned_role?: string;
+}
+
 export const staffService = {
   listByTournament: (tournamentId: string) =>
     apiRequest<ApiResponse<StaffMember[]>>(`/api/staff/${tournamentId}`),
@@ -36,6 +46,9 @@ export const staffService = {
 
   listUsersByRole: (roleName: string) =>
     apiRequest<ApiResponse<StaffUser[]>>(`/api/staff/users-by-role/${roleName}`),
+
+  myTournaments: () =>
+    apiRequest<ApiResponse<StaffTournamentScope[]>>('/api/staff/my-tournaments'),
 
   assignStaff: (data: { tournamentId: string; userId: string; roles: string[]; notes?: string }) =>
     apiRequest<ApiResponse>('/api/staff/assign', { method: 'POST', body: data }),

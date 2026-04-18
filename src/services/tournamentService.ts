@@ -14,6 +14,9 @@ export interface Tournament {
   tournament_code: string;
   name: string;
   description: string | null;
+  registration_instructions?: string | null;
+  player_form_links?: string[];
+  coach_form_links?: string[];
   venue: string | null;
   city: string | null;
   state: string | null;

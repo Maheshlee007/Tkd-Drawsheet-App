@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -33,6 +34,9 @@ const statusConfig: Record<string, { color: string; icon: typeof CheckCircle }> 
 interface FormData {
   name: string;
   description: string;
+  registrationInstructions: string;
+  playerFormLinks: string;
+  coachFormLinks: string;
   venue: string;
   city: string;
   state: string;
@@ -48,12 +52,23 @@ interface FormData {
 }
 
 const emptyForm: FormData = {
-  name: '', description: '', venue: '', city: '', state: '',
+  name: '', description: '', registrationInstructions: '', playerFormLinks: '', coachFormLinks: '', venue: '', city: '', state: '',
   startDate: '', endDate: '', registrationDeadline: '',
   entryFee: '500', maxParticipants: '200',
   organizerName: '', organizerEmail: '', organizerPhone: '',
   associationType: 'State',
 };
+
+function parseLinks(raw: string): string[] {
+  return raw
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+}
+
+function joinLinks(list?: string[]): string {
+  return (list ?? []).join('\n');
+}
 
 export default function AdminTournamentPage() {
   const { toast } = useToast();
@@ -115,7 +130,12 @@ export default function AdminTournamentPage() {
   function openEdit(t: Tournament) {
     setEditingId(t.id);
     setForm({
-      name: t.name, description: t.description || '', venue: t.venue || '',
+      name: t.name,
+      description: t.description || '',
+      registrationInstructions: t.registration_instructions || '',
+      playerFormLinks: joinLinks(t.player_form_links),
+      coachFormLinks: joinLinks(t.coach_form_links),
+      venue: t.venue || '',
       city: t.city || '', state: t.state || '',
       startDate: t.start_date?.slice(0, 10) || '', endDate: t.end_date?.slice(0, 10) || '',
       registrationDeadline: t.registration_deadline?.slice(0, 10) || '',
@@ -135,6 +155,9 @@ export default function AdminTournamentPage() {
     try {
       const payload = {
         name: form.name, description: form.description || undefined,
+        registrationInstructions: form.registrationInstructions || undefined,
+        playerFormLinks: parseLinks(form.playerFormLinks),
+        coachFormLinks: parseLinks(form.coachFormLinks),
         venue: form.venue || undefined, city: form.city || undefined, state: form.state || undefined,
         startDate: form.startDate, endDate: form.endDate,
         registrationDeadline: form.registrationDeadline || undefined,
@@ -285,6 +308,7 @@ export default function AdminTournamentPage() {
                 <TableBody>
                   {filtered.map(t => {
                     const { color } = sc(t.status);
+                    const isActiveTournament = ['registration_open', 'in_progress'].includes(t.status);
                     return (
                       <TableRow key={t.id} className="cursor-pointer hover:bg-slate-50" onClick={() => openDetail(t)}>
                         <TableCell className="font-mono text-xs">{t.tournament_code}</TableCell>
@@ -296,7 +320,12 @@ export default function AdminTournamentPage() {
                         <TableCell className="text-sm whitespace-nowrap">{f(t.start_date)} — {f(t.end_date)}</TableCell>
                         <TableCell><Badge variant="outline" className="text-xs">{t.association_type || '-'}</Badge></TableCell>
                         <TableCell className="text-sm">{t.organizer_name || '-'}</TableCell>
-                        <TableCell><Badge className={`${color} capitalize text-xs`}>{t.status.replace('_', ' ')}</Badge></TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <span className={`h-2.5 w-2.5 rounded-full ${isActiveTournament ? 'bg-green-500' : 'bg-slate-300'}`} />
+                            <Badge className={`${color} capitalize text-xs`}>{t.status.replace('_', ' ')}</Badge>
+                          </div>
+                        </TableCell>
                         <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                           <div className="flex gap-1 justify-end">
                             <Button variant="ghost" size="sm" onClick={() => openEdit(t)}><Edit className="h-3 w-3" /></Button>
@@ -330,6 +359,35 @@ export default function AdminTournamentPage() {
               <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. State Championship 2026" />
             </div>
             <div><Label>Description</Label><Input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></div>
+            <div>
+              <Label>Registration Instructions</Label>
+              <Textarea
+                value={form.registrationInstructions}
+                onChange={e => setForm({ ...form, registrationInstructions: e.target.value })}
+                placeholder="Show important registration instructions for this tournament"
+                rows={4}
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <Label>Player Form Links (one URL per line)</Label>
+                <Textarea
+                  value={form.playerFormLinks}
+                  onChange={e => setForm({ ...form, playerFormLinks: e.target.value })}
+                  placeholder="https://drive.google.com/..."
+                  rows={3}
+                />
+              </div>
+              <div>
+                <Label>Coach Form Links (one URL per line)</Label>
+                <Textarea
+                  value={form.coachFormLinks}
+                  onChange={e => setForm({ ...form, coachFormLinks: e.target.value })}
+                  placeholder="https://drive.google.com/..."
+                  rows={3}
+                />
+              </div>
+            </div>
             <Separator />
             <div className="grid grid-cols-2 gap-4">
               <div><Label>Venue</Label><Input value={form.venue} onChange={e => setForm({ ...form, venue: e.target.value })} placeholder="Indoor Stadium" /></div>
@@ -388,6 +446,11 @@ export default function AdminTournamentPage() {
                 {detailTournament.association_type && <Badge variant="secondary">{detailTournament.association_type}</Badge>}
               </div>
               {detailTournament.description && <p className="text-muted-foreground">{detailTournament.description}</p>}
+              {detailTournament.registration_instructions && (
+                <div className="rounded-md border bg-slate-50 p-3 text-xs whitespace-pre-line">
+                  {detailTournament.registration_instructions}
+                </div>
+              )}
               <Separator />
               <div className="grid grid-cols-2 gap-2">
                 <div className="flex items-center gap-1.5 text-muted-foreground"><MapPin className="h-3.5 w-3.5" /> Location</div>
@@ -441,6 +504,32 @@ export default function AdminTournamentPage() {
                   );
                 })}
               </div>
+              {!!detailTournament.player_form_links?.length && (
+                <>
+                  <Separator />
+                  <p className="font-medium">Player Forms</p>
+                  <div className="space-y-1.5">
+                    {detailTournament.player_form_links.map((url, idx) => (
+                      <a key={`${url}-${idx}`} href={url} target="_blank" rel="noreferrer" className="text-xs text-blue-700 hover:underline break-all">
+                        {url}
+                      </a>
+                    ))}
+                  </div>
+                </>
+              )}
+              {!!detailTournament.coach_form_links?.length && (
+                <>
+                  <Separator />
+                  <p className="font-medium">Coach Forms</p>
+                  <div className="space-y-1.5">
+                    {detailTournament.coach_form_links.map((url, idx) => (
+                      <a key={`${url}-${idx}`} href={url} target="_blank" rel="noreferrer" className="text-xs text-blue-700 hover:underline break-all">
+                        {url}
+                      </a>
+                    ))}
+                  </div>
+                </>
+              )}
               <Separator />
               <p className="font-medium">Change Status</p>
               <div className="flex flex-wrap gap-2">

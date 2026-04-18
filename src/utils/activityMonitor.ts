@@ -7,7 +7,7 @@ export interface ActivityConfig {
 }
 
 export const DEFAULT_ACTIVITY_CONFIG: ActivityConfig = {
-  inactivityTimeout: 2 * 60 * 60 * 1000, // 2 hours
+  inactivityTimeout: 1 * 60 * 60 * 1000, // 1 hour
   monitoredEvents: ['click', 'keydown', 'scroll'], // Simplified to 3 most important
   debounceMs: 30000 // Only update every 30 seconds max
 };

@@ -15,6 +15,9 @@ import {
 } from 'lucide-react';
 import jsQR from 'jsqr';
 import { checkinService, type CheckinPlayer, type CheckinData } from '@/services/checkinService';
+import { tournamentService, type Tournament } from '@/services/tournamentService';
+import { staffService, type StaffTournamentScope } from '@/services/staffService';
+import { useAuthStore } from '@/store/useAuthStore';
 import { useToast } from '@/hooks/use-toast';
 
 const PAYMENT_REASONS = [
@@ -26,13 +29,21 @@ const PAYMENT_REASONS = [
   'Other',
 ];
 
+type VerifyTournamentOption = Pick<Tournament, 'id' | 'tournament_code' | 'name' | 'status' | 'start_date' | 'end_date'> & {
+  assigned_role?: string;
+};
+
 export default function VerifyPage() {
   const { toast } = useToast();
+  const authUser = useAuthStore((s) => s.user);
   const [playerCode, setPlayerCode] = useState('');
   const [player, setPlayer] = useState<CheckinPlayer | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [availableTournaments, setAvailableTournaments] = useState<VerifyTournamentOption[]>([]);
+  const [selectedTournamentId, setSelectedTournamentId] = useState('');
+  const [loadingTournaments, setLoadingTournaments] = useState(true);
 
   // QR Scanner
   const [scanning, setScanning] = useState(false);
@@ -61,12 +72,52 @@ export default function VerifyPage() {
   const [payUpdating, setPayUpdating] = useState(false);
 
   useEffect(() => {
+    void loadTournamentScope();
     return () => stopScanner();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authUser?.email]);
+
+  async function loadTournamentScope() {
+    setLoadingTournaments(true);
+    try {
+      const roles = (authUser?.roles ?? []).map((r) => String(r).toLowerCase());
+      const isPrivileged = roles.some((r) => ['admin', 'organizer', 'manager'].includes(r));
+
+      let options: VerifyTournamentOption[] = [];
+      if (isPrivileged) {
+        const all = await tournamentService.listTournaments({ limit: 200 });
+        options = all.map((t) => ({
+          id: t.id,
+          tournament_code: t.tournament_code,
+          name: t.name,
+          status: t.status,
+          start_date: t.start_date,
+          end_date: t.end_date,
+        }));
+      } else {
+        const scoped = await staffService.myTournaments();
+        options = (scoped.data ?? []) as StaffTournamentScope[];
+      }
+
+      setAvailableTournaments(options);
+
+      if (options.length > 0) {
+        const preferred = options.find((t) => ['registration_open', 'in_progress'].includes(t.status));
+        setSelectedTournamentId((preferred ?? options[0]).id);
+      }
+    } catch (e: any) {
+      setError(e?.message || 'Unable to load assigned tournaments for verification.');
+    } finally {
+      setLoadingTournaments(false);
+    }
+  }
 
   async function startScanner() {
     setError('');
+    if (!selectedTournamentId) {
+      setError('Select a tournament before starting QR scan.');
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -117,9 +168,13 @@ export default function VerifyPage() {
 
   async function lookupPlayer(code: string) {
     if (!code.trim()) return;
+    if (!selectedTournamentId) {
+      setError('Select a tournament first.');
+      return;
+    }
     setLoading(true); setError(''); setPlayer(null); setSuccess('');
     try {
-      const data = await checkinService.lookupPlayer(code.trim());
+      const data = await checkinService.lookupPlayer(code.trim(), selectedTournamentId);
       setPlayer(data);
       if (data.player.weight_kg) setWeight(String(data.player.weight_kg));
       if (!data.checkin) {
@@ -139,7 +194,7 @@ export default function VerifyPage() {
     try {
       const data: CheckinData = {
         playerId: player.player.id,
-        tournamentId: player.player.tournament_id,
+        tournamentId: selectedTournamentId || player.player.tournament_id,
         weightRecordedKg: weight ? parseFloat(weight) : undefined,
         weighInPassed,
         eventsConfirmed: player.events.map(e => e.id),
@@ -172,7 +227,7 @@ export default function VerifyPage() {
       toast({ title: 'Payment updated', description: `₹${payUpdateAmount} recorded via ${payUpdateMethod}` });
       setPayUpdateOpen(false);
       setPayUpdateAmount(''); setPayUpdateRef(''); setPayUpdateNotes('');
-      const updated = await checkinService.lookupPlayer(playerCode.trim());
+      const updated = await checkinService.lookupPlayer(playerCode.trim(), selectedTournamentId || undefined);
       setPlayer(updated);
       setSuccess('Payment updated successfully!');
     } catch (e: any) {
@@ -189,6 +244,7 @@ export default function VerifyPage() {
   const playerName = player?.player.full_name
     || `${player?.player.first_name ?? ''} ${player?.player.last_name ?? ''}`.trim();
   const balance = player?.checkin ? Number(player.checkin.balance) : 0;
+  const selectedTournament = availableTournaments.find((t) => t.id === selectedTournamentId) ?? null;
 
   return (
     <div className="space-y-6 p-4 max-w-5xl mx-auto">
@@ -201,23 +257,57 @@ export default function VerifyPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Player Lookup</CardTitle>
-          <CardDescription>Scan QR code or enter player code (e.g. TKD-P-001)</CardDescription>
+          <CardDescription>Select your assigned tournament, then scan QR or enter player code</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Tournament Scope</Label>
+            <Select
+              value={selectedTournamentId}
+              onValueChange={(v) => {
+                setSelectedTournamentId(v);
+                setPlayer(null);
+                setError('');
+                setSuccess('');
+              }}
+              disabled={loadingTournaments}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={loadingTournaments ? 'Loading tournaments...' : 'Select tournament'} />
+              </SelectTrigger>
+              <SelectContent>
+                {availableTournaments.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.tournament_code} • {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedTournament && (
+              <div className="flex items-center gap-2 text-xs text-slate-600">
+                <Badge variant={['registration_open', 'in_progress'].includes(selectedTournament.status) ? 'default' : 'secondary'} className="capitalize">
+                  {selectedTournament.status.replace(/_/g, ' ')}
+                </Badge>
+                <span>{selectedTournament.name}</span>
+              </div>
+            )}
+          </div>
+
           <div className="flex gap-2">
             <div className="flex-1">
               <Input
                 placeholder="Enter player code..."
                 value={playerCode}
                 onChange={e => setPlayerCode(e.target.value.toUpperCase())}
-                onKeyDown={e => e.key === 'Enter' && lookupPlayer(playerCode)}
+                onKeyDown={e => e.key === 'Enter' && void lookupPlayer(playerCode)}
+                disabled={!selectedTournamentId}
               />
             </div>
-            <Button onClick={() => lookupPlayer(playerCode)} disabled={loading}>
+            <Button onClick={() => void lookupPlayer(playerCode)} disabled={loading || !selectedTournamentId}>
               <Search className="h-4 w-4 mr-2" />
               {loading ? 'Searching...' : 'Lookup'}
             </Button>
-            <Button variant={scanning ? 'destructive' : 'outline'} onClick={scanning ? stopScanner : startScanner}>
+            <Button variant={scanning ? 'destructive' : 'outline'} onClick={() => void (scanning ? stopScanner() : startScanner())} disabled={!selectedTournamentId}>
               {scanning ? <CameraOff className="h-4 w-4 mr-2" /> : <Camera className="h-4 w-4 mr-2" />}
               {scanning ? 'Stop' : 'QR Scan'}
             </Button>

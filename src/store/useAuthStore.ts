@@ -5,7 +5,7 @@ import { generateFingerprint, validateFingerprint } from '@/utils/fingerprint';
 import { generateSessionId, validateSession } from '@/utils/sessionManager';
 import { getActivityMonitor, cleanupActivityMonitor } from '@/utils/activityMonitor';
 import { getTabSynchronizer } from '@/utils/tabSync';
-import { apiRequest, setStoredTokens, clearStoredTokens, startSilentRefresh, stopSilentRefresh } from '@/services/api';
+import { apiRequest, setStoredTokens, clearStoredTokens, startSilentRefresh, stopSilentRefresh, getStoredTokens } from '@/services/api';
 
 interface User {
   name: string;
@@ -44,6 +44,7 @@ interface SessionInfo {
 const STORAGE_KEY = 'tournament-auth';
 const FINGERPRINT_KEY = 'tournament-fp';
 const SESSION_DURATION = 1 * 60 * 60 * 1000; // 1 hour (extended silently via refresh)
+let sessionExpiryListenerAttached = false;
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -212,6 +213,13 @@ export const useAuthStore = create<AuthState>()(
         const state = get();
         
         if (!state.sessionId || !state.user) return false;
+
+        // Token pair must exist for API-backed sessions.
+        const { accessToken, refreshToken } = getStoredTokens();
+        if (!accessToken && !refreshToken) {
+          state.logout();
+          return false;
+        }
         
         // 1. Validate session structure and signature
         if (!validateSession(state.sessionId)) {
@@ -291,6 +299,17 @@ export const useAuthStore = create<AuthState>()(
               state.refreshActivity();
             }
           );
+
+          // Resume silent token refresh after reload.
+          startSilentRefresh();
+
+          // Handle global session-expired event dispatched by apiRequest.
+          if (!sessionExpiryListenerAttached && typeof window !== 'undefined') {
+            window.addEventListener('tkd:session-expired', () => {
+              state.logout();
+            });
+            sessionExpiryListenerAttached = true;
+          }
 
           // Sync latest roles/permissions after reload.
           state.refreshProfile();

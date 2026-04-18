@@ -17,6 +17,7 @@ import { usePlayerStore, PlayerRegistration } from '@/store/usePlayerStore';
 import { playerService, type RegisteredPlayer, type TeamEntryPayload } from '@/services/playerService';
 import { tournamentService, type Tournament } from '@/services/tournamentService';
 import { useAuthStore } from '@/store/useAuthStore';
+import { AutoCloseErrorModal } from '@/components/AutoCloseErrorModal';
 import {
   BELT_LEVELS, getAgeCategory, getWeightCategory, isMinor, isValidAadhaarFormat, calculateAge,
 } from '@/utils/categoryUtils';
@@ -60,6 +61,7 @@ const PlayerRegistrationPage: React.FC = () => {
   const [resolvedTournament, setResolvedTournament] = useState<Tournament | null>(null);
   const [loadingTournament, setLoadingTournament] = useState(false);
   const [tournamentError, setTournamentError] = useState('');
+  const [modalError, setModalError] = useState('');
 
   // Selected events for multi-event support
   const [selectedEvents, setSelectedEvents] = useState<string[]>(['kyorugi']);
@@ -101,7 +103,9 @@ const PlayerRegistrationPage: React.FC = () => {
   async function handleTournamentLookup(rawCode?: string) {
     const code = (rawCode ?? tournamentCodeInput).trim().toUpperCase();
     if (!code) {
-      setTournamentError('Tournament code is required');
+      const msg = 'Please enter the tournament code provided by your organizer.';
+      setTournamentError(msg);
+      setModalError(msg);
       return;
     }
 
@@ -113,7 +117,12 @@ const PlayerRegistrationPage: React.FC = () => {
       setTournamentCodeInput(code);
     } catch (error: any) {
       setResolvedTournament(null);
-      setTournamentError(error.message || 'Tournament not found');
+      const rawMsg = String(error?.message || '');
+      const msg = rawMsg.toLowerCase().includes('tournament not found')
+        ? 'Invalid tournament code. Please check and try again.'
+        : (rawMsg || 'Invalid tournament code. Please check and try again.');
+      setTournamentError(msg);
+      setModalError(msg);
     } finally {
       setLoadingTournament(false);
     }
@@ -242,6 +251,7 @@ const PlayerRegistrationPage: React.FC = () => {
       } catch { /* QR non-critical */ }
       toast({ title: 'Registration Complete', description: `Player code: ${player.playerCode}` });
     } catch {
+      setModalError('Registration failed. Please verify the details and try again.');
       toast({ title: 'Error', description: 'Registration failed', variant: 'destructive' });
     } finally {
       setSubmitting(false);
@@ -313,6 +323,13 @@ const PlayerRegistrationPage: React.FC = () => {
             </CardContent>
           </Card>
         </div>
+        <AutoCloseErrorModal
+          open={!!modalError}
+          message={modalError}
+          onOpenChange={(open) => {
+            if (!open) setModalError('');
+          }}
+        />
       </div>
     );
   }
@@ -327,68 +344,24 @@ const PlayerRegistrationPage: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-10 gap-6">
         {/* Left aside (30%) — required docs / info */}
         <aside className="lg:col-span-3 space-y-4">
-          <RegistrationInfoPanel tournament={resolvedTournament} pricing={pricingPreview} />
+          <RegistrationInfoPanel
+            tournament={resolvedTournament}
+            pricing={pricingPreview}
+            tournamentCodeInput={tournamentCodeInput}
+            loadingTournament={loadingTournament}
+            tournamentError={tournamentError}
+            onTournamentCodeInputChange={setTournamentCodeInput}
+            onVerifyTournament={() => void handleTournamentLookup()}
+            onChangeTournament={() => {
+              setResolvedTournament(null);
+              setTournamentError('');
+            }}
+          />
         </aside>
 
         {/* Right (70%) — actual stepped form */}
         <div className="lg:col-span-7">
-        {!resolvedTournament && (
-          <Card className="mb-4 border-blue-200 bg-blue-50">
-            <CardHeader>
-              <CardTitle className="text-lg">Tournament Code Required</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-blue-900">
-                Registration is tournament-specific. Enter the tournament code from the organizer link to continue.
-              </p>
-              <div className="flex gap-2">
-                <Input
-                  value={tournamentCodeInput}
-                  onChange={(e) => setTournamentCodeInput(e.target.value.toUpperCase())}
-                  placeholder="e.g. TKD-2026-TEST1"
-                  className="font-mono bg-white"
-                  onKeyDown={(e) => e.key === 'Enter' && void handleTournamentLookup()}
-                />
-                <Button onClick={() => void handleTournamentLookup()} disabled={loadingTournament}>
-                  {loadingTournament ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Continue'}
-                </Button>
-              </div>
-              {tournamentError && <p className="text-sm text-red-600">{tournamentError}</p>}
-            </CardContent>
-          </Card>
-        )}
-
-        {resolvedTournament && (
-          <Card className="mb-4 border-emerald-200 bg-emerald-50">
-            <CardContent className="pt-4 space-y-2 text-sm">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="font-semibold text-emerald-900">{resolvedTournament.name}</p>
-                  <p className="text-emerald-700 font-mono text-xs">{resolvedTournament.tournament_code}</p>
-                </div>
-                <Badge variant="secondary" className="capitalize">{resolvedTournament.status.replace('_', ' ')}</Badge>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-emerald-900">
-                <p><span className="font-medium">Venue:</span> {resolvedTournament.venue || '-'}{resolvedTournament.city ? `, ${resolvedTournament.city}` : ''}</p>
-                <p><span className="font-medium">Dates:</span> {resolvedTournament.start_date} to {resolvedTournament.end_date}</p>
-                <p><span className="font-medium">First Event:</span> Rs. {pricingPreview.firstEventFee}</p>
-                <p><span className="font-medium">Additional Event:</span> Rs. {pricingPreview.additionalEventFee}</p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Manual form notice */}
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 flex items-start gap-3">
-          <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
-          <div className="text-sm text-amber-800">
-            <p className="font-medium">Pre-Registration Requirement</p>
-            <p className="mt-1">Please download and fill the registration form before arriving at the venue. Bring the completed form along with required documents.</p>
-            <Button variant="link" size="sm" className="p-0 h-auto text-amber-700 underline mt-1" onClick={() => toast({ title: 'Coming Soon', description: 'Registration form document will be available for download shortly.' })}>
-              <ExternalLink className="h-3 w-3 mr-1" /> Download Registration Form
-            </Button>
-          </div>
-        </div>
+        
 
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 text-sm text-blue-800">
           Your details are collected exclusively for tournament organization and verification purposes.
@@ -757,6 +730,13 @@ const PlayerRegistrationPage: React.FC = () => {
         </Card>
         </div>
       </div>
+      <AutoCloseErrorModal
+        open={!!modalError}
+        message={modalError}
+        onOpenChange={(open) => {
+          if (!open) setModalError('');
+        }}
+      />
     </div>
   );
 };
@@ -816,7 +796,22 @@ const RegistrationTopBar: React.FC<{
 const RegistrationInfoPanel: React.FC<{
   tournament: Tournament | null;
   pricing: { firstEventFee: number; additionalEventFee: number; totalFee: number };
-}> = ({ tournament, pricing }) => {
+  tournamentCodeInput: string;
+  loadingTournament: boolean;
+  tournamentError: string;
+  onTournamentCodeInputChange: (value: string) => void;
+  onVerifyTournament: () => void;
+  onChangeTournament: () => void;
+}> = ({
+  tournament,
+  pricing,
+  tournamentCodeInput,
+  loadingTournament,
+  tournamentError,
+  onTournamentCodeInputChange,
+  onVerifyTournament,
+  onChangeTournament,
+}) => {
   const REQUIRED_DOCS = [
     'Aadhaar / Government Photo ID (mandatory)',
     'Recent passport-size photograph',
@@ -824,8 +819,46 @@ const RegistrationInfoPanel: React.FC<{
     'Guardian consent (if minor)',
     'Medical fitness declaration',
   ];
+  const playerFormLinks = tournament?.player_form_links?.length
+    ? tournament.player_form_links
+    : ['/forms/player-registration.pdf', '/forms/medical-fitness.pdf', '/forms/guardian-consent.pdf'];
+
   return (
     <>
+      <Card className="border-blue-200 bg-blue-50">
+        <CardContent className="pt-5 space-y-3">
+          <h3 className="font-semibold text-slate-800">Tournament Code *</h3>
+          <p className="text-xs text-slate-600">
+            Verify tournament code before filling the registration form.
+          </p>
+          <div className="flex gap-2">
+            <Input
+              value={tournamentCodeInput}
+              onChange={(e) => onTournamentCodeInputChange(e.target.value.toUpperCase())}
+              placeholder="e.g. TKD-2026-ABCD"
+              className="bg-white font-mono uppercase"
+              disabled={!!tournament}
+              onKeyDown={(e) => e.key === 'Enter' && onVerifyTournament()}
+            />
+            {tournament ? (
+              <Button variant="outline" onClick={onChangeTournament}>Change</Button>
+            ) : (
+              <Button onClick={onVerifyTournament} disabled={!tournamentCodeInput.trim() || loadingTournament}>
+                {loadingTournament ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Verify'}
+              </Button>
+            )}
+          </div>
+          {tournamentError && (
+            <p className="text-xs text-red-600">{tournamentError}</p>
+          )}
+          {tournament && (
+            <p className="text-xs text-green-700 flex items-center gap-1">
+              <CheckCircle className="h-3.5 w-3.5" /> Verified tournament code
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
       <Card className="border-blue-100">
         <CardContent className="pt-5 space-y-3">
           <h3 className="font-semibold text-slate-800 flex items-center gap-2">
@@ -845,27 +878,17 @@ const RegistrationInfoPanel: React.FC<{
           <h3 className="font-semibold text-slate-800 flex items-center gap-2">
             <Download className="h-4 w-4 text-amber-700" /> Forms to download
           </h3>
-          <a
-            href="/forms/player-registration.pdf"
-            download
-            className="block text-sm text-blue-700 hover:underline"
-          >
-            Player registration form
-          </a>
-          <a
-            href="/forms/medical-fitness.pdf"
-            download
-            className="block text-sm text-blue-700 hover:underline"
-          >
-            Medical fitness declaration
-          </a>
-          <a
-            href="/forms/guardian-consent.pdf"
-            download
-            className="block text-sm text-blue-700 hover:underline"
-          >
-            Guardian consent form
-          </a>
+          {playerFormLinks.map((href, index) => (
+            <a
+              key={`${href}-${index}`}
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              className="block text-sm text-blue-700 hover:underline"
+            >
+              Form {index + 1}
+            </a>
+          ))}
         </CardContent>
       </Card>
 
@@ -881,6 +904,12 @@ const RegistrationInfoPanel: React.FC<{
               {tournament.venue && <div><span className="text-slate-400">Venue:</span> {tournament.venue}</div>}
               <div><span className="text-slate-400">Dates:</span> {tournament.start_date} → {tournament.end_date}</div>
             </div>
+            {tournament.registration_instructions && (
+              <div className="border-t pt-2 mt-2">
+                <p className="text-slate-400">Instructions:</p>
+                <p className="text-slate-700 whitespace-pre-line">{tournament.registration_instructions}</p>
+              </div>
+            )}
             <div className="border-t pt-2 mt-2 text-slate-700">
               <div className="flex justify-between"><span>First event</span><span>₹ {pricing.firstEventFee}</span></div>
               <div className="flex justify-between"><span>Additional event</span><span>₹ {pricing.additionalEventFee}</span></div>

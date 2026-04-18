@@ -7,6 +7,18 @@ interface RequestOptions {
   skipAuth?: boolean;
 }
 
+export class ApiError extends Error {
+  status: number;
+  details?: unknown;
+
+  constructor(status: number, message: string, details?: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.details = details;
+  }
+}
+
 const TOKEN_KEY = 'tkd-access-token';
 const REFRESH_KEY = 'tkd-refresh-token';
 
@@ -49,6 +61,54 @@ async function refreshAccessToken(): Promise<string | null> {
   }
 }
 
+function fallbackStatusMessage(status: number): string {
+  if (status === 400) return 'Invalid request. Please check and try again.';
+  if (status === 401) return 'Your session has expired. Please sign in again.';
+  if (status === 403) return 'You do not have permission to perform this action.';
+  if (status === 404) return 'Requested record was not found.';
+  if (status === 409) return 'This action conflicts with current data state.';
+  if (status === 429) return 'Too many requests. Please wait and try again.';
+  if (status >= 500) return 'Server error. Please try again shortly.';
+  return 'Request failed. Please try again.';
+}
+
+async function parseErrorResponse(res: Response): Promise<{ message: string; details?: unknown }> {
+  const fallback = fallbackStatusMessage(res.status);
+  const contentType = res.headers.get('content-type') ?? '';
+
+  if (contentType.includes('application/json')) {
+    try {
+      const json = await res.json() as Record<string, unknown>;
+      const message =
+        (typeof json.message === 'string' && json.message.trim())
+        || (typeof json.error === 'string' && json.error.trim())
+        || fallback;
+      return { message, details: json };
+    } catch {
+      return { message: fallback };
+    }
+  }
+
+  try {
+    const text = (await res.text()).trim();
+    return { message: text || fallback };
+  } catch {
+    return { message: fallback };
+  }
+}
+
+function handleSessionExpiry() {
+  clearStoredTokens();
+  if (typeof window === 'undefined') return;
+
+  window.dispatchEvent(new CustomEvent('tkd:session-expired'));
+  const onLoginPage = window.location.pathname.startsWith('/login');
+  if (onLoginPage) return;
+
+  const redirect = `${window.location.pathname}${window.location.search}`;
+  window.location.assign(`/login?redirect=${encodeURIComponent(redirect)}`);
+}
+
 export async function apiRequest<T = unknown>(
   endpoint: string,
   options: RequestOptions = {}
@@ -72,12 +132,17 @@ export async function apiRequest<T = unknown>(
     const newToken = await refreshAccessToken();
     if (newToken) {
       res = await fetch(`${API_BASE_URL}${endpoint}`, buildConfig(newToken));
+    } else {
+      handleSessionExpiry();
     }
   }
 
   if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    if (res.status === 401 && !skipAuth) {
+      handleSessionExpiry();
+    }
+    const parsed = await parseErrorResponse(res);
+    throw new ApiError(res.status, parsed.message, parsed.details);
   }
 
   return res.json();

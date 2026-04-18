@@ -7,12 +7,13 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   UserCog, ArrowLeft, CheckCircle, FileText, ShieldCheck, Loader2,
-  AlertTriangle, Download, Trophy,
+  Download, Trophy,
 } from 'lucide-react';
 import { coachService } from '@/services/coachService';
 import { tournamentService, type Tournament } from '@/services/tournamentService';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useToast } from '@/hooks/use-toast';
+import { AutoCloseErrorModal } from '@/components/AutoCloseErrorModal';
 
 const BELT_RANKS = [
   'White', 'Yellow', 'Green', 'Blue', 'Red',
@@ -45,6 +46,7 @@ export default function CoachRegistrationPage() {
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [tournamentError, setTournamentError] = useState('');
   const [resolving, setResolving] = useState(false);
+  const [modalError, setModalError] = useState('');
 
   const [form, setForm] = useState({
     firstName: '',
@@ -59,6 +61,9 @@ export default function CoachRegistrationPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState<{ coachCode: string } | null>(null);
+  const coachFormLinks = tournament?.coach_form_links?.length
+    ? tournament.coach_form_links
+    : DOWNLOADABLE_FORMS.map(f => f.href);
 
   useEffect(() => {
     if (routeCode) void resolveTournament(routeCode);
@@ -68,7 +73,9 @@ export default function CoachRegistrationPage() {
   async function resolveTournament(raw?: string) {
     const code = (raw ?? codeInput).trim().toUpperCase();
     if (!code) {
-      setTournamentError('Please enter the tournament code provided by your organizer.');
+      const msg = 'Please enter the tournament code provided by your organizer.';
+      setTournamentError(msg);
+      setModalError(msg);
       return;
     }
     setResolving(true);
@@ -79,7 +86,12 @@ export default function CoachRegistrationPage() {
       setCodeInput(code);
     } catch (e: any) {
       setTournament(null);
-      setTournamentError(e?.message || 'Invalid tournament code. Please check and try again.');
+      const rawMsg = String(e?.message || '');
+      const msg = rawMsg.toLowerCase().includes('tournament not found')
+        ? 'Invalid tournament code. Please check and try again.'
+        : (rawMsg || 'Invalid tournament code. Please check and try again.');
+      setTournamentError(msg);
+      setModalError(msg);
     } finally {
       setResolving(false);
     }
@@ -108,6 +120,7 @@ export default function CoachRegistrationPage() {
     } catch (e: any) {
       const msg = e?.message || 'Registration failed';
       setError(msg);
+      setModalError(msg);
       toast({ title: 'Registration failed', description: msg, variant: 'destructive' });
     } finally {
       setSubmitting(false);
@@ -141,6 +154,13 @@ export default function CoachRegistrationPage() {
             </div>
           </CardContent>
         </Card>
+        <AutoCloseErrorModal
+          open={!!modalError}
+          message={modalError}
+          onOpenChange={(open) => {
+            if (!open) setModalError('');
+          }}
+        />
       </div>
     );
   }
@@ -180,6 +200,42 @@ export default function CoachRegistrationPage() {
         {/* Left: 30% — required documents + downloads */}
         <aside className="lg:col-span-3 space-y-4">
           <Card>
+            <CardContent className="pt-6 space-y-3">
+              <Label className="text-sm font-semibold">Tournament Code *</Label>
+              <p className="text-xs text-muted-foreground">
+                Verify your code before continuing with coach registration.
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  value={codeInput}
+                  onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
+                  placeholder="e.g. TKD-2026-XXXX"
+                  className="font-mono uppercase"
+                  disabled={!!tournament}
+                  onKeyDown={(e) => e.key === 'Enter' && void resolveTournament()}
+                />
+                {tournament ? (
+                  <Button variant="outline" onClick={() => { setTournament(null); setTournamentError(''); }}>
+                    Change
+                  </Button>
+                ) : (
+                  <Button onClick={() => void resolveTournament()} disabled={resolving || !codeInput.trim()}>
+                    {resolving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Verify'}
+                  </Button>
+                )}
+              </div>
+              {tournamentError && (
+                <p className="text-xs text-red-600">{tournamentError}</p>
+              )}
+              {tournament && (
+                <p className="text-xs text-green-700 flex items-center gap-1">
+                  <CheckCircle className="h-3.5 w-3.5" /> Verified tournament code
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
             <CardContent className="pt-6 space-y-4">
               <div className="flex items-center gap-2 text-slate-800">
                 <ShieldCheck className="h-5 w-5 text-green-600" />
@@ -209,14 +265,15 @@ export default function CoachRegistrationPage() {
                 <h3 className="font-semibold">Forms to download</h3>
               </div>
               <div className="space-y-2">
-                {DOWNLOADABLE_FORMS.map((f) => (
+                {coachFormLinks.map((href, index) => (
                   <a
-                    key={f.label}
-                    href={f.href}
-                    download
+                    key={`${href}-${index}`}
+                    href={href}
+                    target="_blank"
+                    rel="noreferrer"
                     className="flex items-center justify-between gap-2 px-3 py-2 rounded-md border bg-slate-50 hover:bg-slate-100 text-sm text-slate-700"
                   >
-                    <span>{f.label}</span>
+                    <span>Coach Form {index + 1}</span>
                     <Download className="h-4 w-4 text-slate-500" />
                   </a>
                 ))}
@@ -238,6 +295,12 @@ export default function CoachRegistrationPage() {
                   <div><span className="text-slate-500">Dates:</span> {tournament.start_date} → {tournament.end_date}</div>
                   <div><span className="text-slate-500">Status:</span> <span className="capitalize">{tournament.status.replace(/_/g, ' ')}</span></div>
                 </div>
+                {tournament.registration_instructions && (
+                  <div className="border-t pt-2 mt-2">
+                    <div className="text-slate-500">Instructions:</div>
+                    <p className="text-slate-700 whitespace-pre-line">{tournament.registration_instructions}</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
@@ -247,44 +310,6 @@ export default function CoachRegistrationPage() {
         <section className="lg:col-span-7">
           <Card>
             <CardContent className="pt-6 space-y-5">
-              {/* Tournament code gate */}
-              <div className="rounded-lg border bg-slate-50 p-4">
-                <Label className="text-sm font-semibold">Tournament Code *</Label>
-                <p className="text-xs text-muted-foreground mb-2">
-                  You must provide a valid tournament code to register as a coach.
-                </p>
-                <div className="flex gap-2">
-                  <Input
-                    value={codeInput}
-                    onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
-                    placeholder="e.g. TKD-2026-XXXX"
-                    className="font-mono uppercase"
-                    disabled={!!tournament}
-                  />
-                  {tournament ? (
-                    <Button variant="outline" onClick={() => { setTournament(null); }}>
-                      Change
-                    </Button>
-                  ) : (
-                    <Button onClick={() => resolveTournament()} disabled={resolving || !codeInput.trim()}>
-                      {resolving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Verify'}
-                    </Button>
-                  )}
-                </div>
-                {tournamentError && (
-                  <div className="mt-2 flex items-center gap-2 text-sm text-red-600">
-                    <AlertTriangle className="h-4 w-4" />
-                    <span>{tournamentError}</span>
-                  </div>
-                )}
-                {tournament && (
-                  <div className="mt-2 flex items-center gap-2 text-sm text-green-700">
-                    <CheckCircle className="h-4 w-4" />
-                    <span>Verified: <strong>{tournament.name}</strong></span>
-                  </div>
-                )}
-              </div>
-
               {error && (
                 <div className="bg-destructive/10 text-destructive p-3 rounded-md text-sm">
                   {error}
@@ -389,6 +414,13 @@ export default function CoachRegistrationPage() {
           </Card>
         </section>
       </div>
+      <AutoCloseErrorModal
+        open={!!modalError}
+        message={modalError}
+        onOpenChange={(open) => {
+          if (!open) setModalError('');
+        }}
+      />
     </div>
   );
 }
