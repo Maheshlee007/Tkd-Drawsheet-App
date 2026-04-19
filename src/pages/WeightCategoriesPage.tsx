@@ -6,9 +6,12 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Scale, Filter } from 'lucide-react';
+import { Plus, Pencil, Trash2, Scale, Filter, Download } from 'lucide-react';
 import { weightCategoryService, type WeightCategory } from '@/services/weightCategoryService';
 import { useAuth } from '@/store/useAuthStore';
+import { useTournamentStore } from '@/store/useTournamentStore';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const AGE_ORDER = ['Sub-Junior', 'Cadet', 'Junior', 'Senior', 'Veteran'];
 const SGFI_AGE_ORDER = ['U-14', 'U-17', 'U-19'];
@@ -50,13 +53,14 @@ export default function WeightCategoriesPage() {
   const { user } = useAuth();
   const isAdmin = user?.roles?.includes('admin');
   const isOrganizer = user?.roles?.includes('organizer') || isAdmin;
+  const activeTournamentAssociation = useTournamentStore((s) => s.activeTournamentAssociation);
 
   const [categories, setCategories] = useState<WeightCategory[]>([]);
   const [associations, setAssociations] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const [filterAssoc, setFilterAssoc] = useState<string>('');
+  const [filterAssoc, setFilterAssoc] = useState<string>(activeTournamentAssociation ?? '');
   const [genderView, setGenderView] = useState<'all' | 'male' | 'female'>('all');
   const [selectedAgeChip, setSelectedAgeChip] = useState<string>('all');
 
@@ -86,7 +90,10 @@ export default function WeightCategoriesPage() {
       setCategories(cats);
       setAssociations(assocs);
       if (assocs.length > 0) {
-        const preferred = assocs.find((value) => value === 'Association') ?? assocs.find((value) => value === 'WT') ?? assocs[0];
+        const preferred = activeTournamentAssociation
+          ?? assocs.find((value) => value === 'Association')
+          ?? assocs.find((value) => value === 'WT')
+          ?? assocs[0];
         setFilterAssoc((current) => current || preferred);
       }
     } catch (e: any) {
@@ -186,6 +193,67 @@ export default function WeightCategoriesPage() {
     }
   }
 
+  function downloadPDF() {
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const assocLabel = filterAssoc || 'Weight Categories';
+
+    doc.setFontSize(16);
+    doc.text(`${assocLabel} — Weight Categories`, pageWidth / 2, 15, { align: 'center' });
+    doc.setFontSize(9);
+    doc.text(`Generated: ${new Date().toLocaleDateString()}`, pageWidth / 2, 21, { align: 'center' });
+
+    let yOffset = 28;
+
+    const agesInView = Object.keys(groupedByAge).sort(ageSort);
+
+    for (const age of agesInView) {
+      const scoped = (groupedByAge[age] || []).sort((a, b) => a.sort_order - b.sort_order);
+      const males = scoped.filter((c) => c.gender === 'male');
+      const females = scoped.filter((c) => c.gender === 'female');
+      const rowCount = Math.max(males.length, females.length);
+      if (rowCount === 0) continue;
+
+      // Check if we need a new page
+      if (yOffset > 260) {
+        doc.addPage();
+        yOffset = 15;
+      }
+
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text(getAgeLabel(age), 14, yOffset);
+      yOffset += 2;
+
+      const tableRows: string[][] = [];
+      for (let i = 0; i < rowCount; i++) {
+        const m = males[i];
+        const f = females[i];
+        tableRows.push([
+          m ? m.weight_class : '',
+          m ? formatWeightRange(m) : '',
+          f ? f.weight_class : '',
+          f ? formatWeightRange(f) : '',
+        ]);
+      }
+
+      autoTable(doc, {
+        startY: yOffset,
+        head: [['Male Class', 'Male Weight', 'Female Class', 'Female Weight']],
+        body: tableRows,
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [41, 65, 122], textColor: 255, fontStyle: 'bold', fontSize: 8 },
+        alternateRowStyles: { fillColor: [245, 247, 250] },
+        margin: { left: 14, right: 14 },
+      });
+
+      yOffset = (doc as any).lastAutoTable.finalY + 8;
+    }
+
+    doc.save(`${assocLabel.replace(/\s+/g, '_')}_Weight_Categories.pdf`);
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -204,11 +272,16 @@ export default function WeightCategoriesPage() {
             <p className="text-sm text-muted-foreground">Association-first view with age-group sections and side-by-side male/female classes.</p>
           </div>
         </div>
-        {isOrganizer && (
-          <Button onClick={openAdd}>
-            <Plus className="h-4 w-4 mr-2" /> Add Category
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={downloadPDF} disabled={Object.keys(groupedByAge).length === 0}>
+            <Download className="h-4 w-4 mr-2" /> Download PDF
           </Button>
-        )}
+          {isOrganizer && (
+            <Button onClick={openAdd}>
+              <Plus className="h-4 w-4 mr-2" /> Add Category
+            </Button>
+          )}
+        </div>
       </div>
 
       {error && <div className="bg-destructive/10 text-destructive p-3 rounded-md">{error}</div>}

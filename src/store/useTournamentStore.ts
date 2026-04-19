@@ -57,6 +57,7 @@ interface TournamentState {
   tournamentName: string;
   activeTournamentCode: string | null;
   activeTournamentLabel: string | null;
+  activeTournamentAssociation: string | null;
   bracketData: BracketMatch[][] | null;
   participantCount: number;
   seedType: 'random' | 'ordered' | 'as-entered';
@@ -83,7 +84,7 @@ interface TournamentState {
   // Actions
   resetTournamentData: () => void;
   setTournamentName: (name: string) => void;
-  setActiveTournamentContext: (code: string | null, label?: string | null) => void;
+  setActiveTournamentContext: (code: string | null, label?: string | null, association?: string | null) => void;
   clearActiveTournamentContext: () => void;
   generateBracket: (
     participants: string[], 
@@ -130,6 +131,7 @@ export const useTournamentStore = create<TournamentState>()(
   tournamentName: 'Tournament Draw Sheet',
   activeTournamentCode: null,
   activeTournamentLabel: null,
+  activeTournamentAssociation: null,
   bracketData: null,
   participantCount: 0,
   seedType: 'random',
@@ -148,13 +150,15 @@ export const useTournamentStore = create<TournamentState>()(
   
   // Actions
   setTournamentName: (name) => set({ tournamentName: name }),
-  setActiveTournamentContext: (code, label) => set({
+  setActiveTournamentContext: (code, label, association) => set({
     activeTournamentCode: code,
     activeTournamentLabel: label ?? null,
+    activeTournamentAssociation: association ?? null,
   }),
   clearActiveTournamentContext: () => set({
     activeTournamentCode: null,
     activeTournamentLabel: null,
+    activeTournamentAssociation: null,
   }),
   // Reset all tournament data
   resetTournamentData: () => {
@@ -171,6 +175,7 @@ export const useTournamentStore = create<TournamentState>()(
       tournamentName: 'Tournament Draw Sheet',
       activeTournamentCode: null,
       activeTournamentLabel: null,
+      activeTournamentAssociation: null,
       seedType: 'random',
       internalRoundsPerMatch: 3,
       tournamentStarted: false,
@@ -1091,6 +1096,7 @@ export const useTournamentStore = create<TournamentState>()(
           tournamentName: state.tournamentName,
           activeTournamentCode: state.activeTournamentCode,
           activeTournamentLabel: state.activeTournamentLabel,
+          activeTournamentAssociation: state.activeTournamentAssociation,
           internalRoundsPerMatch: state.internalRoundsPerMatch,
           matchResults: state.matchResults,
           // Include tournamentId to ensure unique tournament identification

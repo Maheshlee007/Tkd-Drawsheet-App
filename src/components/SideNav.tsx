@@ -21,6 +21,7 @@ import {
   FileText,
   UserCog,
   Plus,
+  ClipboardCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTournamentStore } from '@/store/useTournamentStore';
@@ -116,6 +117,7 @@ export function SideNav({ className, onClose, onCollapse }: SideNavProps) {
       roles: ['admin', 'organizer', 'verification_officer', 'jury'],
       items: [
         { name: 'Check-in / Verify', href: '/verify', icon: QrCode, roles: ['admin', 'organizer', 'verification_officer'] },
+        { name: 'Verifier Stats', href: '/verifier-stats', icon: ClipboardCheck, roles: ['admin', 'organizer'] },
         { name: 'Jury Portal', href: '/jury', icon: Gavel, roles: ['admin', 'organizer', 'jury'] },
         { name: 'Live Board', href: '/board', icon: Monitor, roles: ['admin', 'organizer', 'board', 'jury', 'verification_officer', 'coach', 'player'] },
       ],
@@ -166,18 +168,18 @@ export function SideNav({ className, onClose, onCollapse }: SideNavProps) {
   // Mobile version (in a sheet)
   if (onClose) {
     return (
-      <div className={cn("h-full", className)}>
-        <div className="pb-12 h-full relative">
-          <div className="md:hidden absolute right-4 top-4">
-            <Button variant="ghost" size="icon" onClick={onClose}>
-              <X className="h-5 w-5" />
-              <span className="sr-only">Close</span>
-            </Button>
-          </div>
+      <div className={cn("h-full flex flex-col", className)}>
+        <div className="flex items-center justify-between px-4 pt-4 pb-2 flex-shrink-0">
+          <h2 className="text-lg font-semibold text-slate-800">Menu</h2>
+          <Button variant="ghost" size="icon" onClick={onClose}>
+            <X className="h-5 w-5" />
+            <span className="sr-only">Close</span>
+          </Button>
+        </div>
 
           {/* Role switcher for mobile multi-role users */}
           {hasMultipleRoles && (
-            <div className="px-4 pt-12 pb-2">
+            <div className="px-4 pb-2 flex-shrink-0">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Active Role</p>
               <div className="flex flex-wrap gap-1">
                 <button
@@ -205,6 +207,7 @@ export function SideNav({ className, onClose, onCollapse }: SideNavProps) {
             </div>
           )}
 
+        <div className="flex-1 overflow-y-auto pb-12">
           <div className={cn("space-y-4 py-4", hasMultipleRoles ? "pt-2" : "")}>
             {visibleSections.map((section) => (
               <div key={section.title} className="px-3 py-1">

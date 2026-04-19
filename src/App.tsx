@@ -31,6 +31,7 @@ import MatchDashboardPage from "@/pages/MatchDashboardPage";
 import AdminTournamentPage from "@/pages/AdminTournamentPage";
 import PlayersListPage from "@/pages/PlayersListPage";
 import UnifiedUserManagementPage from "@/pages/UnifiedUserManagementPage";
+import VerifierStatsPage from "@/pages/VerifierStatsPage";
 
 function Router() {
   return (
@@ -155,6 +156,11 @@ function Router() {
         <Route path="/players">
           <ProtectedRoute>
             <PlayersListPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/verifier-stats">
+          <ProtectedRoute>
+            <VerifierStatsPage />
           </ProtectedRoute>
         </Route>
 

@@ -172,8 +172,16 @@ export default function AdminTournamentPage() {
         await tournamentService.updateTournament(editingId, payload);
         toast({ title: 'Tournament updated' });
       } else {
-        await tournamentService.createTournament(payload);
+        const created = await tournamentService.createTournament(payload);
         toast({ title: 'Tournament created' });
+        setDialogOpen(false);
+        await loadTournaments();
+        // Prompt organizer assignment right after creation
+        if (created?.id) {
+          openAssign(created.id);
+        }
+        setSaving(false);
+        return;
       }
       setDialogOpen(false);
       await loadTournaments();

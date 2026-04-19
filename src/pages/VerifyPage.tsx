@@ -11,10 +11,11 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   QrCode, Search, CheckCircle, AlertCircle, User, Weight, CreditCard,
   MapPin, GraduationCap, Phone, Calendar, Shield, UserCog, Trophy, Camera, CameraOff,
-  PlusCircle, History, RefreshCw,
+  PlusCircle, History, RefreshCw, Pencil, Check, X,
 } from 'lucide-react';
 import jsQR from 'jsqr';
 import { checkinService, type CheckinPlayer, type CheckinData } from '@/services/checkinService';
+import { apiRequest } from '@/services/api';
 import { tournamentService, type Tournament } from '@/services/tournamentService';
 import { staffService, type StaffTournamentScope } from '@/services/staffService';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -31,6 +32,7 @@ const PAYMENT_REASONS = [
 ];
 
 type VerifyTournamentOption = Pick<Tournament, 'id' | 'tournament_code' | 'name' | 'status' | 'start_date' | 'end_date'> & {
+  association_type?: string | null;
   assigned_role?: string;
 };
 
@@ -74,6 +76,14 @@ export default function VerifyPage() {
   const [payUpdateNotes, setPayUpdateNotes] = useState('');
   const [payUpdating, setPayUpdating] = useState(false);
 
+  // Name correction
+  const [nameEditing, setNameEditing] = useState(false);
+  const [correctedName, setCorrectedName] = useState('');
+  const [nameSaving, setNameSaving] = useState(false);
+
+  // Weight category suggestion
+  const [suggestedCategory, setSuggestedCategory] = useState('');
+
   useEffect(() => {
     void loadTournamentScope();
     return () => stopScanner();
@@ -96,6 +106,7 @@ export default function VerifyPage() {
           status: t.status,
           start_date: t.start_date,
           end_date: t.end_date,
+          association_type: t.association_type,
         }));
       } else {
         const scoped = await staffService.myTournaments();
@@ -122,9 +133,15 @@ export default function VerifyPage() {
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-      });
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+        });
+      } catch {
+        // Fallback: some devices don't support facingMode
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      }
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -143,7 +160,7 @@ export default function VerifyPage() {
         canvas.height = video.videoHeight;
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
         if (code?.data) {
           // Extract player code - handle both plain code and encoded formats like "CODE|tournament|name"
           let rawCode = code.data.trim();
@@ -153,7 +170,7 @@ export default function VerifyPage() {
           stopScanner();
           lookupPlayer(cleaned);
         }
-      }, 250);
+      }, 150);
     } catch (err: any) {
       if (err?.name === 'NotAllowedError') {
         setError('Camera permission denied. Please allow camera access in your browser settings.');
@@ -242,7 +259,39 @@ export default function VerifyPage() {
     setPlayerCode(''); setPlayer(null); setError(''); setSuccess('');
     setWeight(''); setWeighInPassed(true); setTotalFee('500'); setAmountPaid('');
     setPaymentMethod('cash'); setPaymentRef(''); setNotes(''); stopScanner();
+    setNameEditing(false); setCorrectedName(''); setSuggestedCategory('');
   }
+
+  async function handleNameCorrection() {
+    if (!player || !correctedName.trim()) return;
+    setNameSaving(true);
+    try {
+      await apiRequest(`/api/players/${player.player.id}`, { method: 'PUT', body: { fullName: correctedName.trim() } });
+      toast({ title: 'Name updated' });
+      setNameEditing(false);
+      const updated = await checkinService.lookupPlayer(playerCode.trim(), selectedTournamentId || undefined);
+      setPlayer(updated);
+    } catch (e: any) {
+      toast({ title: 'Name update failed', description: e.message, variant: 'destructive' });
+    } finally { setNameSaving(false); }
+  }
+
+  // Auto-suggest weight category when weight changes
+  useEffect(() => {
+    if (!weight || !player) { setSuggestedCategory(''); return; }
+    const w = parseFloat(weight);
+    if (isNaN(w)) { setSuggestedCategory(''); return; }
+    // Check player's events for a matching weight category
+    const events = player.events || [];
+    for (const evt of events) {
+      if (evt.weight_category) {
+        setSuggestedCategory(evt.weight_category);
+        return;
+      }
+    }
+    // Fallback: show weight based on player's registered category
+    setSuggestedCategory(player.player.weight_category || '');
+  }, [weight, player]);
 
   const playerName = player?.player.full_name
     || `${player?.player.first_name ?? ''} ${player?.player.last_name ?? ''}`.trim();
@@ -254,7 +303,7 @@ export default function VerifyPage() {
       clearActiveTournamentContext();
       return;
     }
-    setActiveTournamentContext(selectedTournament.tournament_code, selectedTournament.name);
+    setActiveTournamentContext(selectedTournament.tournament_code, selectedTournament.name, selectedTournament.association_type ?? null);
   }, [selectedTournament, setActiveTournamentContext, clearActiveTournamentContext]);
 
   return (
@@ -371,8 +420,31 @@ export default function VerifyPage() {
                   <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-lg">
                     {playerName.charAt(0).toUpperCase()}
                   </div>
-                  <div>
-                    <p className="font-semibold text-lg">{playerName}</p>
+                  <div className="flex-1">
+                    {nameEditing ? (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={correctedName}
+                          onChange={e => setCorrectedName(e.target.value)}
+                          className="h-8 text-sm"
+                          placeholder="Corrected name..."
+                          autoFocus
+                        />
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={handleNameCorrection} disabled={nameSaving}>
+                          <Check className="h-3.5 w-3.5 text-green-600" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setNameEditing(false)}>
+                          <X className="h-3.5 w-3.5 text-red-500" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-semibold text-lg">{playerName}</p>
+                        <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => { setCorrectedName(playerName); setNameEditing(true); }}>
+                          <Pencil className="h-3 w-3 text-muted-foreground" />
+                        </Button>
+                      </div>
+                    )}
                     <p className="text-sm font-mono text-muted-foreground">{player.player.player_code}</p>
                   </div>
                 </div>
@@ -499,6 +571,10 @@ export default function VerifyPage() {
                       <span className="font-medium capitalize">{player.checkin.payment_method || '-'}</span>
                       <span className="text-muted-foreground">Time</span>
                       <span className="font-medium">{new Date(player.checkin.checked_in_at).toLocaleString()}</span>
+                      {player.checkin.verified_by_name && <>
+                        <span className="text-muted-foreground">Verified By</span>
+                        <span className="font-medium">{player.checkin.verified_by_name}</span>
+                      </>}
                     </div>
 
                     {balance > 0 && (
@@ -523,6 +599,9 @@ export default function VerifyPage() {
                   <div>
                     <Label>Actual Weight (kg)</Label>
                     <Input type="number" step="0.1" value={weight} onChange={e => setWeight(e.target.value)} placeholder="e.g. 66.5" />
+                    {suggestedCategory && (
+                      <p className="text-xs text-muted-foreground mt-1">Category: <span className="font-medium text-primary">{suggestedCategory}</span></p>
+                    )}
                   </div>
                   <div>
                     <Label>Weigh-in Result</Label>
@@ -534,6 +613,11 @@ export default function VerifyPage() {
                     </div>
                   </div>
                   <Separator />
+                  {authUser && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground bg-slate-50 px-3 py-1.5 rounded">
+                      <User className="h-3 w-3" /> Verifier: <span className="font-medium text-foreground">{authUser.name}</span>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2"><CreditCard className="h-4 w-4" /><Label className="font-medium">Payment</Label></div>
                   <div className="grid grid-cols-2 gap-3">
                     <div><Label>Total Fee (₹)</Label><Input type="number" value={totalFee} onChange={e => setTotalFee(e.target.value)} /></div>

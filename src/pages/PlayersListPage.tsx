@@ -6,10 +6,12 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Search, Users, Download, RefreshCw, CheckCircle, Clock, XCircle, AlertCircle } from 'lucide-react';
+import { Search, Users, Download, RefreshCw, CheckCircle, Clock, XCircle, AlertCircle, FileText } from 'lucide-react';
 import { apiRequest } from '@/services/api';
 import { tournamentService } from '@/services/tournamentService';
 import { useToast } from '@/hooks/use-toast';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface Player {
   id: string;
@@ -128,6 +130,61 @@ export default function PlayersListPage() {
     URL.revokeObjectURL(url);
   }
 
+  function exportPDF() {
+    const tournament = tournaments.find(t => t.id === selectedTournament);
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const title = tournament ? tournament.name : 'Players List';
+    const dateStr = tournament?.start_date ? new Date(tournament.start_date).toLocaleDateString() : new Date().toLocaleDateString();
+
+    // Group by category (age_category + weight_category + gender)
+    type CategoryGroup = { key: string; ageCategory: string; weightCategory: string; gender: string; players: Player[] };
+    const groups: CategoryGroup[] = [];
+    const grouped = new Map<string, Player[]>();
+    for (const p of filtered) {
+      const key = `${p.age_category ?? 'Unknown'}|${p.weight_category ?? 'Unknown'}|${p.gender}`;
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key)!.push(p);
+    }
+    for (const [key, players] of grouped) {
+      const [ageCategory, weightCategory, gender] = key.split('|');
+      groups.push({ key, ageCategory, weightCategory, gender, players });
+    }
+    groups.sort((a, b) => a.ageCategory.localeCompare(b.ageCategory) || a.gender.localeCompare(b.gender) || a.weightCategory.localeCompare(b.weightCategory));
+
+    doc.setFontSize(16);
+    doc.text(title, pageWidth / 2, 12, { align: 'center' });
+    doc.setFontSize(9);
+    doc.text(`Date: ${dateStr} | Total Players: ${filtered.length}`, pageWidth / 2, 18, { align: 'center' });
+    let y = 24;
+
+    for (const grp of groups) {
+      if (y > 180) { doc.addPage(); y = 12; }
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${grp.ageCategory} — ${grp.gender.toUpperCase()} — ${grp.weightCategory} (${grp.players.length})`, 14, y);
+      y += 2;
+
+      autoTable(doc, {
+        startY: y,
+        head: [['#', 'Code', 'Name', 'Weight', 'Belt', 'Coach', 'Club', 'Phone', 'Payment']],
+        body: grp.players.map((p, i) => [
+          String(i + 1), p.player_code, p.full_name, p.weight_kg ? `${p.weight_kg} kg` : '-',
+          p.belt_color ?? '-', p.coach_name ?? '-', p.club_name ?? '-', p.phone ?? '-', p.payment_status,
+        ]),
+        theme: 'grid',
+        styles: { fontSize: 7, cellPadding: 1.5 },
+        headStyles: { fillColor: [41, 65, 122], textColor: 255, fontStyle: 'bold', fontSize: 7 },
+        alternateRowStyles: { fillColor: [245, 247, 250] },
+        margin: { left: 14, right: 14 },
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 6;
+    }
+
+    doc.save(`${title.replace(/\s+/g, '_')}_Players.pdf`);
+  }
+
   return (
     <div className="space-y-6 p-4 max-w-7xl mx-auto">
       {/* Header */}
@@ -145,6 +202,9 @@ export default function PlayersListPage() {
           </Button>
           <Button variant="outline" onClick={exportCSV} disabled={filtered.length === 0}>
             <Download className="h-4 w-4 mr-2" /> Export CSV
+          </Button>
+          <Button variant="outline" onClick={exportPDF} disabled={filtered.length === 0}>
+            <FileText className="h-4 w-4 mr-2" /> Export PDF
           </Button>
         </div>
       </div>

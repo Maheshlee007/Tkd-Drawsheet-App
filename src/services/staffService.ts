@@ -34,6 +34,7 @@ export interface StaffTournamentScope {
   status: string;
   start_date: string;
   end_date: string;
+  association_type: string | null;
   assigned_role?: string;
 }
 

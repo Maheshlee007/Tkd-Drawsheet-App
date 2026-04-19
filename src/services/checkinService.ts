@@ -44,6 +44,7 @@ export interface CheckinPlayer {
     balance: number;
     payment_method: string;
     checked_in_at: string;
+    verified_by_name?: string;
   } | null;
 }
 
@@ -93,4 +94,22 @@ export const checkinService = {
     const res = await apiRequest<{ data: any }>(`/api/checkin/tournament/${tournamentId}/report`);
     return res.data;
   },
+
+  async getVerifierStats(tournamentId: string): Promise<VerifierStat[]> {
+    const res = await apiRequest<{ data: VerifierStat[] }>(`/api/checkin/tournament/${tournamentId}/verifier-stats`);
+    return res.data;
+  },
 };
+
+export interface VerifierStat {
+  verifier_id: string;
+  verifier_name: string;
+  verifier_email: string;
+  total_checkins: number;
+  completed: number;
+  pending_payment: number;
+  rejected: number;
+  total_collected: number;
+  first_checkin: string;
+  last_checkin: string;
+}
