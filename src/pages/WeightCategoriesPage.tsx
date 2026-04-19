@@ -11,6 +11,22 @@ import { weightCategoryService, type WeightCategory } from '@/services/weightCat
 import { useAuth } from '@/store/useAuthStore';
 
 const AGE_ORDER = ['Sub-Junior', 'Cadet', 'Junior', 'Senior', 'Veteran'];
+const SGFI_AGE_ORDER = ['U-14', 'U-17', 'U-19'];
+
+const AGE_RANGE_LABELS: Record<string, string> = {
+  'Sub-Junior': 'Sub-Junior (8-11 yrs)',
+  'Cadet': 'Cadet (12-14 yrs)',
+  'Junior': 'Junior (15-17 yrs)',
+  'Senior': 'Senior (17+ yrs)',
+  'Veteran': 'Veteran (41+ yrs)',
+  'U-14': 'U-14 (Under 14)',
+  'U-17': 'U-17 (Under 17)',
+  'U-19': 'U-19 (Under 19)',
+};
+
+function getAgeLabel(ageCategory: string): string {
+  return AGE_RANGE_LABELS[ageCategory] ?? ageCategory;
+}
 
 function formatWeightRange(category: WeightCategory): string {
   const min = Number(category.min_weight_kg);
@@ -21,8 +37,9 @@ function formatWeightRange(category: WeightCategory): string {
 }
 
 function ageSort(a: string, b: string): number {
-  const aIndex = AGE_ORDER.indexOf(a);
-  const bIndex = AGE_ORDER.indexOf(b);
+  const combined = [...AGE_ORDER, ...SGFI_AGE_ORDER];
+  const aIndex = combined.indexOf(a);
+  const bIndex = combined.indexOf(b);
   if (aIndex === -1 && bIndex === -1) return a.localeCompare(b);
   if (aIndex === -1) return 1;
   if (bIndex === -1) return -1;
@@ -69,7 +86,7 @@ export default function WeightCategoriesPage() {
       setCategories(cats);
       setAssociations(assocs);
       if (assocs.length > 0) {
-        const preferred = assocs.find((value) => value === 'WT') ?? assocs[0];
+        const preferred = assocs.find((value) => value === 'Association') ?? assocs.find((value) => value === 'WT') ?? assocs[0];
         setFilterAssoc((current) => current || preferred);
       }
     } catch (e: any) {
@@ -206,7 +223,7 @@ export default function WeightCategoriesPage() {
                 <SelectContent>
                   {associations.map((association) => (
                     <SelectItem key={association} value={association}>
-                      {association === 'State' ? 'State Association' : association}
+                      {association}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -235,7 +252,7 @@ export default function WeightCategoriesPage() {
 
           {ageChipsForAssociation.length > 0 && (
             <div className="mt-4">
-              <Label className="mb-2 block">Category Chips</Label>
+              <Label className="mb-2 block">Age Group Filter</Label>
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
@@ -252,9 +269,8 @@ export default function WeightCategoriesPage() {
                     size="sm"
                     variant={selectedAgeChip === ageCategory ? 'default' : 'outline'}
                     onClick={() => setSelectedAgeChip(ageCategory)}
-                    className="capitalize"
                   >
-                    {ageCategory}
+                    {getAgeLabel(ageCategory)}
                   </Button>
                 ))}
               </div>
@@ -275,7 +291,7 @@ export default function WeightCategoriesPage() {
           <Card key={ageCategory}>
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center justify-between">
-                <span>{ageCategory}</span>
+                <span>{getAgeLabel(ageCategory)}</span>
                 <Badge variant="outline" className="text-xs">
                   {rowCount} class{rowCount > 1 ? 'es' : ''}
                 </Badge>
@@ -395,7 +411,7 @@ export default function WeightCategoriesPage() {
                   <SelectContent>
                     {associations.map((association) => (
                       <SelectItem key={association} value={association}>
-                        {association === 'State' ? 'State Association' : association}
+                        {association}
                       </SelectItem>
                     ))}
                   </SelectContent>

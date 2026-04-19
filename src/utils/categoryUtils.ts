@@ -171,12 +171,10 @@ export function getAgeCategory(dob: string): string {
 
 function normalizeAssociationType(value?: string | null): string {
   const raw = String(value ?? '').trim().toLowerCase();
-  if (!raw || raw === 'wt' || raw === 'association' || raw === 'national' || raw === 'club' || raw === 'other') {
-    return 'WT';
-  }
-  if (raw === 'state') return 'State';
+  if (raw === 'association') return 'Association';
   if (raw === 'sgfi') return 'SGFI';
   if (raw === 'university') return 'University';
+  // WT, national, club, other, empty — all default to WT
   return 'WT';
 }
 

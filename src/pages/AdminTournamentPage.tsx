@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 
 const STATUSES = ['draft', 'published', 'registration_open', 'in_progress', 'completed', 'cancelled'];
-const ASSOCIATION_TYPES = ['WT', 'SGFI', 'University', 'State', 'National', 'Club', 'Other'];
+const ASSOCIATION_TYPES = ['Association', 'WT', 'SGFI', 'University', 'National', 'Club', 'Other'];
 
 const statusConfig: Record<string, { color: string; icon: typeof CheckCircle }> = {
   draft: { color: 'bg-slate-100 text-slate-700', icon: Clock },
@@ -56,7 +56,7 @@ const emptyForm: FormData = {
   startDate: '', endDate: '', registrationDeadline: '',
   entryFee: '500', maxParticipants: '200',
   organizerName: '', organizerEmail: '', organizerPhone: '',
-  associationType: 'WT',
+  associationType: 'Association',
 };
 
 function parseLinks(raw: string): string[] {
