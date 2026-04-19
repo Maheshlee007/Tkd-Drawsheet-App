@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Shield, Plus, Copy, CheckCircle, Users } from 'lucide-react';
+import { Shield, Plus, Copy, CheckCircle, Users, Eye, EyeOff } from 'lucide-react';
 import { judgeService, type JuryMember } from '@/services/judgeService';
 import { tournamentService } from '@/services/tournamentService';
 
@@ -22,6 +22,7 @@ export default function JuryManagementPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({ email: '', password: '', firstName: '', lastName: '' });
   const [creating, setCreating] = useState(false);
+  const [showCreatePassword, setShowCreatePassword] = useState(false);
   const [createdJury, setCreatedJury] = useState<{ juryCode: string } | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
 
@@ -70,6 +71,7 @@ export default function JuryManagementPage() {
       });
       setCreatedJury({ juryCode: jury.jury_code });
       setCreateForm({ email: '', password: '', firstName: '', lastName: '' });
+      setShowCreatePassword(false);
       await loadJudges();
     } catch (e: any) {
       setError(e.message);
@@ -214,7 +216,22 @@ export default function JuryManagementPage() {
                 </div>
                 <div>
                   <Label>Password *</Label>
-                  <Input type="password" value={createForm.password} onChange={e => setCreateForm({ ...createForm, password: e.target.value })} />
+                  <div className="relative">
+                    <Input
+                      type={showCreatePassword ? 'text' : 'password'}
+                      value={createForm.password}
+                      onChange={e => setCreateForm({ ...createForm, password: e.target.value })}
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCreatePassword(prev => !prev)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                      aria-label={showCreatePassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showCreatePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
                 </div>
               </div>
               <DialogFooter>

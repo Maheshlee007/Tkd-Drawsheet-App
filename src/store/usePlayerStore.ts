@@ -18,6 +18,9 @@ export interface PlayerRegistration {
   district?: string;
   pincode?: string;
   occupation?: string;
+  educationType?: 'school' | 'college' | 'occupation';
+  educationClass?: string;
+  registrationSecret?: string;
   // TKD details
   beltColor: string;
   danId?: string;

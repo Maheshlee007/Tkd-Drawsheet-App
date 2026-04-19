@@ -56,7 +56,7 @@ const emptyForm: FormData = {
   startDate: '', endDate: '', registrationDeadline: '',
   entryFee: '500', maxParticipants: '200',
   organizerName: '', organizerEmail: '', organizerPhone: '',
-  associationType: 'State',
+  associationType: 'WT',
 };
 
 function parseLinks(raw: string): string[] {
@@ -141,7 +141,7 @@ export default function AdminTournamentPage() {
       registrationDeadline: t.registration_deadline?.slice(0, 10) || '',
       entryFee: String(t.entry_fee || 500), maxParticipants: String(t.max_participants || 200),
       organizerName: t.organizer_name || '', organizerEmail: t.organizer_email || '',
-      organizerPhone: t.organizer_phone || '', associationType: t.association_type || 'State',
+      organizerPhone: t.organizer_phone || '', associationType: t.association_type || 'WT',
     });
     setDialogOpen(true);
   }

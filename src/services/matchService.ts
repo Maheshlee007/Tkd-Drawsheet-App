@@ -19,16 +19,19 @@ export interface Match {
 }
 
 export interface MatchResult {
-  winner_id: string;
-  win_method: string;
-  final_score_player1?: number;
-  final_score_player2?: number;
+  winnerId: string;
+  winnerName: string;
+  winMethod: string;
+  finalScore?: {
+    player1: number;
+    player2: number;
+  };
   rounds?: Array<{
-    round_number: number;
-    score_player1: number;
-    score_player2: number;
-    penalties_player1?: number;
-    penalties_player2?: number;
+    roundNumber: number;
+    player1Score: number;
+    player2Score: number;
+    player1Gamjeom?: number;
+    player2Gamjeom?: number;
   }>;
 }
 

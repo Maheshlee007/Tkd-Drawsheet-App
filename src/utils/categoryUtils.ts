@@ -28,6 +28,36 @@ export const AGE_CATEGORIES: AgeCategory[] = [
 
 // Standard weight categories per age group and gender
 export const WEIGHT_CATEGORIES: WeightCategory[] = [
+  // Sub-Junior Male
+  { name: 'Fin', minWeight: 0, maxWeight: 18, gender: 'male', ageCategory: 'Sub-Junior' },
+  { name: 'Super Fin', minWeight: 18, maxWeight: 21, gender: 'male', ageCategory: 'Sub-Junior' },
+  { name: 'Fly', minWeight: 21, maxWeight: 23, gender: 'male', ageCategory: 'Sub-Junior' },
+  { name: 'Super Fly', minWeight: 23, maxWeight: 25, gender: 'male', ageCategory: 'Sub-Junior' },
+  { name: 'Bantam', minWeight: 25, maxWeight: 27, gender: 'male', ageCategory: 'Sub-Junior' },
+  { name: 'Feather', minWeight: 27, maxWeight: 29, gender: 'male', ageCategory: 'Sub-Junior' },
+  { name: 'Light', minWeight: 29, maxWeight: 32, gender: 'male', ageCategory: 'Sub-Junior' },
+  { name: 'Welter', minWeight: 32, maxWeight: 35, gender: 'male', ageCategory: 'Sub-Junior' },
+  { name: 'Light Middle', minWeight: 35, maxWeight: 38, gender: 'male', ageCategory: 'Sub-Junior' },
+  { name: 'Middle', minWeight: 38, maxWeight: 41, gender: 'male', ageCategory: 'Sub-Junior' },
+  { name: 'Light Heavy', minWeight: 41, maxWeight: 44, gender: 'male', ageCategory: 'Sub-Junior' },
+  { name: 'Heavy', minWeight: 44, maxWeight: 50, gender: 'male', ageCategory: 'Sub-Junior' },
+  { name: 'Super Heavy', minWeight: 50, maxWeight: 999, gender: 'male', ageCategory: 'Sub-Junior' },
+
+  // Sub-Junior Female
+  { name: 'Fin', minWeight: 0, maxWeight: 16, gender: 'female', ageCategory: 'Sub-Junior' },
+  { name: 'Super Fin', minWeight: 16, maxWeight: 18, gender: 'female', ageCategory: 'Sub-Junior' },
+  { name: 'Fly', minWeight: 18, maxWeight: 20, gender: 'female', ageCategory: 'Sub-Junior' },
+  { name: 'Super Fly', minWeight: 20, maxWeight: 22, gender: 'female', ageCategory: 'Sub-Junior' },
+  { name: 'Bantam', minWeight: 22, maxWeight: 24, gender: 'female', ageCategory: 'Sub-Junior' },
+  { name: 'Feather', minWeight: 24, maxWeight: 26, gender: 'female', ageCategory: 'Sub-Junior' },
+  { name: 'Light', minWeight: 26, maxWeight: 29, gender: 'female', ageCategory: 'Sub-Junior' },
+  { name: 'Welter', minWeight: 29, maxWeight: 32, gender: 'female', ageCategory: 'Sub-Junior' },
+  { name: 'Light Middle', minWeight: 32, maxWeight: 35, gender: 'female', ageCategory: 'Sub-Junior' },
+  { name: 'Middle', minWeight: 35, maxWeight: 38, gender: 'female', ageCategory: 'Sub-Junior' },
+  { name: 'Light Heavy', minWeight: 38, maxWeight: 41, gender: 'female', ageCategory: 'Sub-Junior' },
+  { name: 'Heavy', minWeight: 41, maxWeight: 47, gender: 'female', ageCategory: 'Sub-Junior' },
+  { name: 'Super Heavy', minWeight: 47, maxWeight: 999, gender: 'female', ageCategory: 'Sub-Junior' },
+
   // Senior Male
   { name: 'Fin', minWeight: 0, maxWeight: 54, gender: 'male', ageCategory: 'Senior' },
   { name: 'Fly', minWeight: 54, maxWeight: 58, gender: 'male', ageCategory: 'Senior' },
@@ -67,9 +97,10 @@ export const WEIGHT_CATEGORIES: WeightCategory[] = [
   { name: 'Feather', minWeight: 46, maxWeight: 49, gender: 'female', ageCategory: 'Junior' },
   { name: 'Light', minWeight: 49, maxWeight: 52, gender: 'female', ageCategory: 'Junior' },
   { name: 'Welter', minWeight: 52, maxWeight: 55, gender: 'female', ageCategory: 'Junior' },
-  { name: 'Middle', minWeight: 55, maxWeight: 59, gender: 'female', ageCategory: 'Junior' },
-  { name: 'Light Heavy', minWeight: 59, maxWeight: 63, gender: 'female', ageCategory: 'Junior' },
-  { name: 'Heavy', minWeight: 63, maxWeight: 68, gender: 'female', ageCategory: 'Junior' },
+  { name: 'Light Middle', minWeight: 55, maxWeight: 59, gender: 'female', ageCategory: 'Junior' },
+  { name: 'Middle', minWeight: 59, maxWeight: 63, gender: 'female', ageCategory: 'Junior' },
+  { name: 'Light Heavy', minWeight: 63, maxWeight: 68, gender: 'female', ageCategory: 'Junior' },
+  { name: 'Heavy', minWeight: 68, maxWeight: 999, gender: 'female', ageCategory: 'Junior' },
 
   // Cadet Male
   { name: 'Fin', minWeight: 0, maxWeight: 33, gender: 'male', ageCategory: 'Cadet' },
@@ -78,9 +109,10 @@ export const WEIGHT_CATEGORIES: WeightCategory[] = [
   { name: 'Feather', minWeight: 41, maxWeight: 45, gender: 'male', ageCategory: 'Cadet' },
   { name: 'Light', minWeight: 45, maxWeight: 49, gender: 'male', ageCategory: 'Cadet' },
   { name: 'Welter', minWeight: 49, maxWeight: 53, gender: 'male', ageCategory: 'Cadet' },
-  { name: 'Middle', minWeight: 53, maxWeight: 57, gender: 'male', ageCategory: 'Cadet' },
-  { name: 'Heavy', minWeight: 57, maxWeight: 61, gender: 'male', ageCategory: 'Cadet' },
-  { name: 'Super Heavy', minWeight: 61, maxWeight: 999, gender: 'male', ageCategory: 'Cadet' },
+  { name: 'Light Middle', minWeight: 53, maxWeight: 57, gender: 'male', ageCategory: 'Cadet' },
+  { name: 'Middle', minWeight: 57, maxWeight: 61, gender: 'male', ageCategory: 'Cadet' },
+  { name: 'Light Heavy', minWeight: 61, maxWeight: 65, gender: 'male', ageCategory: 'Cadet' },
+  { name: 'Heavy', minWeight: 65, maxWeight: 999, gender: 'male', ageCategory: 'Cadet' },
 
   // Cadet Female
   { name: 'Fin', minWeight: 0, maxWeight: 29, gender: 'female', ageCategory: 'Cadet' },
@@ -89,9 +121,10 @@ export const WEIGHT_CATEGORIES: WeightCategory[] = [
   { name: 'Feather', minWeight: 37, maxWeight: 41, gender: 'female', ageCategory: 'Cadet' },
   { name: 'Light', minWeight: 41, maxWeight: 44, gender: 'female', ageCategory: 'Cadet' },
   { name: 'Welter', minWeight: 44, maxWeight: 47, gender: 'female', ageCategory: 'Cadet' },
-  { name: 'Middle', minWeight: 47, maxWeight: 51, gender: 'female', ageCategory: 'Cadet' },
-  { name: 'Heavy', minWeight: 51, maxWeight: 55, gender: 'female', ageCategory: 'Cadet' },
-  { name: 'Super Heavy', minWeight: 55, maxWeight: 999, gender: 'female', ageCategory: 'Cadet' },
+  { name: 'Light Middle', minWeight: 47, maxWeight: 51, gender: 'female', ageCategory: 'Cadet' },
+  { name: 'Middle', minWeight: 51, maxWeight: 55, gender: 'female', ageCategory: 'Cadet' },
+  { name: 'Light Heavy', minWeight: 55, maxWeight: 59, gender: 'female', ageCategory: 'Cadet' },
+  { name: 'Heavy', minWeight: 59, maxWeight: 999, gender: 'female', ageCategory: 'Cadet' },
 ];
 
 // Belt levels
@@ -105,7 +138,6 @@ export const BELT_LEVELS = [
   'Blue Belt (Stripe)',
   'Red Belt',
   'Red Belt (Stripe)',
-  'Black Belt 1st Dan (Poom)',
   'Black Belt 1st Dan',
   'Black Belt 2nd Dan',
   'Black Belt 3rd Dan',
@@ -135,6 +167,28 @@ export function getAgeCategory(dob: string): string {
   const age = calculateAge(dob);
   const category = AGE_CATEGORIES.find(c => age >= c.minAge && age <= c.maxAge);
   return category?.name || 'Unknown';
+}
+
+function normalizeAssociationType(value?: string | null): string {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (!raw || raw === 'wt' || raw === 'association' || raw === 'national' || raw === 'club' || raw === 'other') {
+    return 'WT';
+  }
+  if (raw === 'state') return 'State';
+  if (raw === 'sgfi') return 'SGFI';
+  if (raw === 'university') return 'University';
+  return 'WT';
+}
+
+export function getAgeCategoryForAssociation(dob: string, associationType?: string | null): string {
+  const normalized = normalizeAssociationType(associationType);
+  if (normalized === 'SGFI') {
+    const age = calculateAge(dob);
+    if (age <= 14) return 'U-14';
+    if (age <= 17) return 'U-17';
+    return 'U-19';
+  }
+  return getAgeCategory(dob);
 }
 
 /**

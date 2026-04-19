@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { passwordService } from '@/services/playerHistoryService';
-import { KeyRound, ArrowLeft, Loader2 } from 'lucide-react';
+import { KeyRound, ArrowLeft, Loader2, Eye, EyeOff } from 'lucide-react';
 
 export default function ForgotPasswordPage() {
   const [, navigate] = useLocation();
@@ -15,6 +15,7 @@ export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [resetToken, setResetToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [loadingRequest, setLoadingRequest] = useState(false);
   const [loadingReset, setLoadingReset] = useState(false);
 
@@ -110,13 +111,23 @@ export default function ForgotPasswordPage() {
 
           <div>
             <Label>New Password</Label>
-            <Input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="Minimum 8 characters"
-              className="mt-1"
-            />
+            <div className="relative mt-1">
+              <Input
+                type={showNewPassword ? 'text' : 'password'}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Minimum 8 characters"
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewPassword(prev => !prev)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                aria-label={showNewPassword ? 'Hide password' : 'Show password'}
+              >
+                {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
 
           <Button className="w-full" onClick={() => void handleCompleteReset()} disabled={loadingReset}>

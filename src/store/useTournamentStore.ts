@@ -55,6 +55,8 @@ interface TournamentState {
   // Data
   tournamentId: string; // Unique identifier for each tournament
   tournamentName: string;
+  activeTournamentCode: string | null;
+  activeTournamentLabel: string | null;
   bracketData: BracketMatch[][] | null;
   participantCount: number;
   seedType: 'random' | 'ordered' | 'as-entered';
@@ -81,6 +83,8 @@ interface TournamentState {
   // Actions
   resetTournamentData: () => void;
   setTournamentName: (name: string) => void;
+  setActiveTournamentContext: (code: string | null, label?: string | null) => void;
+  clearActiveTournamentContext: () => void;
   generateBracket: (
     participants: string[], 
     seedType: 'random' | 'ordered' | 'as-entered',
@@ -124,6 +128,8 @@ export const useTournamentStore = create<TournamentState>()(
       (set, get) => ({  // Initial State
   tournamentId: Date.now().toString(), // Unique ID for each tournament
   tournamentName: 'Tournament Draw Sheet',
+  activeTournamentCode: null,
+  activeTournamentLabel: null,
   bracketData: null,
   participantCount: 0,
   seedType: 'random',
@@ -142,6 +148,14 @@ export const useTournamentStore = create<TournamentState>()(
   
   // Actions
   setTournamentName: (name) => set({ tournamentName: name }),
+  setActiveTournamentContext: (code, label) => set({
+    activeTournamentCode: code,
+    activeTournamentLabel: label ?? null,
+  }),
+  clearActiveTournamentContext: () => set({
+    activeTournamentCode: null,
+    activeTournamentLabel: null,
+  }),
   // Reset all tournament data
   resetTournamentData: () => {
     // Generate a new tournament ID to ensure complete fresh start
@@ -155,6 +169,8 @@ export const useTournamentStore = create<TournamentState>()(
       isPending: false,
       // Reset to default values
       tournamentName: 'Tournament Draw Sheet',
+      activeTournamentCode: null,
+      activeTournamentLabel: null,
       seedType: 'random',
       internalRoundsPerMatch: 3,
       tournamentStarted: false,
@@ -1073,6 +1089,8 @@ export const useTournamentStore = create<TournamentState>()(
           // Only persist these fields
           bracketData: state.bracketData,
           tournamentName: state.tournamentName,
+          activeTournamentCode: state.activeTournamentCode,
+          activeTournamentLabel: state.activeTournamentLabel,
           internalRoundsPerMatch: state.internalRoundsPerMatch,
           matchResults: state.matchResults,
           // Include tournamentId to ensure unique tournament identification

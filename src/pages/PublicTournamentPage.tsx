@@ -109,6 +109,18 @@ export default function PublicTournamentPage() {
 
   async function handleLoadBracket(categoryId: string) {
     if (!tournament) return;
+
+    if (!['in_progress', 'completed'].includes(String(tournament.status))) {
+      setModalError('Tournament has not started yet. Bracket cannot be generated right now.');
+      return;
+    }
+
+    const categoryMeta = categories.find((c) => c.id === categoryId);
+    if (categoryMeta && !categoryMeta.is_started) {
+      setModalError('This weight category has not started yet. Bracket is currently unavailable.');
+      return;
+    }
+
     setSelectedCategoryId(categoryId);
     setLoadingBracket(true);
     try {
@@ -233,6 +245,7 @@ export default function PublicTournamentPage() {
                     type="button"
                     key={cat.id}
                     onClick={() => void handleLoadBracket(cat.id)}
+                    disabled={!cat.is_started}
                     className={`rounded-md border p-3 text-left transition ${selectedCategoryId === cat.id ? 'border-blue-500 bg-blue-50' : 'hover:bg-slate-50'}`}
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -269,9 +282,9 @@ export default function PublicTournamentPage() {
                     <p className="text-sm font-medium mb-2">Players</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                       {boardCategory.players.map((p, idx) => (
-                        <div key={String(p.player_code ?? idx)} className="rounded border px-3 py-2 text-sm">
+                        <div key={`${String(p.full_name ?? '')}-${idx}`} className="rounded border px-3 py-2 text-sm">
                           <p className="font-medium">{String(p.full_name ?? '-')}</p>
-                          <p className="text-xs text-slate-500">{String(p.player_code ?? '-')}</p>
+                          <p className="text-xs text-slate-500">Coach: {String(p.coach_name ?? '-')} • School: {String(p.school_college ?? '-')}</p>
                         </div>
                       ))}
                     </div>

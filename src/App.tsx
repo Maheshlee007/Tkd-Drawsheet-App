@@ -22,18 +22,15 @@ import PlayerRegistrationPage from "@/pages/PlayerRegistrationPage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import WeightCategoriesPage from "@/pages/WeightCategoriesPage";
 import MatchOverviewPage from "@/pages/MatchOverviewPage";
-import AdminUsersPage from "@/pages/AdminUsersPage";
 import AdminAuditPage from "@/pages/AdminAuditPage";
 import CoachRegistrationPage from "@/pages/CoachRegistrationPage";
 import VerifyPage from "@/pages/VerifyPage";
 import JuryPortalPage from "@/pages/JuryPortalPage";
-import JuryManagementPage from "@/pages/JuryManagementPage";
 import BoardPage from "@/pages/BoardPage";
-import StaffAssignmentPage from "@/pages/StaffAssignmentPage";
 import MatchDashboardPage from "@/pages/MatchDashboardPage";
-import PasswordResetPage from "@/pages/PasswordResetPage";
 import AdminTournamentPage from "@/pages/AdminTournamentPage";
 import PlayersListPage from "@/pages/PlayersListPage";
+import UnifiedUserManagementPage from "@/pages/UnifiedUserManagementPage";
 
 function Router() {
   return (
@@ -129,7 +126,7 @@ function Router() {
         </Route>
         <Route path="/admin/users">
           <ProtectedRoute>
-            <AdminUsersPage />
+            <UnifiedUserManagementPage />
           </ProtectedRoute>
         </Route>
         <Route path="/admin/audit">
@@ -145,24 +142,9 @@ function Router() {
         <Route path="/jury">
           <JuryPortalPage />
         </Route>
-        <Route path="/jury-management">
-          <ProtectedRoute>
-            <JuryManagementPage />
-          </ProtectedRoute>
-        </Route>
-        <Route path="/staff-assignment">
-          <ProtectedRoute>
-            <StaffAssignmentPage />
-          </ProtectedRoute>
-        </Route>
         <Route path="/match-dashboard">
           <ProtectedRoute>
             <MatchDashboardPage />
-          </ProtectedRoute>
-        </Route>
-        <Route path="/password-reset">
-          <ProtectedRoute>
-            <PasswordResetPage />
           </ProtectedRoute>
         </Route>
         <Route path="/admin/tournaments">

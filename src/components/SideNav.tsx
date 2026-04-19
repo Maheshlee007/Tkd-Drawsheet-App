@@ -15,13 +15,11 @@ import {
   Scale,
   BarChart3,
   Trophy,
-  Shield,
   Monitor,
   QrCode,
   Gavel,
   FileText,
   UserCog,
-  LayoutGrid,
   Plus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -101,10 +99,8 @@ export function SideNav({ className, onClose, onCollapse }: SideNavProps) {
       roles: ['admin', 'organizer'],
       items: [
         { name: 'Weight Categories', href: '/weight-categories', icon: Scale },
-        { name: 'Staff Assignment', href: '/staff-assignment', icon: LayoutGrid },
-        { name: 'Jury Management', href: '/jury-management', icon: Shield },
+        { name: 'User Management', href: '/admin/users', icon: UserCog },
         { name: 'Match Dashboard', href: '/match-dashboard', icon: BarChart3 },
-        { name: 'Password Reset', href: '/password-reset', icon: UserCog },
       ],
     },
     {

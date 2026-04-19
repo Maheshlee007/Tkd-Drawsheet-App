@@ -1,13 +1,15 @@
 import jsPDF from 'jspdf';
 import { PlayerRegistration } from '@/store/usePlayerStore';
 
-/**
- * Generate a downloadable PDF registration card for a player.
- */
-export async function generateRegistrationPDF(
+interface RegistrationPdfOptions {
+  tournamentName?: string;
+}
+
+function buildRegistrationPDFDoc(
   player: PlayerRegistration,
-  qrDataUrl?: string | null
-): Promise<void> {
+  qrDataUrl?: string | null,
+  options?: RegistrationPdfOptions
+): jsPDF {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 15;
@@ -15,21 +17,40 @@ export async function generateRegistrationPDF(
 
   // --- Header ---
   doc.setFillColor(30, 41, 59); // slate-800
-  doc.rect(0, 0, pageWidth, 35, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(18);
+  doc.rect(0, 0, pageWidth, 40, 'F');
+  doc.setFillColor(220, 38, 38);
+  doc.rect(0, 36, pageWidth, 4, 'F');
+
+  // WT emblem
+  const badgeCenterX = margin + 8;
+  const badgeCenterY = 18;
+  doc.setFillColor(255, 255, 255);
+  doc.circle(badgeCenterX, badgeCenterY, 8, 'F');
+  doc.setDrawColor(220, 38, 38);
+  doc.setLineWidth(0.7);
+  doc.circle(badgeCenterX, badgeCenterY, 8, 'S');
+  doc.setTextColor(220, 38, 38);
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
-  doc.text('TOURNAMENT REGISTRATION DETAILS', pageWidth / 2, 15, { align: 'center' });
+  doc.text('WT', badgeCenterX, badgeCenterY + 2.5, { align: 'center' });
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.text('PLAYER REGISTRATION CARD', pageWidth / 2, 14, { align: 'center' });
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.text((options?.tournamentName || 'TOURNAMENT').toUpperCase(), pageWidth / 2, 21, { align: 'center' });
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  doc.text('Taekwondo Draw Sheet System', pageWidth / 2, 23, { align: 'center' });
+  doc.text('World Taekwondo Registration Sheet', pageWidth / 2, 27, { align: 'center' });
 
   // Player code
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
-  doc.text(`Code: ${player.playerCode}`, pageWidth / 2, 31, { align: 'center' });
+  doc.text(`Code: ${player.playerCode}`, pageWidth / 2, 33, { align: 'center' });
 
-  y = 45;
+  y = 50;
 
   // --- Photo placeholder (right side) and QR (below photo) ---
   const photoX = pageWidth - margin - 40;
@@ -164,7 +185,12 @@ export async function generateRegistrationPDF(
   doc.setTextColor(150);
   doc.setFontSize(7);
   doc.text(`Generated: ${new Date().toLocaleDateString()} | Player Code: ${player.playerCode}`, margin, y + 5);
-  doc.text('This card must be presented at weigh-in along with valid ID.', margin, y + 9);
+  if (options?.tournamentName) {
+    doc.text(`Tournament: ${options.tournamentName}`, margin, y + 9);
+    doc.text('This card must be presented at weigh-in along with valid ID.', margin, y + 13);
+  } else {
+    doc.text('This card must be presented at weigh-in along with valid ID.', margin, y + 9);
+  }
 
   // --- Signature line ---
   y += 14;
@@ -174,6 +200,26 @@ export async function generateRegistrationPDF(
   doc.setFontSize(7);
   doc.text('Official Stamp / Signature', pageWidth - margin - 30, y + 4, { align: 'center' });
 
-  // Save
+  return doc;
+}
+
+/**
+ * Generate a downloadable PDF registration card for a player.
+ */
+export async function generateRegistrationPDF(
+  player: PlayerRegistration,
+  qrDataUrl?: string | null,
+  options?: RegistrationPdfOptions
+): Promise<void> {
+  const doc = buildRegistrationPDFDoc(player, qrDataUrl, options);
   doc.save(`${player.playerCode}-registration-card.pdf`);
+}
+
+export async function generateRegistrationPDFBlob(
+  player: PlayerRegistration,
+  qrDataUrl?: string | null,
+  options?: RegistrationPdfOptions
+): Promise<Blob> {
+  const doc = buildRegistrationPDFDoc(player, qrDataUrl, options);
+  return doc.output('blob');
 }

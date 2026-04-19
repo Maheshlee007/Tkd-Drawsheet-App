@@ -26,7 +26,13 @@ import { PDFGenOptions, useBracketPDF } from "@/hooks/useBracketPDF";
 const Navbar = () => {
   const [location, navigate] = useLocation();
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const { bracketData, tournamentName, participantCount } = useTournamentStore();
+  const {
+    bracketData,
+    tournamentName,
+    participantCount,
+    activeTournamentCode,
+    activeTournamentLabel,
+  } = useTournamentStore();
   const { generateBracketPDF, previewBracketPDF, orientation } = useBracketPDF();
   const [pdfDialogOptionsOpen, setPdfDialogOptionsOpen] = useState(false);
   const { user } = useAuthStore();
@@ -68,6 +74,7 @@ const Navbar = () => {
   };
 
   const primaryRole = user?.roles?.[0];
+  const canSeeActiveTournament = !!user?.roles?.some((role) => ['organizer', 'jury', 'admin'].includes(String(role).toLowerCase()));
 
   return (<>
     <div className="w-full bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
@@ -101,6 +108,16 @@ const Navbar = () => {
 
         {/* Right: Actions + User */}
         <div className="flex items-center space-x-2">
+          {canSeeActiveTournament && activeTournamentCode && (
+            <Badge
+              variant="secondary"
+              className="hidden md:inline-flex font-mono text-[11px]"
+              title={activeTournamentLabel || 'Active tournament'}
+            >
+              Active: {activeTournamentCode}
+            </Badge>
+          )}
+
           <Button
             onClick={handleFullscreenToggle}
             variant="ghost"

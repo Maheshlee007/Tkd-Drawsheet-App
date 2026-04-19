@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
-import { UserCog, Search, UserPlus, CheckCircle, XCircle, Shield, Eye, X, Users, ShieldCheck, ChevronsUpDown, ChevronDown } from 'lucide-react';
+import { UserCog, Search, UserPlus, CheckCircle, XCircle, Shield, Eye, EyeOff, X, Users, ShieldCheck, ChevronsUpDown, ChevronDown } from 'lucide-react';
 import { adminService, type StaffUser, type RoleInfo } from '@/services/adminService';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -108,6 +108,7 @@ export default function AdminUsersPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({ email: '', password: '', firstName: '', lastName: '', phone: '', roles: [] as string[] });
   const [creating, setCreating] = useState(false);
+  const [showCreatePassword, setShowCreatePassword] = useState(false);
 
   // Role management dialog
   const [roleOpen, setRoleOpen] = useState(false);
@@ -192,6 +193,7 @@ export default function AdminUsersPage() {
       }
       setCreateOpen(false);
       setCreateForm({ email: '', password: '', firstName: '', lastName: '', phone: '', roles: [] });
+      setShowCreatePassword(false);
       await loadData();
       toast({ title: 'User created' });
     } catch (e: any) {
@@ -432,7 +434,22 @@ export default function AdminUsersPage() {
             </div>
             <div>
               <Label>Password *</Label>
-              <Input type="password" value={createForm.password} onChange={e => setCreateForm({ ...createForm, password: e.target.value })} />
+              <div className="relative">
+                <Input
+                  type={showCreatePassword ? 'text' : 'password'}
+                  value={createForm.password}
+                  onChange={e => setCreateForm({ ...createForm, password: e.target.value })}
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCreatePassword(prev => !prev)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                  aria-label={showCreatePassword ? 'Hide password' : 'Show password'}
+                >
+                  {showCreatePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
             <div>
               <Label>Phone</Label>

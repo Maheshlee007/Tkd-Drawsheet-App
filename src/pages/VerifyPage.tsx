@@ -18,6 +18,7 @@ import { checkinService, type CheckinPlayer, type CheckinData } from '@/services
 import { tournamentService, type Tournament } from '@/services/tournamentService';
 import { staffService, type StaffTournamentScope } from '@/services/staffService';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useTournamentStore } from '@/store/useTournamentStore';
 import { useToast } from '@/hooks/use-toast';
 
 const PAYMENT_REASONS = [
@@ -36,6 +37,8 @@ type VerifyTournamentOption = Pick<Tournament, 'id' | 'tournament_code' | 'name'
 export default function VerifyPage() {
   const { toast } = useToast();
   const authUser = useAuthStore((s) => s.user);
+  const setActiveTournamentContext = useTournamentStore((state) => state.setActiveTournamentContext);
+  const clearActiveTournamentContext = useTournamentStore((state) => state.clearActiveTournamentContext);
   const [playerCode, setPlayerCode] = useState('');
   const [player, setPlayer] = useState<CheckinPlayer | null>(null);
   const [loading, setLoading] = useState(false);
@@ -245,6 +248,14 @@ export default function VerifyPage() {
     || `${player?.player.first_name ?? ''} ${player?.player.last_name ?? ''}`.trim();
   const balance = player?.checkin ? Number(player.checkin.balance) : 0;
   const selectedTournament = availableTournaments.find((t) => t.id === selectedTournamentId) ?? null;
+
+  useEffect(() => {
+    if (!selectedTournament) {
+      clearActiveTournamentContext();
+      return;
+    }
+    setActiveTournamentContext(selectedTournament.tournament_code, selectedTournament.name);
+  }, [selectedTournament, setActiveTournamentContext, clearActiveTournamentContext]);
 
   return (
     <div className="space-y-6 p-4 max-w-5xl mx-auto">

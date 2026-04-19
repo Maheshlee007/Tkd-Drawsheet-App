@@ -13,6 +13,8 @@ export interface TeamEntryPayload {
 
 export interface PlayerRegistrationPayload {
   tournamentCode: string;
+  registrationMode?: 'new' | 'existing';
+  updateReason?: string;
   fullName: string;
   dateOfBirth: string;
   gender: 'male' | 'female';
@@ -24,6 +26,9 @@ export interface PlayerRegistrationPayload {
   district?: string;
   pincode?: string;
   occupation?: string;
+  educationType?: 'school' | 'college' | 'occupation';
+  educationClass?: string;
+  registrationSecret?: string;
   beltColor: string;
   danId?: string;
   weight: number;
@@ -54,6 +59,34 @@ export interface RegisteredPlayer extends PlayerRegistration {
   }>;
 }
 
+export interface ExistingPlayerProfile {
+  playerCode: string;
+  fullName: string;
+  dateOfBirth: string;
+  gender: 'male' | 'female';
+  guardianName?: string;
+  phone: string;
+  email: string;
+  address?: string;
+  state?: string;
+  district?: string;
+  pincode?: string;
+  occupation?: string;
+  educationType?: 'school' | 'college' | 'occupation';
+  educationClass?: string;
+  beltColor: string;
+  danId?: string;
+  weight: number;
+  club?: string;
+  coach?: string;
+  experience?: string;
+  registrationSecretConfigured?: boolean;
+  aadhaarVerified: boolean;
+  emailVerified: boolean;
+  dobVerified: boolean;
+  events: string[];
+}
+
 const STORAGE_KEY = 'tkd-players';
 
 function getStoredPlayers(): PlayerRegistration[] {
@@ -81,6 +114,8 @@ function normalizeApiPlayer(data: any, tournamentCode?: string): RegisteredPlaye
     district: data.district ?? undefined,
     pincode: data.pincode ?? undefined,
     occupation: data.occupation ?? undefined,
+    educationType: data.education_type ?? undefined,
+    educationClass: data.education_class ?? undefined,
     beltColor: data.belt_color,
     danId: data.dan_id ?? undefined,
     weight: Number(data.weight_kg ?? 0),
@@ -151,19 +186,18 @@ export const playerService = {
 
   async create(player: PlayerRegistrationPayload): Promise<RegisteredPlayer> {
     if (isApiConfigured()) {
-      try {
-        const res = await apiRequest<{ data: any }>('/api/players/register', {
-          method: 'POST',
-          body: {
-            ...player,
-            weightKg: player.weight,
-            coachName: player.coach,
-            experienceYears: player.experience ? Number.parseInt(player.experience, 10) || undefined : undefined,
-          },
-        });
-        return normalizeApiPlayer(res.data, player.tournamentCode);
-      } catch { /* fallback */ }
+      const res = await apiRequest<{ data: any }>('/api/players/register', {
+        method: 'POST',
+        body: {
+          ...player,
+          weightKg: player.weight,
+          coachName: player.coach,
+          experienceYears: player.experience ? Number.parseInt(player.experience, 10) || undefined : undefined,
+        },
+      });
+      return normalizeApiPlayer(res.data, player.tournamentCode);
     }
+
     const localPlayer: RegisteredPlayer = {
       id: crypto.randomUUID(),
       playerCode: `LOCAL-${Date.now()}`,
@@ -179,6 +213,9 @@ export const playerService = {
       district: player.district,
       pincode: player.pincode,
       occupation: player.occupation,
+      educationType: player.educationType,
+      educationClass: player.educationClass,
+      registrationSecret: player.registrationSecret,
       beltColor: player.beltColor,
       danId: player.danId,
       weight: player.weight,
@@ -202,6 +239,47 @@ export const playerService = {
     players.push(localPlayer);
     setStoredPlayers(players);
     return localPlayer;
+  },
+
+  async lookupExistingProfile(playerCode: string, secretKey: string): Promise<ExistingPlayerProfile> {
+    if (!isApiConfigured()) {
+      const local = getStoredPlayers().find(
+        (p) => p.playerCode.toUpperCase() === playerCode.trim().toUpperCase()
+      );
+      if (!local) {
+        throw new Error('Player profile not found.');
+      }
+      return {
+        playerCode: local.playerCode,
+        fullName: local.fullName,
+        dateOfBirth: local.dateOfBirth,
+        gender: local.gender,
+        guardianName: local.guardianName,
+        phone: local.phone,
+        email: local.email,
+        address: local.address,
+        state: local.state,
+        district: local.district,
+        pincode: local.pincode,
+        occupation: local.occupation,
+        beltColor: local.beltColor,
+        danId: local.danId,
+        weight: local.weight,
+        club: local.club,
+        coach: local.coach,
+        experience: local.experience,
+        aadhaarVerified: local.aadhaarVerified,
+        emailVerified: local.emailVerified,
+        dobVerified: local.dobVerified,
+        events: ['kyorugi'],
+      };
+    }
+
+    const res = await apiRequest<{ data: { player: ExistingPlayerProfile } }>(
+      `/api/players/profile/${encodeURIComponent(playerCode.trim())}?secretKey=${encodeURIComponent(secretKey.trim())}`,
+      { method: 'GET', skipAuth: true }
+    );
+    return res.data.player;
   },
 
   async update(playerCode: string, updates: Partial<PlayerRegistration>): Promise<PlayerRegistration | null> {
