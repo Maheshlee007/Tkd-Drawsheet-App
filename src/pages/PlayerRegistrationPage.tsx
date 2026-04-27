@@ -146,38 +146,7 @@ const PlayerRegistrationPage: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeTournamentCode]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadAssociationWeightRows() {
-      if (!resolvedTournament || !ageCategory || ageCategory === 'Unknown') {
-        setAssociationWeightRows([]);
-        return;
-      }
-
-      try {
-        const association = normalizeWeightAssociationType(resolvedTournament.association_type);
-        const rows = await weightCategoryService.getAll({
-          association,
-          age_category: ageCategory,
-          gender,
-        });
-        if (!cancelled) {
-          setAssociationWeightRows(rows);
-        }
-      } catch {
-        if (!cancelled) {
-          setAssociationWeightRows([]);
-        }
-      }
-    }
-
-    void loadAssociationWeightRows();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [resolvedTournament, ageCategory, gender]);
+ 
 
   async function handleTournamentLookup(rawCode?: string) {
     const code = (rawCode ?? tournamentCodeInput).trim().toUpperCase();
@@ -271,6 +240,40 @@ const PlayerRegistrationPage: React.FC = () => {
   const canProceedStep2 = !!registrationSecret.trim() && (registrationMode === 'new' || !!updateReason.trim());
   const canContinueGateway = !!resolvedTournament && (registrationMode === 'new' || existingProfileLoaded);
 
+  
+   useEffect(() => {
+    let cancelled = false;
+
+    async function loadAssociationWeightRows() {
+      if (!resolvedTournament || !ageCategory || ageCategory === 'Unknown') {
+        setAssociationWeightRows([]);
+        return;
+      }
+
+      try {
+        const association = normalizeWeightAssociationType(resolvedTournament.association_type);
+        const rows = await weightCategoryService.getAll({
+          association,
+          age_category: ageCategory,
+          gender,
+        });
+        if (!cancelled) {
+          setAssociationWeightRows(rows);
+        }
+      } catch {
+        if (!cancelled) {
+          setAssociationWeightRows([]);
+        }
+      }
+    }
+
+    void loadAssociationWeightRows();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedTournament, ageCategory, gender]);
+  
   useEffect(() => {
     if (!pdfPreviewOpen || pdfDownloaded || autoDownloadIn == null) return;
     const timer = window.setTimeout(() => {
@@ -282,6 +285,8 @@ const PlayerRegistrationPage: React.FC = () => {
     }, 1000);
     return () => window.clearTimeout(timer);
   }, [pdfPreviewOpen, pdfDownloaded, autoDownloadIn]);
+
+
 
   useEffect(() => {
     const handler = (event: BeforeUnloadEvent) => {

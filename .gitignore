@@ -33,3 +33,9 @@ LOGIN_DOCS.md
 test-results/
 playwright-report/
 blob-report/
+
+# Playwright
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
