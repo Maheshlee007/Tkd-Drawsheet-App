@@ -14,6 +14,7 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     headless: true,
+    viewport: { width: 1440, height: 900 },
   },
 
   projects: [
