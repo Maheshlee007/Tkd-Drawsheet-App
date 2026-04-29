@@ -7,14 +7,14 @@ test.describe('Authentication', () => {
     await expect(page).toHaveURL(/\/login/);
     await expect(page.locator('#username')).toBeVisible();
     await expect(page.locator('#password')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Sign In' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Sign In', exact: true })).toBeVisible();
   });
 
   test('should login with valid admin credentials', async ({ page }) => {
     await page.goto('/login');
     await page.fill('#username', ADMIN.email);
     await page.fill('#password', ADMIN.password);
-    await page.getByRole('button', { name: 'Sign In' }).click();
+    await page.getByRole('button', { name: 'Sign In', exact: true }).click();
 
     // Should redirect to home dashboard
     await page.waitForURL('/', { timeout: 10_000 });
@@ -25,7 +25,7 @@ test.describe('Authentication', () => {
     await page.goto('/login');
     await page.fill('#username', 'wrong@email.com');
     await page.fill('#password', 'WrongPassword');
-    await page.getByRole('button', { name: 'Sign In' }).click();
+    await page.getByRole('button', { name: 'Sign In', exact: true }).click();
 
     // Should show error message
     await expect(page.locator('.bg-red-50, [role="alert"]')).toBeVisible({ timeout: 5000 });
@@ -35,7 +35,7 @@ test.describe('Authentication', () => {
     await page.goto('/login');
     await page.fill('#username', ORGANIZER.email);
     await page.fill('#password', ORGANIZER.password);
-    await page.getByRole('button', { name: 'Sign In' }).click();
+    await page.getByRole('button', { name: 'Sign In', exact: true }).click();
 
     await page.waitForURL('/', { timeout: 10_000 });
     await expect(page).toHaveURL('/');
@@ -47,7 +47,7 @@ test.describe('Authentication', () => {
 
     await page.fill('#username', ADMIN.email);
     await page.fill('#password', ADMIN.password);
-    await page.getByRole('button', { name: 'Sign In' }).click();
+    await page.getByRole('button', { name: 'Sign In', exact: true }).click();
 
     await page.waitForURL('**/admin/users', { timeout: 10_000 });
   });

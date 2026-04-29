@@ -378,6 +378,98 @@ test.describe('Player Registration', () => {
     await page.getByRole('combobox').click();
     await page.getByText('Working / Occupation').click();
     await expect(page.getByText('Occupation', { exact: true })).toBeVisible();
-    await page.close();
+  });
+
+  // ─── EXISTING PLAYER: gateway shows Registered mode fields ──────────────────
+  test('existing player gateway shows code and secret key inputs', async ({ page }) => {
+    test.setTimeout(45_000);
+    await page.goto('/register/TKD-2026-TEST1');
+    await page.waitForTimeout(3000);
+
+    // Gateway dialog may or may not be open; open from sidebar if needed
+    const dialog = page.getByRole('dialog');
+    const dialogVisible = await dialog.isVisible();
+    if (!dialogVisible) {
+      await page.getByRole('button', { name: 'Open Setup' }).click();
+      await page.waitForTimeout(1000);
+    }
+    await expect(dialog).toBeVisible({ timeout: 5000 });
+
+    // Select "Registered" mode
+    await page.getByRole('button', { name: 'Registered' }).click();
+    await page.waitForTimeout(500);
+
+    // Existing player fields should appear within the dialog
+    await expect(page.getByPlaceholder('Player code')).toBeVisible();
+    await expect(page.getByPlaceholder('Secret key')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Load Existing Profile' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Continue To Form' })).toBeVisible();
+  });
+
+  // ─── EXISTING PLAYER: invalid code/secret shows error ───────────────────────
+  test('existing player lookup with wrong credentials shows error', async ({ page }) => {
+    test.setTimeout(45_000);
+    await page.goto('/register/TKD-2026-TEST1');
+    await page.waitForTimeout(3000);
+
+    // Open gateway if auto-closed
+    const dialog = page.getByRole('dialog');
+    const dialogVisible = await dialog.isVisible();
+    if (!dialogVisible) {
+      await page.getByRole('button', { name: 'Open Setup' }).click();
+      await page.waitForTimeout(1000);
+    }
+
+    // Select Registered mode
+    await page.getByRole('button', { name: 'Registered' }).click();
+    await page.waitForTimeout(500);
+
+    // Enter fake credentials
+    await page.getByPlaceholder('Player code').fill('PLR-INVALID-999');
+    await page.getByPlaceholder('Secret key').fill('wrongkey123');
+
+    // Click Load Existing Profile
+    await page.getByRole('button', { name: 'Load Existing Profile' }).click();
+
+    // Should show error toast or message
+    await expect(page.getByText(/not found|invalid|could not/i).first()).toBeVisible({ timeout: 10000 });
+  });
+
+  // ─── EXISTING PLAYER: valid code+secret loads profile ─────────────────────
+  test('existing player lookup with valid credentials pre-fills form', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.goto('/register/TKD-2026-TEST1');
+    await page.waitForTimeout(3000);
+
+    // Open gateway if auto-closed
+    const dialog = page.getByRole('dialog');
+    if (!(await dialog.isVisible())) {
+      await page.getByRole('button', { name: 'Open Setup' }).click();
+      await page.waitForTimeout(1000);
+    }
+    await expect(dialog).toBeVisible({ timeout: 5000 });
+
+    // Select Registered mode
+    await page.getByRole('button', { name: 'Registered' }).click();
+    await page.waitForTimeout(500);
+
+    // Enter real credentials from the player registered earlier
+    await page.getByPlaceholder('Player code').fill('TKD-2026-3SYX');
+    await page.getByPlaceholder('Secret key').fill('TestSecret@123');
+
+    // Load profile
+    await page.getByRole('button', { name: 'Load Existing Profile' }).click();
+    await page.waitForTimeout(3000);
+
+    // Continue to form — should now be enabled since profile loaded
+    await page.getByRole('button', { name: 'Continue To Form' }).click();
+    await page.waitForTimeout(1000);
+
+    // Form should be pre-filled with the player's data
+    await expect(page.getByRole('heading', { name: 'Basic Info' })).toBeVisible({ timeout: 5000 });
+
+    // Check pre-filled name field
+    const nameInput = page.locator('input[name="fullName"], input[placeholder*="name" i]').first();
+    await expect(nameInput).toHaveValue(/SecretTest/i, { timeout: 5000 });
   });
 });

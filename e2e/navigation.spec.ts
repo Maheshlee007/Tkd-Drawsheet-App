@@ -2,46 +2,47 @@ import { test, expect } from './fixtures';
 
 test.describe('Navigation & Role Switching', () => {
   test('admin sidebar shows all sections', async ({ adminPage }) => {
-    // Admin should see all nav sections
-    await expect(adminPage.getByText('Management')).toBeVisible();
-    await expect(adminPage.getByText('Registration')).toBeVisible();
-    await expect(adminPage.getByText('Portals')).toBeVisible();
-    await expect(adminPage.getByText('Admin')).toBeVisible();
+    // Section headings are h3 elements in the sidebar nav
+    const nav = adminPage.locator('div').filter({ has: adminPage.locator('h3') }).first();
+    await expect(adminPage.locator('h3', { hasText: 'Management' }).first()).toBeVisible();
+    await expect(adminPage.locator('h3', { hasText: 'Registration' }).first()).toBeVisible();
+    await expect(adminPage.locator('h3', { hasText: 'Portals' }).first()).toBeVisible();
+    await expect(adminPage.locator('h3', { hasText: 'Admin' }).first()).toBeVisible();
   });
 
   test('organizer sidebar shows relevant sections', async ({ organizerPage }) => {
-    await expect(organizerPage.getByText('Management')).toBeVisible();
-    await expect(organizerPage.getByText('Registration')).toBeVisible();
+    await expect(organizerPage.locator('h3', { hasText: 'Management' }).first()).toBeVisible();
+    await expect(organizerPage.locator('h3', { hasText: 'Registration' }).first()).toBeVisible();
     // Should NOT see Admin section
-    await expect(organizerPage.getByText('Admin').first()).not.toBeVisible({ timeout: 2000 }).catch(() => {
-      // Admin section heading might appear in other text, assert nav link
+    await expect(organizerPage.locator('h3', { hasText: 'Admin' })).not.toBeVisible({ timeout: 2000 }).catch(() => {
+      // Admin section heading might not exist for organizer
     });
   });
 
   test('admin can navigate to User Management', async ({ adminPage }) => {
-    await adminPage.getByText('User Management').click();
+    await adminPage.locator('button', { hasText: 'User Management' }).first().click();
     await adminPage.waitForURL('**/admin/users');
     await expect(adminPage.getByText('Staff Users')).toBeVisible();
   });
 
   test('admin can navigate to Tournament Management', async ({ adminPage }) => {
-    await adminPage.getByText('Tournaments').click();
+    await adminPage.locator('button', { hasText: 'Tournaments' }).first().click();
     await adminPage.waitForURL('**/admin/tournaments');
     await expect(adminPage.getByText('Tournament Management')).toBeVisible();
   });
 
   test('admin can navigate to Match Dashboard', async ({ adminPage }) => {
-    await adminPage.getByText('Match Dashboard').click();
+    await adminPage.locator('button', { hasText: 'Match Dashboard' }).first().click();
     await adminPage.waitForURL('**/match-dashboard');
   });
 
   test('can navigate to Check-in / Verify page', async ({ adminPage }) => {
-    await adminPage.getByText('Check-in / Verify').click();
+    await adminPage.locator('button', { hasText: 'Check-in / Verify' }).first().click();
     await adminPage.waitForURL('**/verify');
   });
 
   test('can navigate to Weight Categories', async ({ adminPage }) => {
-    await adminPage.getByText('Weight Categories').click();
+    await adminPage.locator('button', { hasText: 'Weight Categories' }).first().click();
     await adminPage.waitForURL('**/weight-categories');
   });
 });
