@@ -23,6 +23,7 @@ import { AutoCloseErrorModal } from '@/components/AutoCloseErrorModal';
 import {
   BELT_LEVELS, getAgeCategoryForAssociation, isMinor, isValidAadhaarFormat, calculateAge,
 } from '@/utils/categoryUtils';
+import { normalizeWeightAssociationType, resolveWeightCategoryLabelFromRows } from '@/utils/weightCategoryUtils';
 import { useToast } from '@/hooks/use-toast';
 import { generateRegistrationPDFBlob } from '@/utils/registrationPDF';
 
@@ -37,34 +38,6 @@ const EVENT_OPTIONS = [
 ];
 
 const GROUP_EVENT_OPTIONS = ['poomsae_pair', 'poomsae_group'];
-
-function normalizeWeightAssociationType(value?: string | null): string {
-  const raw = String(value ?? '').trim().toLowerCase();
-  if (raw === 'association') return 'Association';
-  if (raw === 'sgfi') return 'SGFI';
-  if (raw === 'university') return 'University';
-  // WT, national, club, other, empty — all default to WT
-  return 'WT';
-}
-
-function resolveWeightCategoryLabelFromRows(weightKg: number, rows: WeightCategoryRow[]): string {
-  const sorted = [...rows].sort((a, b) => Number(a.sort_order) - Number(b.sort_order));
-  const category = sorted.find((row) => {
-    const min = Number(row.min_weight_kg);
-    const max = Number(row.max_weight_kg);
-    if (max >= 999) return weightKg > min;
-    if (min <= 0) return weightKg > min && weightKg <= max;
-    return weightKg > min && weightKg <= max;
-  });
-
-  if (!category) return '';
-
-  const min = Number(category.min_weight_kg);
-  const max = Number(category.max_weight_kg);
-  if (max >= 999) return `${category.weight_class} (Over ${min}kg)`;
-  if (min <= 0) return `${category.weight_class} (Under ${max}kg)`;
-  return `${category.weight_class} (${min}-${max}kg)`;
-}
 
 interface TeamEntryFormState {
   teamName: string;

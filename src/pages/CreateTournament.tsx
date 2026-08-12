@@ -17,18 +17,10 @@ const CreateTournament: React.FC = () => {
     rounds: number = 3
   ) => {
     try {
-      // Clear localStorage to ensure a completely fresh start
-      localStorage.clear();
-      // Remove tournament-storage specifically to be extra sure
+      // Reset ONLY the offline bracket state. localStorage.clear() would also
+      // wipe auth tokens (tkd-access-token / tournament-auth) and log the user out.
       localStorage.removeItem('tournament-storage');
-      
-      console.log("Generating bracket with:", { 
-        participants, 
-        seedType, 
-        name, 
-        rounds 
-      });
-      
+
       // Generate the new bracket
       generateBracket(participants, seedType, name, rounds);
       navigate("/view");

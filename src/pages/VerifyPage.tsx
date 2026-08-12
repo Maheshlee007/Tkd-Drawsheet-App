@@ -9,12 +9,16 @@ import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  QrCode, Search, CheckCircle, AlertCircle, User, Weight, CreditCard,
+  QrCode, Search, CheckCircle, AlertCircle, AlertTriangle, User, Weight, CreditCard,
   MapPin, GraduationCap, Phone, Calendar, Shield, UserCog, Trophy, Camera, CameraOff,
   PlusCircle, History, RefreshCw, Pencil, Check, X,
 } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { checkinService, type CheckinPlayer, type CheckinData } from '@/services/checkinService';
+import { weightCategoryService, type WeightCategory } from '@/services/weightCategoryService';
+import {
+  normalizeWeightAssociationType, resolveWeightCategoryFromRows, formatWeightCategoryLabel,
+} from '@/utils/weightCategoryUtils';
 import { apiRequest } from '@/services/api';
 import { tournamentService, type Tournament } from '@/services/tournamentService';
 import { staffService, type StaffTournamentScope } from '@/services/staffService';
@@ -36,6 +40,40 @@ type VerifyTournamentOption = Pick<Tournament, 'id' | 'tournament_code' | 'name'
   assigned_role?: string;
 };
 
+/** Poll for the scanner container div rendered inside the dialog (replaces a blind sleep). */
+async function waitForScannerContainer(elementId: string, timeoutMs = 2000): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (document.getElementById(elementId)) return true;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return false;
+}
+
+function isCameraPermissionError(err: unknown): boolean {
+  const name = (err as { name?: string })?.name ?? '';
+  return name === 'NotAllowedError' || /permission|denied/i.test(String((err as { message?: string })?.message ?? err ?? ''));
+}
+
+/** Turn a camera/scanner start failure into an actionable message for the officer. */
+function describeCameraError(err: unknown): string {
+  const name = (err as { name?: string })?.name ?? '';
+  const msg = String((err as { message?: string })?.message ?? err ?? '');
+  if (isCameraPermissionError(err)) {
+    return 'Camera permission denied. Allow camera access for this site in your browser settings, then try again.';
+  }
+  if (name === 'NotFoundError' || name === 'OverconstrainedError' || /no camera|not found|requested device/i.test(msg)) {
+    return 'No camera was found on this device. Enter the player code manually instead.';
+  }
+  if (name === 'NotReadableError' || /in use|not readable|could not start video/i.test(msg)) {
+    return 'The camera is unavailable — it may be in use by another app. Close other apps using the camera and try again.';
+  }
+  if (typeof window !== 'undefined' && !window.isSecureContext) {
+    return 'Camera access requires a secure connection. Open this page over HTTPS (or on localhost) to use the QR scanner.';
+  }
+  return 'Could not start the camera. Try again, or enter the player code manually.';
+}
+
 export default function VerifyPage() {
   const { toast } = useToast();
   const authUser = useAuthStore((s) => s.user);
@@ -52,10 +90,6 @@ export default function VerifyPage() {
 
   // QR Scanner
   const [scanning, setScanning] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const html5QrRef = useRef<Html5Qrcode | null>(null);
   const [scannerDialogOpen, setScannerDialogOpen] = useState(false);
 
@@ -86,6 +120,8 @@ export default function VerifyPage() {
 
   // Weight category suggestion
   const [suggestedCategory, setSuggestedCategory] = useState('');
+  const [categoryMismatch, setCategoryMismatch] = useState(false);
+  const [weightRows, setWeightRows] = useState<WeightCategory[]>([]);
   const [eventManageOpen, setEventManageOpen] = useState(false);
 
   useEffect(() => {
@@ -136,16 +172,25 @@ export default function VerifyPage() {
       setError('Select a tournament before starting QR scan.');
       return;
     }
+    if (typeof window !== 'undefined' && !window.isSecureContext) {
+      setError('Camera access requires a secure connection. Open this page over HTTPS (or on localhost) to use the QR scanner.');
+      return;
+    }
     setScannerDialogOpen(true);
     setScanning(true);
 
-    // Wait for dialog DOM to render
-    await new Promise((r) => setTimeout(r, 300));
+    // Wait for the dialog DOM to render the scanner container
+    const containerReady = await waitForScannerContainer('qr-reader-container');
+    if (!containerReady) {
+      setError('Scanner failed to initialise. Please try again.');
+      setScannerDialogOpen(false);
+      setScanning(false);
+      return;
+    }
 
-    try {
+    const startCamera = async () => {
       const qr = new Html5Qrcode('qr-reader-container');
       html5QrRef.current = qr;
-
       await qr.start(
         { facingMode: 'environment' },
         { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
@@ -159,14 +204,34 @@ export default function VerifyPage() {
         },
         () => { /* ignore scan failures */ }
       );
-    } catch (err: any) {
-      if (err?.name === 'NotAllowedError' || String(err).includes('Permission')) {
-        setError('Camera permission denied. Please allow camera access in your browser settings.');
-      } else {
-        setError('Could not start camera. Try entering the player code manually.');
+    };
+
+    const cleanupFailedStart = () => {
+      try { html5QrRef.current?.clear(); } catch { /* ignore */ }
+      html5QrRef.current = null;
+    };
+
+    try {
+      await startCamera();
+    } catch (firstErr) {
+      cleanupFailedStart();
+      // Permission denials won't recover on an immediate retry — fail fast with guidance.
+      if (isCameraPermissionError(firstErr)) {
+        setError(describeCameraError(firstErr));
+        setScannerDialogOpen(false);
+        setScanning(false);
+        return;
       }
-      setScannerDialogOpen(false);
-      setScanning(false);
+      // Transient failures (camera warming up, previous instance releasing) — retry once.
+      await new Promise((r) => setTimeout(r, 500));
+      try {
+        await startCamera();
+      } catch (err) {
+        cleanupFailedStart();
+        setError(describeCameraError(err));
+        setScannerDialogOpen(false);
+        setScanning(false);
+      }
     }
   }
 
@@ -178,9 +243,6 @@ export default function VerifyPage() {
       } catch { /* already stopped */ }
       html5QrRef.current = null;
     }
-    // Legacy cleanup
-    if (scanIntervalRef.current) { clearInterval(scanIntervalRef.current); scanIntervalRef.current = null; }
-    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
     setScanning(false);
     setScannerDialogOpen(false);
   }
@@ -225,7 +287,7 @@ export default function VerifyPage() {
       };
       await checkinService.createCheckin(data);
       setSuccess('Check-in recorded successfully!');
-      const updated = await checkinService.lookupPlayer(playerCode.trim());
+      const updated = await checkinService.lookupPlayer(playerCode.trim(), selectedTournamentId || undefined);
       setPlayer(updated);
     } catch (e: any) {
       setError(e.message || 'Check-in failed');
@@ -259,7 +321,7 @@ export default function VerifyPage() {
     setPlayerCode(''); setPlayer(null); setError(''); setSuccess('');
     setWeight(''); setWeighInPassed(true); setTotalFee('500'); setAmountPaid('');
     setPaymentMethod('cash'); setPaymentRef(''); setNotes(''); stopScanner();
-    setNameEditing(false); setCorrectedName(''); setSuggestedCategory('');
+    setNameEditing(false); setCorrectedName(''); setSuggestedCategory(''); setCategoryMismatch(false);
   }
 
   async function handleNameCorrection() {
@@ -276,22 +338,55 @@ export default function VerifyPage() {
     } finally { setNameSaving(false); }
   }
 
-  // Auto-suggest weight category when weight changes
+  // Load weight-category reference data for the player's division (association + age category + gender)
   useEffect(() => {
-    if (!weight || !player) { setSuggestedCategory(''); return; }
-    const w = parseFloat(weight);
-    if (isNaN(w)) { setSuggestedCategory(''); return; }
-    // Check player's events for a matching weight category
-    const events = player.events || [];
-    for (const evt of events) {
-      if (evt.weight_category) {
-        setSuggestedCategory(evt.weight_category);
+    let cancelled = false;
+    async function loadWeightRows() {
+      const ageCategory = player?.player.age_category;
+      const gender = player?.player.gender;
+      if (!player || !ageCategory || !gender) {
+        setWeightRows([]);
         return;
       }
+      try {
+        const tournament = availableTournaments.find((t) => t.id === selectedTournamentId);
+        const association = normalizeWeightAssociationType(tournament?.association_type);
+        const rows = await weightCategoryService.getAll({ association, age_category: ageCategory, gender });
+        if (!cancelled) setWeightRows(rows);
+      } catch {
+        if (!cancelled) setWeightRows([]);
+      }
     }
-    // Fallback: show weight based on player's registered category
-    setSuggestedCategory(player.player.weight_category || '');
-  }, [weight, player]);
+    void loadWeightRows();
+    return () => { cancelled = true; };
+  }, [player, selectedTournamentId, availableTournaments]);
+
+  const registeredCategoryLabel = player?.player.weight_category
+    || player?.events.find((e) => e.weight_category)?.weight_category
+    || '';
+
+  // Resolve the entered weigh-in weight to its actual weight class and flag mismatches vs registration
+  useEffect(() => {
+    const w = parseFloat(weight);
+    if (!weight || !player || isNaN(w) || weightRows.length === 0) {
+      setSuggestedCategory('');
+      setCategoryMismatch(false);
+      return;
+    }
+    const match = resolveWeightCategoryFromRows(w, weightRows);
+    if (!match) {
+      setSuggestedCategory('');
+      setCategoryMismatch(false);
+      return;
+    }
+    setSuggestedCategory(formatWeightCategoryLabel(match));
+    // Mismatch when the registered category doesn't reference the weighed-in class (compare loosely by class name)
+    const registered = registeredCategoryLabel.trim().toLowerCase();
+    const weighedClass = match.weight_class.trim().toLowerCase();
+    setCategoryMismatch(
+      !!registered && !registered.includes(weighedClass) && !weighedClass.includes(registered)
+    );
+  }, [weight, player, weightRows, registeredCategoryLabel]);
 
   const playerName = player?.player.full_name
     || `${player?.player.first_name ?? ''} ${player?.player.last_name ?? ''}`.trim();
@@ -610,8 +705,22 @@ export default function VerifyPage() {
                   <div>
                     <Label>Actual Weight (kg)</Label>
                     <Input type="number" step="0.1" value={weight} onChange={e => setWeight(e.target.value)} placeholder="e.g. 66.5" />
-                    {suggestedCategory && (
-                      <p className="text-xs text-muted-foreground mt-1">Category: <span className="font-medium text-primary">{suggestedCategory}</span></p>
+                    {suggestedCategory && !categoryMismatch && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Weighed into: <span className="font-medium text-primary">{suggestedCategory}</span>
+                        {registeredCategoryLabel && <span className="text-green-600 ml-1">(matches registration)</span>}
+                      </p>
+                    )}
+                    {suggestedCategory && categoryMismatch && (
+                      <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-800">
+                        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
+                        <span>
+                          <span className="font-semibold">Weight category mismatch:</span>{' '}
+                          registered <span className="font-semibold">{registeredCategoryLabel}</span>{' '}
+                          but weighed into <span className="font-semibold">{suggestedCategory}</span>.
+                          Verify the weigh-in result and event enrolment before check-in.
+                        </span>
+                      </div>
                     )}
                   </div>
                   <div>

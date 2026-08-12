@@ -6,7 +6,8 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Gavel, LogIn, AlertCircle, Clock, CheckCircle, Play, RefreshCw, Trophy, UserRound, School, Shield, ClipboardList, Printer, Users, Swords } from 'lucide-react';
+import { Gavel, LogIn, LogOut, AlertCircle, Clock, CheckCircle, Play, RefreshCw, Trophy, UserRound, School, Shield, ClipboardList, Printer, Users, Swords } from 'lucide-react';
+import { jwtDecode } from 'jwt-decode';
 import { judgeService, type JudgeAssignment, type JuryCategory } from '@/services/judgeService';
 import { matchService as matchApiService, type Match as ApiMatch } from '@/services/matchService';
 import { drawService, type DrawEligiblePlayer } from '@/services/drawService';
@@ -86,7 +87,7 @@ function matchesToBracketData(matches: ApiMatch[]): BracketMatch[][] {
 
 export default function JuryPortalPage() {
   const { toast } = useToast();
-  const { user, login } = useAuthStore();
+  const { user, login, logout } = useAuthStore();
   const setActiveTournamentContext = useTournamentStore((state) => state.setActiveTournamentContext);
   const clearActiveTournamentContext = useTournamentStore((state) => state.clearActiveTournamentContext);
 
@@ -165,17 +166,41 @@ export default function JuryPortalPage() {
     try {
       const result = await judgeService.login(juryCode.trim(), '');
       setStoredTokens(result.accessToken, result.refreshToken);
+      // The jury login response contains only tokens (+ tournamentId/juryCode),
+      // so fall back to the JWT claims when no user object is present.
+      let claims: { email?: string; roles?: string[]; permissions?: string[] } = {};
+      try {
+        claims = jwtDecode(result.accessToken);
+      } catch {
+        // Non-decodable token — fall through to defaults below
+      }
+      const apiUser = (result as { user?: { firstName?: string; lastName?: string; email?: string; roles?: string[]; permissions?: string[] } }).user;
       await login({
-        name: `${result.user.firstName} ${result.user.lastName}`,
-        email: result.user.email,
-        roles: result.user.roles || ['jury'],
-        permissions: result.user.permissions || [],
+        name: apiUser?.firstName
+          ? `${apiUser.firstName} ${apiUser.lastName ?? ''}`.trim()
+          : (result.juryCode || claims.email || 'Jury Member'),
+        email: apiUser?.email ?? claims.email,
+        roles: apiUser?.roles ?? claims.roles ?? ['jury'],
+        permissions: apiUser?.permissions ?? claims.permissions ?? [],
       });
     } catch (e: any) {
       setLoginError(e.message || 'Invalid jury code');
     } finally {
       setLoggingIn(false);
     }
+  }
+
+  function handleLogout() {
+    // logout() also clears stored tokens (clearStoredTokens) and broadcasts to other tabs
+    logout();
+    clearActiveTournamentContext();
+    setSelectedTournament('');
+    setMatches([]);
+    setCategories([]);
+    setJuryCode('');
+    setLoginError('');
+    setError('');
+    setActionMsg('');
   }
 
   async function loadMatches() {
@@ -483,6 +508,24 @@ export default function JuryPortalPage() {
 
   // Jury dashboard
   return (
+    <div className="min-h-screen">
+      {/* Slim sticky portal header — /jury renders outside AppLayout, so this is the only chrome */}
+      <header className="sticky top-0 z-40 border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+        <div className="max-w-5xl mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <Gavel className="h-5 w-5 text-primary shrink-0" />
+            <span className="font-semibold">Jury Portal</span>
+            {user?.name && (
+              <span className="text-sm text-muted-foreground truncate">— {user.name}</span>
+            )}
+          </div>
+          <Button variant="outline" size="sm" onClick={handleLogout}>
+            <LogOut className="h-4 w-4 mr-2" />
+            Logout
+          </Button>
+        </div>
+      </header>
+
     <div className="space-y-6 p-4 max-w-5xl mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
@@ -859,6 +902,7 @@ export default function JuryPortalPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
     </div>
   );
 }

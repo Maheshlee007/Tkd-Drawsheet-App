@@ -116,7 +116,7 @@ function Router() {
           </ProtectedRoute>
         </Route>
         <Route path="/weight-categories">
-          <ProtectedRoute>
+          <ProtectedRoute roles={['admin', 'organizer']}>
             <WeightCategoriesPage />
           </ProtectedRoute>
         </Route>
@@ -144,7 +144,7 @@ function Router() {
           <JuryPortalPage />
         </Route>
         <Route path="/match-dashboard">
-          <ProtectedRoute>
+          <ProtectedRoute roles={['admin', 'organizer', 'jury', 'verification_officer']}>
             <MatchDashboardPage />
           </ProtectedRoute>
         </Route>
@@ -154,12 +154,12 @@ function Router() {
           </ProtectedRoute>
         </Route>
         <Route path="/players">
-          <ProtectedRoute>
+          <ProtectedRoute roles={['admin', 'organizer', 'verification_officer']}>
             <PlayersListPage />
           </ProtectedRoute>
         </Route>
         <Route path="/verifier-stats">
-          <ProtectedRoute>
+          <ProtectedRoute roles={['admin', 'organizer', 'verification_officer']}>
             <VerifierStatsPage />
           </ProtectedRoute>
         </Route>

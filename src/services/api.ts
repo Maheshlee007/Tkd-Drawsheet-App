@@ -97,13 +97,24 @@ async function parseErrorResponse(res: Response): Promise<{ message: string; det
   }
 }
 
+/** Routes that anonymous visitors legitimately use — never bounce them to /login. */
+const PUBLIC_PATH_PREFIXES = [
+  '/login', '/forgot-password', '/logout', '/guest', '/register',
+  '/coach-register', '/board', '/jury', '/public-tournaments',
+];
+
+function isPublicPath(pathname: string): boolean {
+  return PUBLIC_PATH_PREFIXES.some(p => pathname === p || pathname.startsWith(`${p}/`));
+}
+
 function handleSessionExpiry() {
   clearStoredTokens();
   if (typeof window === 'undefined') return;
 
   window.dispatchEvent(new CustomEvent('tkd:session-expired'));
-  const onLoginPage = window.location.pathname.startsWith('/login');
-  if (onLoginPage) return;
+  // On public pages a stale token just gets cleared — no redirect, the page
+  // works anonymously (registration kiosks, board displays, jury portal).
+  if (isPublicPath(window.location.pathname)) return;
 
   const redirect = `${window.location.pathname}${window.location.search}`;
   window.location.assign(`/login?redirect=${encodeURIComponent(redirect)}`);
@@ -138,7 +149,9 @@ export async function apiRequest<T = unknown>(
   }
 
   if (!res.ok) {
-    if (res.status === 401 && !skipAuth) {
+    // Only a 401 on a request that actually carried a token means an expired
+    // session; an anonymous 401 must not hijack the page with a redirect.
+    if (res.status === 401 && !skipAuth && accessToken) {
       handleSessionExpiry();
     }
     const parsed = await parseErrorResponse(res);

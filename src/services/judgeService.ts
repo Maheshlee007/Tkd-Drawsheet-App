@@ -60,8 +60,12 @@ export interface JuryCategory {
 }
 
 export const judgeService = {
-  async login(juryCode: string, password: string): Promise<{ accessToken: string; refreshToken: string; user: any }> {
-    const res = await apiRequest<{ data: { accessToken: string; refreshToken: string; user: any } }>('/api/judges/login', {
+  /**
+   * Backend responds with { accessToken, refreshToken, tournamentId, juryCode } —
+   * it does NOT include a user object; callers should derive identity from the JWT claims.
+   */
+  async login(juryCode: string, password: string): Promise<{ accessToken: string; refreshToken: string; tournamentId?: string; juryCode?: string; user?: any }> {
+    const res = await apiRequest<{ data: { accessToken: string; refreshToken: string; tournamentId?: string; juryCode?: string; user?: any } }>('/api/judges/login', {
       method: 'POST',
       body: { juryCode, password },
       skipAuth: true,
@@ -119,5 +123,18 @@ export const judgeService = {
       body: data,
     });
     return res.data;
+  },
+
+  /** Active assignment rows (with ids) for one jury user — admin assignment UI */
+  async listAssignments(judgeUserId: string, tournamentId?: string): Promise<Array<{
+    id: string; judge_id: string; tournament_id: string;
+    category_id: string | null; match_id: string | null; role: string; status: string;
+    event_type?: string; age_category?: string; gender?: string; weight_class?: string;
+  }>> {
+    const url = tournamentId
+      ? `/api/judges/${judgeUserId}/assignments?tournamentId=${tournamentId}`
+      : `/api/judges/${judgeUserId}/assignments`;
+    const res = await apiRequest<{ data: any[] }>(url);
+    return res.data ?? [];
   },
 };
