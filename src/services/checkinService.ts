@@ -78,6 +78,7 @@ export const checkinService = {
 
   async updatePayment(checkinId: string, data: {
     amountPaid: number;
+    transactionType?: 'payment' | 'refund' | 'adjustment' | 'waiver';
     paymentMethod?: string;
     paymentReference?: string;
     reasonCode: string;

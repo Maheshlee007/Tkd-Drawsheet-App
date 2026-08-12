@@ -365,7 +365,9 @@ const PlayerRegistrationPage: React.FC = () => {
     try {
       const profile = await playerService.lookupExistingProfile(existingPlayerCode.trim(), existingSecretKey.trim());
       setFullName(profile.fullName || '');
-      setDateOfBirth(profile.dateOfBirth || '');
+      // Normalize DOB from ISO timestamp to YYYY-MM-DD for date input
+      const rawDob = profile.dateOfBirth || '';
+      setDateOfBirth(rawDob.includes('T') ? rawDob.split('T')[0] : rawDob);
       setGender(profile.gender || 'male');
       setGuardianName(profile.guardianName || '');
       setPhone(profile.phone || '');
@@ -384,6 +386,13 @@ const PlayerRegistrationPage: React.FC = () => {
       setCoach(profile.coach || '');
       setExperience(profile.experience || '');
       setAadhaarVerified(Boolean(profile.aadhaarVerified));
+      if (profile.aadhaarNumber) {
+        setAadhaarNumber(profile.aadhaarNumber);
+        setAadhaarVerified(true);
+      } else if (profile.aadhaarLast4) {
+        setAadhaarNumber('XXXXXXXX' + profile.aadhaarLast4);
+        setAadhaarVerified(true);
+      }
       setEmailVerified(Boolean(profile.emailVerified));
       setSelectedEvents(profile.events?.length ? profile.events : ['kyorugi']);
       setRegistrationSecret(existingSecretKey.trim());
@@ -902,8 +911,35 @@ const PlayerRegistrationPage: React.FC = () => {
                                 ...prev,
                                 members: prev.members.map((entry, index) => index === memberIndex ? e.target.value : entry),
                               }))}
-                              placeholder={eventType === 'poomsae_pair' ? 'Partner full name' : `Team member ${memberIndex + 1}`}
+                              placeholder={eventType === 'poomsae_pair' ? 'Partner player code or name' : `Member ${memberIndex + 1} player code or name`}
                             />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="shrink-0 text-xs"
+                              onClick={async () => {
+                                if (!member.trim()) return;
+                                try {
+                                  const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/players/${encodeURIComponent(member.trim())}`);
+                                  if (res.ok) {
+                                    const data = await res.json();
+                                    const name = data?.data?.full_name || data?.data?.player?.full_name || member;
+                                    toast({ title: 'Player Found', description: name });
+                                    upsertTeamEntry(eventType, prev => ({
+                                      ...prev,
+                                      members: prev.members.map((entry, index) => index === memberIndex ? `${member.trim()} (${name})` : entry),
+                                    }));
+                                  } else {
+                                    toast({ title: 'Not Found', description: 'Player code not found. They can still be added by name.', variant: 'destructive' });
+                                  }
+                                } catch {
+                                  toast({ title: 'Lookup failed', variant: 'destructive' });
+                                }
+                              }}
+                            >
+                              Verify
+                            </Button>
                             {teamEntry.members.length > 1 && (
                               <Button
                                 type="button"
@@ -1045,7 +1081,7 @@ const PlayerRegistrationPage: React.FC = () => {
                       <div className="flex justify-between sm:block"><span className="text-slate-500">Update Reason</span><span className="font-medium sm:ml-2">{updateReason || '-'}</span></div>
                     )}
                     <div className="flex justify-between sm:block"><span className="text-slate-500">Name</span><span className="font-medium sm:ml-2">{fullName}</span></div>
-                    <div className="flex justify-between sm:block"><span className="text-slate-500">DOB</span><span className="font-medium sm:ml-2">{dateOfBirth} (Age: {age})</span></div>
+                    <div className="flex justify-between sm:block"><span className="text-slate-500">DOB</span><span className="font-medium sm:ml-2">{dateOfBirth ? new Date(dateOfBirth + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'} (Age: {age})</span></div>
                     <div className="flex justify-between sm:block"><span className="text-slate-500">Gender</span><span className="font-medium capitalize sm:ml-2">{gender}</span></div>
                     {needsGuardian && <div className="flex justify-between sm:block"><span className="text-slate-500">Guardian</span><span className="font-medium sm:ml-2">{guardianName}</span></div>}
                     <div className="flex justify-between sm:block"><span className="text-slate-500">Phone</span><span className="font-medium sm:ml-2">{phone}</span></div>
@@ -1065,8 +1101,8 @@ const PlayerRegistrationPage: React.FC = () => {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-6">
                       <div className="flex justify-between sm:block"><span className="text-slate-500">Belt</span><span className="font-medium sm:ml-2">{beltColor}</span></div>
                       {danId && <div className="flex justify-between sm:block"><span className="text-slate-500">Dan ID</span><span className="font-medium sm:ml-2">{danId}</span></div>}
-                      <div className="flex justify-between sm:block"><span className="text-slate-500">Weight</span><span className="font-medium sm:ml-2">{weight} kg</span></div>
                       <div className="flex justify-between sm:block"><span className="text-slate-500">Category</span><span className="font-medium sm:ml-2">{ageCategory} - {weightCategory}</span></div>
+                      <div className="flex justify-between sm:block"><span className="text-slate-500">Weight</span><span className="font-medium sm:ml-2">{weight} kg</span></div>
                       {club && <div className="flex justify-between sm:block"><span className="text-slate-500">Club</span><span className="font-medium sm:ml-2">{club}</span></div>}
                       {coach && <div className="flex justify-between sm:block"><span className="text-slate-500">Coach</span><span className="font-medium sm:ml-2">{coach}</span></div>}
                       {experience && <div className="flex justify-between sm:block"><span className="text-slate-500">Experience</span><span className="font-medium sm:ml-2">{experience}</span></div>}
@@ -1074,10 +1110,16 @@ const PlayerRegistrationPage: React.FC = () => {
                       {resolvedTournament && <div className="flex justify-between sm:block"><span className="text-slate-500">Registration Fee</span><span className="font-medium sm:ml-2">Rs. {pricingPreview.totalFee}</span></div>}
                     </div>
                   </div>
-                  <div className="border-t pt-2 mt-2 flex gap-2">
-                    {aadhaarVerified && <Badge variant="secondary" className="text-xs"><CheckCircle className="h-3 w-3 mr-1" />Aadhaar</Badge>}
-                    {emailVerified && <Badge variant="secondary" className="text-xs"><CheckCircle className="h-3 w-3 mr-1" />Email</Badge>}
-                    {!aadhaarVerified && !emailVerified && <Badge variant="outline" className="text-xs">No verification</Badge>}
+                  <div className="border-t pt-2 mt-2 space-y-1">
+                    <p className="text-slate-500 text-xs font-medium mb-1">Verification Status</p>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={aadhaarVerified} readOnly className="rounded" />
+                      <span className={aadhaarVerified ? 'text-green-700' : 'text-slate-500'}>Aadhaar {aadhaarVerified ? 'Verified' : 'Not Verified'}</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={emailVerified} readOnly className="rounded" />
+                      <span className={emailVerified ? 'text-green-700' : 'text-slate-500'}>Email {emailVerified ? 'Verified' : 'Not Verified'}</span>
+                    </label>
                   </div>
                   <div className="border-t pt-3 mt-2">
                     <p className="text-slate-500 text-xs font-medium mb-2">Selected Events</p>
@@ -1162,9 +1204,7 @@ const PlayerRegistrationPage: React.FC = () => {
             setGatewayOpen(true);
             return;
           }
-          if (canContinueGateway) {
-            setGatewayOpen(false);
-          }
+          setGatewayOpen(false);
         }}
         onTournamentCodeInputChange={setTournamentCodeInput}
         onRegistrationModeChange={(mode) => {
@@ -1283,12 +1323,6 @@ const RegistrationGatewayDialog: React.FC<{
   <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent
       className="max-w-lg"
-      onInteractOutside={(event) => {
-        if (!canContinue) event.preventDefault();
-      }}
-      onEscapeKeyDown={(event) => {
-        if (!canContinue) event.preventDefault();
-      }}
     >
       <DialogHeader>
         <DialogTitle>Start Player Registration</DialogTitle>
@@ -1404,16 +1438,6 @@ const RegistrationInfoPanel: React.FC<{
   onOpenSetup,
   onChangeTournament,
 }) => {
-  const REQUIRED_DOCS = [
-    'Aadhaar / Government Photo ID (mandatory)',
-    'Recent passport-size photograph',
-    'Belt / Dan certificate',
-    'Guardian consent (if minor)',
-    'Medical fitness declaration',
-  ];
-  const playerFormLinks = tournament?.player_form_links?.length
-    ? tournament.player_form_links
-    : ['/forms/player-registration.pdf', '/forms/medical-fitness.pdf', '/forms/guardian-consent.pdf'];
 
   return (
     <>
@@ -1451,33 +1475,19 @@ const RegistrationInfoPanel: React.FC<{
       <Card className="border-blue-100">
         <CardContent className="pt-5 space-y-3">
           <h3 className="font-semibold text-slate-800 flex items-center gap-2">
-            <CheckCircle className="h-4 w-4 text-green-600" /> Documents required
+            <CheckCircle className="h-4 w-4 text-green-600" /> Participant Acknowledgment
           </h3>
           <ul className="text-sm text-slate-700 space-y-1.5 list-disc pl-5">
-            {REQUIRED_DOCS.map((d) => <li key={d}>{d}</li>)}
+            <li>I confirm that the participant is physically fit and medically cleared for martial arts competition.</li>
+            <li>I understand that Taekwondo is a contact sport and involves risk of injury.</li>
+            <li>I agree to abide by the tournament rules, referee decisions, and code of conduct.</li>
+            <li>I consent to the participant being photographed/videographed during the event.</li>
+            {/* Guardian consent implied for minors */}
+            <li>Guardian consent is required for participants below 18 years of age.</li>
           </ul>
           <p className="text-xs text-slate-500">
-            Originals must be presented at the venue for verification before check-in.
+            Original ID proof must be presented at the venue during check-in.
           </p>
-        </CardContent>
-      </Card>
-
-      <Card className="border-amber-100 bg-amber-50/40">
-        <CardContent className="pt-5 space-y-2">
-          <h3 className="font-semibold text-slate-800 flex items-center gap-2">
-            <Download className="h-4 w-4 text-amber-700" /> Forms to download
-          </h3>
-          {playerFormLinks.map((href, index) => (
-            <a
-              key={`${href}-${index}`}
-              href={href}
-              target="_blank"
-              rel="noreferrer"
-              className="block text-sm text-blue-700 hover:underline"
-            >
-              Form {index + 1}
-            </a>
-          ))}
         </CardContent>
       </Card>
 

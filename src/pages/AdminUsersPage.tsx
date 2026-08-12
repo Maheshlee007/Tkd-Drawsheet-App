@@ -531,12 +531,12 @@ export default function AdminUsersPage() {
 
       {/* ── User Detail Dialog ── */}
       <Dialog open={!!detailUser} onOpenChange={() => setDetailUser(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
+        <DialogContent className="max-w-md ">
+          <DialogHeader className="border-b border-slate-300 pb-3 mb-4">
             <DialogTitle>User Details</DialogTitle>
           </DialogHeader>
           {detailUser && (
-            <div className="py-4 space-y-4">
+            <div className="py-2 space-y-2 max-h-96 overflow-y-auto">
               <div className="grid grid-cols-2 gap-y-3 text-sm">
                 <span className="text-muted-foreground">Name</span>
                 <span className="font-medium">{detailUser.first_name} {detailUser.last_name}</span>

@@ -63,9 +63,20 @@ const CanvasBracket: React.FC<CanvasBracketProps> = ({
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const lastPinchDistRef = useRef<number | null>(null);
 
-  const handleZoomIn = () => setZoomLevel(prev => Math.min(2.0, +(prev + 0.1).toFixed(1)));
-  const handleZoomOut = () => setZoomLevel(prev => Math.max(0.5, +(prev - 0.1).toFixed(1)));
+  const MIN_ZOOM = 0.3;
+  const MAX_ZOOM = 2.0;
+  const handleZoomIn = () => setZoomLevel(prev => Math.min(MAX_ZOOM, +(prev + 0.1).toFixed(1)));
+  const handleZoomOut = () => setZoomLevel(prev => Math.max(MIN_ZOOM, +(prev - 0.1).toFixed(1)));
   const handleZoomReset = () => setZoomLevel(1);
+  // Fit the full bracket width into the visible container
+  const handleZoomFit = () => {
+    const container = containerRef.current;
+    const canvas = canvasRef.current;
+    if (!container || !canvas || !canvas.offsetWidth) return;
+    const fit = (container.clientWidth - 8) / canvas.offsetWidth;
+    setZoomLevel(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, +fit.toFixed(2))));
+    container.scrollTo({ left: 0, top: 0, behavior: 'smooth' });
+  };
 
   // Function to get match color scheme based on state and win method
   // Function to check if a match should be highlighted (part of participant's path)
@@ -127,13 +138,6 @@ const CanvasBracket: React.FC<CanvasBracketProps> = ({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Set background
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
     // Calculate sizes and spacing
     const roundCount = bracketData.length;
     const matchHeight = 44; // Increased match height
@@ -166,12 +170,12 @@ const CanvasBracket: React.FC<CanvasBracketProps> = ({
       // For large brackets (16+ players), adjust spacing differently
       if (firstRoundMatches > 8) {
         if (roundIndex === 0) {
-          // First round needs tighter spacing for large brackets
-          spacing = Math.max(60, Math.min(40, availableHeight / (firstRoundMatches + 1)));
+          // First round needs tighter spacing for large brackets (clamp 40–60)
+          spacing = Math.max(40, Math.min(60, availableHeight / (firstRoundMatches + 1)));
         } else {
-          // Later rounds can have more space
+          // Later rounds can have more space (clamp 50–70)
           const matchesInThisRound = bracketData[roundIndex].length;
-          spacing = Math.max(70, Math.min(50, availableHeight / (matchesInThisRound + 1)));
+          spacing = Math.max(50, Math.min(70, availableHeight / (matchesInThisRound + 1)));
         }
       } else {
         // For smaller brackets, use more generous spacing
@@ -185,42 +189,51 @@ const CanvasBracket: React.FC<CanvasBracketProps> = ({
       return spacing;
     };
     
-    // Draw round labels at the top
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.font = "bold 14px Arial";
-    ctx.fillStyle = "#475569";
-    
-    bracketData.forEach((_, roundIndex) => {
-      const roundName = getRoundName(roundIndex, roundCount);
-      const x = horizontalMargin + (roundIndex * roundWidth) + (matchWidth / 2);
-      const y = 15;
-      
-      // Draw round label box
-      ctx.fillStyle = getRoundColor(roundIndex, roundCount);
-      ctx.beginPath();
-      ctx.roundRect(x - 60, y - 10, 120, 20, 3);
-      ctx.fill();
-      
-      // Draw round label text
-      ctx.fillStyle = "#ffffff";
-      ctx.fillText(roundName, x, y);
-    });
-    
     // Calculate total height needed for the bracket
     let totalHeightNeeded = verticalMargin * 2; // Margins
     const firstRoundSpacing = getVerticalSpacing(0);
     totalHeightNeeded += firstRoundMatches * (matchHeight + 10); // Add height for all matches
     totalHeightNeeded += firstRoundMatches * firstRoundSpacing; // Add spacing between matches
-    
-    // Ensure canvas height is at least the required height
+
+    // Resize canvas BEFORE any drawing: assigning canvas.height resets the 2D
+    // context (including the DPR transform), which previously left HiDPI renders
+    // at half size and made click hit-testing miss the visible boxes.
     const minRequiredHeight = Math.max(height, totalHeightNeeded);
     if (canvas.height / scale < minRequiredHeight) {
-      // Resize canvas if needed (keeping DPR scaling)
       canvas.height = minRequiredHeight * scale;
       canvas.style.height = `${minRequiredHeight}px`;
+      ctx.setTransform(scale, 0, 0, scale, 0, 0); // re-apply DPR scaling
     }
-    
+
+    // Clear canvas + background (CSS pixel space — context is DPR-scaled)
+    const cssWidth = canvas.width / scale;
+    const cssHeight = canvas.height / scale;
+    ctx.clearRect(0, 0, cssWidth, cssHeight);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, cssWidth, cssHeight);
+
+    // Draw round labels at the top
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "bold 14px Arial";
+    ctx.fillStyle = "#475569";
+
+    bracketData.forEach((_, roundIndex) => {
+      const roundName = getRoundName(roundIndex, roundCount);
+      const x = horizontalMargin + (roundIndex * roundWidth) + (matchWidth / 2);
+      const y = 15;
+
+      // Draw round label box
+      ctx.fillStyle = getRoundColor(roundIndex, roundCount);
+      ctx.beginPath();
+      ctx.roundRect(x - 60, y - 10, 120, 20, 3);
+      ctx.fill();
+
+      // Draw round label text
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(roundName, x, y);
+    });
+
     // Draw each round
     bracketData.forEach((round, roundIndex) => {
       const roundX = horizontalMargin + (roundIndex * roundWidth);
@@ -826,7 +839,7 @@ const CanvasBracket: React.FC<CanvasBracketProps> = ({
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      setZoomLevel(prev => Math.min(2.0, Math.max(0.5, +(prev + delta).toFixed(1))));
+      setZoomLevel(prev => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, +(prev + delta).toFixed(1))));
     }
   };
 
@@ -953,7 +966,7 @@ const CanvasBracket: React.FC<CanvasBracketProps> = ({
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       const dist = Math.sqrt(dx * dx + dy * dy);
       const delta = (dist - lastPinchDistRef.current) / 100;
-      setZoomLevel(prev => Math.min(2.0, Math.max(0.5, +(prev + delta).toFixed(1))));
+      setZoomLevel(prev => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, +(prev + delta).toFixed(1))));
       lastPinchDistRef.current = dist;
       touchStartRef.current = null;
     }
@@ -1106,6 +1119,11 @@ const CanvasBracket: React.FC<CanvasBracketProps> = ({
             className="h-7 w-7 flex items-center justify-center rounded bg-white border border-slate-300 shadow-sm text-slate-600 hover:bg-slate-50 text-sm font-bold"
             title="Zoom in"
           >+</button>
+          <button
+            onClick={handleZoomFit}
+            className="h-7 px-2 flex items-center justify-center rounded bg-white border border-slate-300 shadow-sm text-slate-600 hover:bg-slate-50 text-xs"
+            title="Fit bracket to screen"
+          >Fit</button>
         </div>
       )}
       <div style={{

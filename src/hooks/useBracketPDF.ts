@@ -310,16 +310,14 @@ function addPDFFooter(pdf: jsPDF, pageWidth: number, pageHeight: number, margin:
       pdf.addImage(tkdLogoBase64, 'PNG', logoX, logoY, logoWidth, logoHeight);
     } catch (error) {
       console.error("Error adding logo:", error);
-      // Fallback to text if image fails
       pdf.setFontSize(10);
       pdf.setFont("helvetica", "bold");
-      pdf.text("WT", logoX, logoY + 8);
+      pdf.text("TKD", logoX, logoY + 8);
     }
   } else {
-    // Text-only logo fallback
     pdf.setFontSize(10);
     pdf.setFont("helvetica", "bold");
-    pdf.text("WT", logoX, logoY + 8);
+    pdf.text("TKD", logoX, logoY + 8);
   }
   
   // Organization info (left side)
@@ -423,7 +421,7 @@ export const useBracketPDF = () => {
     return new Promise<string | null>((resolve) => {
       // Create image object
       const img = new Image();
-      img.crossOrigin="ananymus";
+      img.crossOrigin = "anonymous";
       // Handle image load
       img.onload = () => {
         // Create canvas to convert image to base64
@@ -641,12 +639,20 @@ export const useBracketPDF = () => {
     // Calculate spacing based on orientation
     // For portrait, increase spacing between brackets as there's more vertical space
     // For landscape, keep spacing tight to fit 16 brackets horizontally
-    const baseSpacing = orientation === 'portrait' 
+    const idealSpacing = orientation === 'portrait'
       ? matchHeight * 1.8  // Increased spacing for portrait mode
       : matchHeight * 1.3; // Reduced spacing for landscape to fit all 16 brackets
-    
+
+    // Fit-to-page: shrink spacing when the first round would run past the page
+    // bottom (e.g. 16 first-round matches in landscape), keeping a readable floor.
+    const pageHeightMm = orientation === 'portrait' ? 297 : 210;
+    const availableHeight = pageHeightMm - startY - 14;
+    const baseSpacing = firstRound.length > 1
+      ? Math.max(matchHeight + 1.5, Math.min(idealSpacing, availableHeight / firstRound.length))
+      : idealSpacing;
+
     const firstRoundX = margin;
-    
+
     // Position first round matches
     firstRound.forEach((match, idx) => {
       const matchY = startY + (idx * baseSpacing);
@@ -698,8 +704,12 @@ export const useBracketPDF = () => {
             height: matchHeight // Fix connector alignment - don't divide by 2 here
           });
         } else {
-          // If no source matches (shouldn't happen but just in case), just position somewhere
-          const matchY = startY + (matchHeight * 2);
+          // No in-page source matches (cross-page feeders or data anomaly):
+          // distribute evenly with round-scaled spacing instead of stacking
+          // every match at the same Y.
+          const fallbackSpacing = baseSpacing * Math.pow(2, roundIdx);
+          const matchY = startY + (fallbackSpacing / 2) - (matchHeight / 2)
+            + (roundPositionArr.length * fallbackSpacing);
           positions[match.id] = { x: roundX, y: matchY, height: matchHeight };
           roundPositionArr.push({
             x: roundX,

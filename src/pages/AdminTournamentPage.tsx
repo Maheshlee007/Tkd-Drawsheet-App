@@ -19,16 +19,17 @@ import {
   Copy, Link2,
 } from 'lucide-react';
 
-const STATUSES = ['draft', 'published', 'registration_open', 'in_progress', 'completed', 'cancelled'];
+const STATUSES = ['draft', 'published', 'registration_open', 'registration_closed', 'in_progress', 'completed', 'cancelled'];
 const ASSOCIATION_TYPES = ['Association', 'WT', 'SGFI', 'University', 'National', 'Club', 'Other'];
 
-const statusConfig: Record<string, { color: string; icon: typeof CheckCircle }> = {
-  draft: { color: 'bg-slate-100 text-slate-700', icon: Clock },
-  published: { color: 'bg-blue-100 text-blue-800', icon: CheckCircle },
-  registration_open: { color: 'bg-green-100 text-green-800', icon: Users },
-  in_progress: { color: 'bg-yellow-100 text-yellow-800', icon: Clock },
-  completed: { color: 'bg-emerald-100 text-emerald-800', icon: CheckCircle },
-  cancelled: { color: 'bg-red-100 text-red-800', icon: XCircle },
+const statusConfig: Record<string, { color: string; icon: typeof CheckCircle; label: string }> = {
+  draft: { color: 'bg-slate-100 text-slate-700', icon: Clock, label: 'Draft (Not visible)' },
+  published: { color: 'bg-blue-100 text-blue-800', icon: CheckCircle, label: 'Published' },
+  registration_open: { color: 'bg-green-100 text-green-800', icon: Users, label: 'Registration Open' },
+  registration_closed: { color: 'bg-orange-100 text-orange-800', icon: Clock, label: 'Registration Closed' },
+  in_progress: { color: 'bg-yellow-100 text-yellow-800', icon: Clock, label: 'In Progress' },
+  completed: { color: 'bg-emerald-100 text-emerald-800', icon: CheckCircle, label: 'Completed' },
+  cancelled: { color: 'bg-red-100 text-red-800', icon: XCircle, label: 'Cancelled' },
 };
 
 interface FormData {
@@ -201,13 +202,22 @@ export default function AdminTournamentPage() {
     }
   }
 
+  const [currentOrganizer, setCurrentOrganizer] = useState<string | null>(null);
+
   async function openAssign(tid: string) {
     setAssignTid(tid);
     setSelectedOrganizer('');
+    setCurrentOrganizer(null);
     setAssignOpen(true);
     try {
       const res = await staffService.listUsersByRole('all');
       setAvailableUsers(res.data ?? []);
+      // Load current assigned staff for this tournament to show existing organizer
+      const staffRes = await staffService.listByTournament(tid);
+      const orgAssignment = (staffRes.data ?? []).find((s: any) => s.role === 'organizer');
+      if (orgAssignment) {
+        setCurrentOrganizer(`${orgAssignment.first_name} ${orgAssignment.last_name} (${orgAssignment.email})`);
+      }
     } catch { /* ignore */ }
   }
 
@@ -544,18 +554,26 @@ export default function AdminTournamentPage() {
                 {STATUSES.map(s => (
                   <Button key={s} size="sm" variant={detailTournament.status === s ? 'default' : 'outline'}
                     onClick={() => { handleStatusChange(detailTournament.id, s); setDetailOpen(false); }}
-                    disabled={detailTournament.status === s} className="capitalize text-xs">
-                    {s.replace('_', ' ')}
+                    disabled={detailTournament.status === s} className="text-xs">
+                    {statusConfig[s]?.label || s.replace('_', ' ')}
                   </Button>
                 ))}
               </div>
               <Separator />
-              <div className="flex gap-2 pt-2">
+              <div className="flex gap-2 pt-2 flex-wrap">
                 <Button variant="outline" className="flex-1" onClick={() => { openEdit(detailTournament); setDetailOpen(false); }}>
                   <Edit className="h-4 w-4 mr-2" /> Edit
                 </Button>
                 <Button variant="outline" className="flex-1" onClick={() => { openAssign(detailTournament.id); setDetailOpen(false); }}>
                   <Users className="h-4 w-4 mr-2" /> Assign Organizer
+                </Button>
+                <Button variant="outline" className="flex-1" onClick={() => {
+                  openEdit(detailTournament);
+                  setDetailOpen(false);
+                  // Focus on deadline field after dialog opens
+                  setTimeout(() => document.getElementById('registrationDeadline')?.focus(), 300);
+                }}>
+                  <Calendar className="h-4 w-4 mr-2" /> Extend Deadline
                 </Button>
               </div>
             </div>
@@ -567,16 +585,24 @@ export default function AdminTournamentPage() {
       <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Assign Organizer</DialogTitle></DialogHeader>
-          <div className="py-4">
-            <Label>Select User to assign as Organizer</Label>
-            <Select value={selectedOrganizer} onValueChange={setSelectedOrganizer}>
-              <SelectTrigger><SelectValue placeholder="Choose user..." /></SelectTrigger>
-              <SelectContent>
-                {availableUsers.map(u => (
-                  <SelectItem key={u.id} value={u.id}>{u.first_name} {u.last_name} ({u.email})</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="py-4 space-y-4">
+            {currentOrganizer && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+                <p className="text-xs text-blue-600 font-medium">Currently Assigned</p>
+                <p className="text-sm font-medium text-blue-900">{currentOrganizer}</p>
+              </div>
+            )}
+            <div>
+              <Label>Select User to assign as Organizer</Label>
+              <Select value={selectedOrganizer} onValueChange={setSelectedOrganizer}>
+                <SelectTrigger><SelectValue placeholder="Choose user..." /></SelectTrigger>
+                <SelectContent>
+                  {availableUsers.map(u => (
+                    <SelectItem key={u.id} value={u.id}>{u.first_name} {u.last_name} ({u.email})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAssignOpen(false)}>Cancel</Button>

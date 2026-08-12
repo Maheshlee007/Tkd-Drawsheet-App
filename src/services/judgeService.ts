@@ -42,6 +42,23 @@ export interface JudgeAssignment {
   scheduled_time?: string;
 }
 
+export interface JuryCategory {
+  id: string;
+  tournament_id: string;
+  event_type: string;
+  age_category: string;
+  gender: string;
+  weight_class: string;
+  mat_number?: number | null;
+  scheduled_date?: string | null;
+  bracket_id?: string | null;
+  bracket_status?: string | null;
+  is_published?: boolean | null;
+  player_count: number;
+  match_count: number;
+  completed_match_count: number;
+}
+
 export const judgeService = {
   async login(juryCode: string, password: string): Promise<{ accessToken: string; refreshToken: string; user: any }> {
     const res = await apiRequest<{ data: { accessToken: string; refreshToken: string; user: any } }>('/api/judges/login', {
@@ -84,6 +101,23 @@ export const judgeService = {
       ? `/api/matches/judge/me?tournamentId=${tournamentId}`
       : '/api/matches/judge/me';
     const res = await apiRequest<{ data: JudgeAssignment[] }>(url);
+    return res.data;
+  },
+
+  async getMyCategories(tournamentId?: string): Promise<JuryCategory[]> {
+    const url = tournamentId
+      ? `/api/judges/my-categories?tournamentId=${tournamentId}`
+      : '/api/judges/my-categories';
+    const res = await apiRequest<{ data: JuryCategory[] }>(url);
+    return res.data;
+  },
+
+  /** Category-level assignment: judge owns the whole category (pre-draw) */
+  async assignToCategory(data: { judgeId: string; categoryId: string; tournamentId: string; role?: string }): Promise<any> {
+    const res = await apiRequest<{ data: any }>('/api/judges/assign', {
+      method: 'POST',
+      body: data,
+    });
     return res.data;
   },
 };

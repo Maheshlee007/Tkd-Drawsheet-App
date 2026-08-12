@@ -6,9 +6,12 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Gavel, LogIn, AlertCircle, Clock, CheckCircle, Play, RefreshCw, Trophy, UserRound, School, Shield, ClipboardList } from 'lucide-react';
-import { judgeService, type JudgeAssignment } from '@/services/judgeService';
-import { matchService as matchApiService } from '@/services/matchService';
+import { Gavel, LogIn, AlertCircle, Clock, CheckCircle, Play, RefreshCw, Trophy, UserRound, School, Shield, ClipboardList, Printer, Users, Swords } from 'lucide-react';
+import { judgeService, type JudgeAssignment, type JuryCategory } from '@/services/judgeService';
+import { matchService as matchApiService, type Match as ApiMatch } from '@/services/matchService';
+import { drawService, type DrawEligiblePlayer } from '@/services/drawService';
+import { useBracketPDF } from '@/hooks/useBracketPDF';
+import type { BracketMatch } from '@shared/schema';
 import { tournamentService } from '@/services/tournamentService';
 import { setStoredTokens } from '@/services/api';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -47,6 +50,40 @@ function playerLabel(name?: string) {
   return name?.trim() || 'TBD';
 }
 
+function categoryLabel(cat: JuryCategory) {
+  return `${cat.event_type} • ${cat.age_category} • ${cat.gender} • ${cat.weight_class}`;
+}
+
+/** Map persisted category matches (DB rows) into the bracket shape used by the PDF renderer */
+function matchesToBracketData(matches: ApiMatch[]): BracketMatch[][] {
+  const byRound = new Map<number, ApiMatch[]>();
+  matches.forEach((m) => {
+    const raw = m as unknown as Record<string, unknown>;
+    const round = Number(raw.round_number ?? m.round ?? 1);
+    if (!byRound.has(round)) byRound.set(round, []);
+    byRound.get(round)!.push(m);
+  });
+  return Array.from(byRound.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([, roundMatches]) =>
+      roundMatches
+        .sort((a, b) => (a.match_number ?? 0) - (b.match_number ?? 0))
+        .map((m) => {
+          const raw = m as unknown as Record<string, unknown>;
+          const isBye = Boolean(raw.is_bye);
+          const p1 = m.player1_name ?? (isBye ? '(bye)' : null);
+          const p2 = m.player2_name ?? (isBye ? '(bye)' : null);
+          return {
+            id: m.id,
+            participants: [p1, p2] as [string | null, string | null],
+            winner: (raw.winner_name as string | undefined) ?? null,
+            nextMatchId: (raw.next_match_id as string | undefined) ?? null,
+            position: m.match_number ?? 0,
+          };
+        })
+    );
+}
+
 export default function JuryPortalPage() {
   const { toast } = useToast();
   const { user, login } = useAuthStore();
@@ -73,6 +110,15 @@ export default function JuryPortalPage() {
   const [error, setError] = useState('');
   const [actionMsg, setActionMsg] = useState('');
   const [startingMatchId, setStartingMatchId] = useState('');
+
+  // Assigned categories (category → players → bracket flow)
+  const { generateBracketPDF } = useBracketPDF();
+  const [categories, setCategories] = useState<JuryCategory[]>([]);
+  const [categoryDialog, setCategoryDialog] = useState<JuryCategory | null>(null);
+  const [eligiblePlayers, setEligiblePlayers] = useState<DrawEligiblePlayer[]>([]);
+  const [loadingEligible, setLoadingEligible] = useState(false);
+  const [drawing, setDrawing] = useState(false);
+  const [printing, setPrinting] = useState(false);
 
   // Details and play dialogs
   const [detailMatch, setDetailMatch] = useState<JudgeAssignment | null>(null);
@@ -136,12 +182,68 @@ export default function JuryPortalPage() {
     setLoading(true);
     setError('');
     try {
-      const data = await judgeService.getMyMatches(selectedTournament || undefined);
-      setMatches(data);
+      const [matchData, categoryData] = await Promise.all([
+        judgeService.getMyMatches(selectedTournament || undefined),
+        judgeService.getMyCategories(selectedTournament || undefined).catch(() => [] as JuryCategory[]),
+      ]);
+      setMatches(matchData);
+      setCategories(categoryData);
     } catch (e: any) {
       setError(e.message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function openCategory(cat: JuryCategory) {
+    setCategoryDialog(cat);
+    setEligiblePlayers([]);
+    setLoadingEligible(true);
+    try {
+      const players = await drawService.getEligible(cat.id, cat.tournament_id);
+      setEligiblePlayers(players);
+    } catch (e: any) {
+      setError(e.message || 'Failed to load players for this category');
+    } finally {
+      setLoadingEligible(false);
+    }
+  }
+
+  async function handleGenerateBracket(cat: JuryCategory) {
+    setDrawing(true);
+    setError('');
+    try {
+      const result = await drawService.execute(cat.id, cat.tournament_id);
+      pushActionMessage(`Bracket created: ${result.matchCount} matches (${result.byeCount} byes). You can start matches now or print the chart.`);
+      setCategoryDialog(null);
+      await loadMatches();
+    } catch (e: any) {
+      setError(e.message || 'Failed to generate bracket');
+    } finally {
+      setDrawing(false);
+    }
+  }
+
+  async function handlePrintChart(cat: JuryCategory) {
+    setPrinting(true);
+    setError('');
+    try {
+      const categoryMatches = await matchApiService.getByCategory(cat.id);
+      if (!categoryMatches.length) {
+        setError('No bracket exists for this category yet — generate it first.');
+        return;
+      }
+      const bracketData = matchesToBracketData(categoryMatches);
+      await generateBracketPDF(
+        bracketData,
+        categoryLabel(cat),
+        cat.player_count,
+        { tournamentHeader: categoryLabel(cat).toUpperCase() }
+      );
+    } catch (e: any) {
+      setError(e.message || 'Failed to generate chart PDF');
+    } finally {
+      setPrinting(false);
     }
   }
 
@@ -449,6 +551,49 @@ export default function JuryPortalPage() {
         </Card>
       </div>
 
+      {/* My Categories — click to fetch players, create bracket, print chart */}
+      {categories.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Swords className="h-4 w-4" /> My Categories
+            </CardTitle>
+            <CardDescription>Click a category to view players, create its bracket, or print the chart</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {categories.map(cat => {
+                const drawn = (cat.match_count ?? 0) > 0;
+                const done = drawn && cat.completed_match_count === cat.match_count;
+                return (
+                  <button
+                    key={cat.id}
+                    onClick={() => void openCategory(cat)}
+                    className="rounded-xl border bg-slate-50/70 hover:bg-slate-100 p-4 text-left transition-colors"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-semibold text-sm capitalize">{categoryLabel(cat)}</p>
+                      <Badge variant="outline" className={
+                        done ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                        : drawn ? 'bg-blue-100 text-blue-800 border-blue-200'
+                        : 'bg-amber-100 text-amber-800 border-amber-200'
+                      }>
+                        {done ? 'Completed' : drawn ? 'In Play' : 'Not Drawn'}
+                      </Badge>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground mt-2">
+                      <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {cat.player_count} players</span>
+                      {drawn && <span>{cat.completed_match_count}/{cat.match_count} matches done</span>}
+                      {cat.mat_number != null && <span>Mat {cat.mat_number}</span>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Live matches highlight */}
       {inProgressCount > 0 && (
         <Card className="border-blue-200 bg-blue-50">
@@ -511,6 +656,61 @@ export default function JuryPortalPage() {
       </Card>
 
       {/* Match details */}
+      {/* Category dialog: players in order → create bracket / print chart */}
+      <Dialog open={!!categoryDialog} onOpenChange={(open) => !open && !drawing && setCategoryDialog(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="capitalize">{categoryDialog ? categoryLabel(categoryDialog) : ''}</DialogTitle>
+            <DialogDescription>
+              {categoryDialog && (categoryDialog.match_count ?? 0) > 0
+                ? `Bracket drawn — ${categoryDialog.completed_match_count}/${categoryDialog.match_count} matches completed`
+                : 'No bracket yet — review the players and create the draw'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-72 overflow-y-auto rounded-md border">
+            {loadingEligible ? (
+              <p className="p-4 text-sm text-muted-foreground">Loading players…</p>
+            ) : eligiblePlayers.length === 0 ? (
+              <p className="p-4 text-sm text-muted-foreground">
+                {(categoryDialog?.match_count ?? 0) > 0
+                  ? 'Players are already drawn into the bracket.'
+                  : 'No eligible players in this category yet.'}
+              </p>
+            ) : (
+              <ol className="divide-y">
+                {eligiblePlayers.map((p, i) => (
+                  <li key={p.id} className="flex items-center gap-3 px-4 py-2 text-sm">
+                    <span className="w-6 text-right font-mono text-xs text-muted-foreground">{i + 1}.</span>
+                    <span className="font-medium">{p.fullName}</span>
+                    {p.seed != null && <Badge variant="outline" className="ml-auto">Seed {p.seed}</Badge>}
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            {categoryDialog && (categoryDialog.match_count ?? 0) === 0 && (
+              <Button
+                onClick={() => void handleGenerateBracket(categoryDialog)}
+                disabled={drawing || loadingEligible || eligiblePlayers.length < 2}
+              >
+                <Swords className="h-4 w-4 mr-1" />
+                {drawing ? 'Creating…' : 'Create Bracket & Start'}
+              </Button>
+            )}
+            {categoryDialog && (categoryDialog.match_count ?? 0) > 0 && (
+              <Button variant="secondary" onClick={() => void handlePrintChart(categoryDialog)} disabled={printing}>
+                <Printer className="h-4 w-4 mr-1" />
+                {printing ? 'Preparing…' : 'Print Chart'}
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => setCategoryDialog(null)} disabled={drawing}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!detailMatch} onOpenChange={(open) => !open && setDetailMatch(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>

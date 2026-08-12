@@ -50,7 +50,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function PlayersListPage() {
   const { toast } = useToast();
-  const [tournaments, setTournaments] = useState<Array<{ id: string; name: string }>>([]);
+  const [tournaments, setTournaments] = useState<Array<{ id: string; name: string; start_date?: string }>>([]);
   const [selectedTournament, setSelectedTournament] = useState('');
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(false);
@@ -146,10 +146,10 @@ export default function PlayersListPage() {
       if (!grouped.has(key)) grouped.set(key, []);
       grouped.get(key)!.push(p);
     }
-    for (const [key, players] of grouped) {
+    grouped.forEach((players, key) => {
       const [ageCategory, weightCategory, gender] = key.split('|');
       groups.push({ key, ageCategory, weightCategory, gender, players });
-    }
+    });
     groups.sort((a, b) => a.ageCategory.localeCompare(b.ageCategory) || a.gender.localeCompare(b.gender) || a.weightCategory.localeCompare(b.weightCategory));
 
     doc.setFontSize(16);

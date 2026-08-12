@@ -81,6 +81,9 @@ export interface ExistingPlayerProfile {
   coach?: string;
   experience?: string;
   registrationSecretConfigured?: boolean;
+  /** Full Aadhaar (decrypted server-side, only on the secret-gated profile lookup) */
+  aadhaarNumber?: string | null;
+  aadhaarLast4?: string | null;
   aadhaarVerified: boolean;
   emailVerified: boolean;
   dobVerified: boolean;

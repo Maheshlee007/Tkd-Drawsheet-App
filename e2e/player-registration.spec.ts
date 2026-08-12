@@ -453,9 +453,9 @@ test.describe('Player Registration', () => {
     await page.getByRole('button', { name: 'Registered' }).click();
     await page.waitForTimeout(500);
 
-    // Enter real credentials from the player registered earlier
-    await page.getByPlaceholder('Player code').fill('TKD-2026-3SYX');
-    await page.getByPlaceholder('Secret key').fill('TestSecret@123');
+    // Enter real credentials from a player registered with a secret key
+    await page.getByPlaceholder('Player code').fill('TKD-2026-3MCY');
+    await page.getByPlaceholder('Secret key').fill('ScenarioSecret@123');
 
     // Load profile
     await page.getByRole('button', { name: 'Load Existing Profile' }).click();
@@ -469,7 +469,7 @@ test.describe('Player Registration', () => {
     await expect(page.getByRole('heading', { name: 'Basic Info' })).toBeVisible({ timeout: 5000 });
 
     // Check pre-filled name field
-    const nameInput = page.locator('input[name="fullName"], input[placeholder*="name" i]').first();
-    await expect(nameInput).toHaveValue(/SecretTest/i, { timeout: 5000 });
+    const nameInput = page.getByRole('textbox', { name: 'Full Name *' });
+    await expect(nameInput).toHaveValue(/ScenarioPlayer/i, { timeout: 5000 });
   });
 });

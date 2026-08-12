@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +13,7 @@ import {
   MapPin, GraduationCap, Phone, Calendar, Shield, UserCog, Trophy, Camera, CameraOff,
   PlusCircle, History, RefreshCw, Pencil, Check, X,
 } from 'lucide-react';
-import jsQR from 'jsqr';
+import { Html5Qrcode } from 'html5-qrcode';
 import { checkinService, type CheckinPlayer, type CheckinData } from '@/services/checkinService';
 import { apiRequest } from '@/services/api';
 import { tournamentService, type Tournament } from '@/services/tournamentService';
@@ -56,6 +56,8 @@ export default function VerifyPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const html5QrRef = useRef<Html5Qrcode | null>(null);
+  const [scannerDialogOpen, setScannerDialogOpen] = useState(false);
 
   // Check-in form state
   const [weight, setWeight] = useState('');
@@ -71,6 +73,7 @@ export default function VerifyPage() {
   const [payUpdateOpen, setPayUpdateOpen] = useState(false);
   const [payUpdateAmount, setPayUpdateAmount] = useState('');
   const [payUpdateMethod, setPayUpdateMethod] = useState<'cash' | 'gpay' | 'upi' | 'card' | 'online' | 'waived'>('cash');
+  const [payUpdateType, setPayUpdateType] = useState<'payment' | 'refund' | 'adjustment' | 'waiver'>('payment');
   const [payUpdateRef, setPayUpdateRef] = useState('');
   const [payUpdateReason, setPayUpdateReason] = useState('Balance collection');
   const [payUpdateNotes, setPayUpdateNotes] = useState('');
@@ -83,10 +86,11 @@ export default function VerifyPage() {
 
   // Weight category suggestion
   const [suggestedCategory, setSuggestedCategory] = useState('');
+  const [eventManageOpen, setEventManageOpen] = useState(false);
 
   useEffect(() => {
     void loadTournamentScope();
-    return () => stopScanner();
+    return () => { void stopScanner(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.email]);
 
@@ -132,58 +136,53 @@ export default function VerifyPage() {
       setError('Select a tournament before starting QR scan.');
       return;
     }
-    try {
-      let stream: MediaStream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-        });
-      } catch {
-        // Fallback: some devices don't support facingMode
-        stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      }
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-      setScanning(true);
+    setScannerDialogOpen(true);
+    setScanning(true);
 
-      // Use jsQR as universal fallback — works in all browsers
-      scanIntervalRef.current = setInterval(() => {
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        if (!video || !canvas || video.readyState < HTMLMediaElement.HAVE_ENOUGH_DATA) return;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
-        if (code?.data) {
-          // Extract player code - handle both plain code and encoded formats like "CODE|tournament|name"
-          let rawCode = code.data.trim();
+    // Wait for dialog DOM to render
+    await new Promise((r) => setTimeout(r, 300));
+
+    try {
+      const qr = new Html5Qrcode('qr-reader-container');
+      html5QrRef.current = qr;
+
+      await qr.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
+        (decodedText) => {
+          let rawCode = decodedText.trim();
           if (rawCode.includes('|')) rawCode = rawCode.split('|')[0];
           const cleaned = rawCode.toUpperCase();
           setPlayerCode(cleaned);
-          stopScanner();
-          lookupPlayer(cleaned);
-        }
-      }, 150);
+          void stopScanner();
+          void lookupPlayer(cleaned);
+        },
+        () => { /* ignore scan failures */ }
+      );
     } catch (err: any) {
-      if (err?.name === 'NotAllowedError') {
+      if (err?.name === 'NotAllowedError' || String(err).includes('Permission')) {
         setError('Camera permission denied. Please allow camera access in your browser settings.');
       } else {
         setError('Could not start camera. Try entering the player code manually.');
       }
+      setScannerDialogOpen(false);
+      setScanning(false);
     }
   }
 
-  function stopScanner() {
+  async function stopScanner() {
+    if (html5QrRef.current) {
+      try {
+        await html5QrRef.current.stop();
+        html5QrRef.current.clear();
+      } catch { /* already stopped */ }
+      html5QrRef.current = null;
+    }
+    // Legacy cleanup
     if (scanIntervalRef.current) { clearInterval(scanIntervalRef.current); scanIntervalRef.current = null; }
     if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
     setScanning(false);
+    setScannerDialogOpen(false);
   }
 
   async function lookupPlayer(code: string) {
@@ -239,12 +238,13 @@ export default function VerifyPage() {
     try {
       await checkinService.updatePayment(player.checkin.id, {
         amountPaid: parseFloat(payUpdateAmount),
+        transactionType: payUpdateType,
         paymentMethod: payUpdateMethod,
         paymentReference: payUpdateRef || undefined,
         reasonCode: payUpdateReason,
         reasonNotes: payUpdateNotes || undefined,
       });
-      toast({ title: 'Payment updated', description: `₹${payUpdateAmount} recorded via ${payUpdateMethod}` });
+      toast({ title: 'Payment updated', description: `₹${payUpdateAmount} ${payUpdateType} via ${payUpdateMethod}` });
       setPayUpdateOpen(false);
       setPayUpdateAmount(''); setPayUpdateRef(''); setPayUpdateNotes('');
       const updated = await checkinService.lookupPlayer(playerCode.trim(), selectedTournamentId || undefined);
@@ -374,25 +374,27 @@ export default function VerifyPage() {
             {player && <Button variant="outline" onClick={reset}><RefreshCw className="h-4 w-4" /></Button>}
           </div>
 
-          {scanning && (
-            <div className="relative rounded-lg overflow-hidden bg-black">
-              <video ref={videoRef} className="w-full max-h-64 object-cover" muted playsInline autoPlay />
-              {/* Hidden canvas for jsQR processing */}
-              <canvas ref={canvasRef} className="hidden" />
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="w-48 h-48 border-2 border-green-400 rounded-lg">
-                  {/* Corner markers */}
-                  <div className="absolute top-0 left-0 w-4 h-4 border-l-4 border-t-4 border-green-400 rounded-tl" />
-                  <div className="absolute top-0 right-0 w-4 h-4 border-r-4 border-t-4 border-green-400 rounded-tr" />
-                  <div className="absolute bottom-0 left-0 w-4 h-4 border-l-4 border-b-4 border-green-400 rounded-bl" />
-                  <div className="absolute bottom-0 right-0 w-4 h-4 border-r-4 border-b-4 border-green-400 rounded-br" />
-                </div>
+          {/* QR Scanner Dialog Popup */}
+          <Dialog open={scannerDialogOpen} onOpenChange={(open) => { if (!open) void stopScanner(); }}>
+            <DialogContent className="max-w-sm mx-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Camera className="h-5 w-5" /> Scan QR Code
+                </DialogTitle>
+              </DialogHeader>
+              <div className="relative rounded-lg overflow-hidden bg-black min-h-[300px]">
+                <div id="qr-reader-container" className="w-full" />
               </div>
-              <p className="text-xs text-white/80 text-center py-2 bg-black/50 absolute bottom-0 w-full">
-                📷 Align QR code within the frame
+              <p className="text-xs text-center text-slate-500">
+                Position the player's QR code within the viewfinder
               </p>
-            </div>
-          )}
+              <DialogFooter>
+                <Button variant="destructive" onClick={() => void stopScanner()}>
+                  <CameraOff className="h-4 w-4 mr-2" /> Close Scanner
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </CardContent>
       </Card>
 
@@ -515,7 +517,14 @@ export default function VerifyPage() {
             {/* Events */}
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Enrolled Events ({player.events.length})</CardTitle>
+                <CardTitle className="text-sm font-medium flex items-center justify-between">
+                  <span>Enrolled Events ({player.events.length})</span>
+                  {!player.checkin && (
+                    <Button variant="outline" size="sm" onClick={() => setEventManageOpen(true)}>
+                      <Pencil className="h-3 w-3 mr-1" /> Manage
+                    </Button>
+                  )}
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 {player.events.length > 0 ? (
@@ -523,10 +532,12 @@ export default function VerifyPage() {
                     {player.events.map(evt => (
                       <div key={evt.id} className="flex items-center justify-between text-sm border rounded px-3 py-2">
                         <span className="capitalize font-medium">{evt.event_type?.replace(/_/g, ' ')}</span>
-                        <span className="text-muted-foreground text-xs">
-                          {evt.age_category ? `${evt.age_category} ` : ''}{evt.gender ? `${evt.gender} ` : ''}{evt.weight_category || evt.category_name || ''}
-                        </span>
-                        {evt.status && <Badge variant="outline" className="capitalize text-xs">{evt.status}</Badge>}
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground text-xs">
+                            {evt.age_category ? `${evt.age_category} ` : ''}{evt.gender ? `${evt.gender} ` : ''}{evt.weight_category || evt.category_name || ''}
+                          </span>
+                          {evt.status && <Badge variant="outline" className="capitalize text-xs">{evt.status}</Badge>}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -665,6 +676,18 @@ export default function VerifyPage() {
               </div>
             )}
             <div>
+              <Label>Transaction Type</Label>
+              <Select value={payUpdateType} onValueChange={v => setPayUpdateType(v as typeof payUpdateType)}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="payment">Payment — collect amount now</SelectItem>
+                  <SelectItem value="refund">Refund — return amount</SelectItem>
+                  <SelectItem value="adjustment">Adjustment — set corrected paid total</SelectItem>
+                  <SelectItem value="waiver">Waiver — waive part of the balance</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
               <Label>Amount (₹) *</Label>
               <Input
                 type="number"
@@ -711,6 +734,65 @@ export default function VerifyPage() {
             <Button onClick={handlePaymentUpdate} disabled={payUpdating || !payUpdateAmount}>
               {payUpdating ? 'Saving...' : 'Save Payment'}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Event Management Dialog */}
+      <Dialog open={eventManageOpen} onOpenChange={setEventManageOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Manage Events</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              Add or remove events for this player. Fee adjustments will be reflected in the payment section.
+            </p>
+            {player && player.events.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">Current Events</Label>
+                {player.events.map(evt => (
+                  <div key={evt.id} className="flex items-center justify-between border rounded px-3 py-2">
+                    <span className="text-sm capitalize">{evt.event_type?.replace(/_/g, ' ')}</span>
+                    <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700 h-7 px-2"
+                      onClick={() => {
+                        toast({ title: 'Remove Event', description: `Event removal for "${evt.event_type}" will be supported via API. Contact organizer for now.`, variant: 'destructive' });
+                      }}>
+                      <X className="h-3 w-3 mr-1" /> Remove
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <Separator />
+            <div>
+              <Label className="text-xs font-medium">Add New Event</Label>
+              <div className="flex gap-2 mt-1">
+                <Select>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Select event type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="kyorugi">Kyorugi (Sparring)</SelectItem>
+                    <SelectItem value="poomsae">Poomsae (Forms)</SelectItem>
+                    <SelectItem value="pair_poomsae">Pair Poomsae</SelectItem>
+                    <SelectItem value="group_poomsae">Group Poomsae</SelectItem>
+                    <SelectItem value="board_breaking">Board Breaking</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button size="sm" onClick={() => {
+                  toast({ title: 'Add Event', description: 'Event addition will be available via API integration. Contact organizer.' });
+                }}>
+                  <PlusCircle className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Additional event fee will be added to the player's total.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEventManageOpen(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

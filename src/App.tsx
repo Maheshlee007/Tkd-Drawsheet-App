@@ -126,17 +126,17 @@ function Router() {
           </ProtectedRoute>
         </Route>
         <Route path="/admin/users">
-          <ProtectedRoute>
+          <ProtectedRoute roles={['admin']}>
             <UnifiedUserManagementPage />
           </ProtectedRoute>
         </Route>
         <Route path="/admin/audit">
-          <ProtectedRoute>
+          <ProtectedRoute roles={['admin']}>
             <AdminAuditPage />
           </ProtectedRoute>
         </Route>
         <Route path="/verify">
-          <ProtectedRoute>
+          <ProtectedRoute roles={['admin', 'organizer', 'manager', 'verification_officer']}>
             <VerifyPage />
           </ProtectedRoute>
         </Route>
@@ -149,7 +149,7 @@ function Router() {
           </ProtectedRoute>
         </Route>
         <Route path="/admin/tournaments">
-          <ProtectedRoute>
+          <ProtectedRoute roles={['admin', 'organizer']}>
             <AdminTournamentPage />
           </ProtectedRoute>
         </Route>

@@ -105,14 +105,18 @@ test.describe('Scenario: Admin Creates Staff User → User Can Login', () => {
     await adminPage.waitForTimeout(500);
     await expect(adminPage.getByText('Create Staff User')).toBeVisible();
 
-    // Fill form — fields have labels not placeholders
-    await adminPage.getByLabel('First Name *').fill('ScenarioTest');
-    await adminPage.getByLabel('Last Name').fill('User');
-    await adminPage.getByLabel('Email *').fill(testEmail);
-    await adminPage.getByLabel('Password *').fill(testPassword);
+    // Fill form — use dialog-scoped input locators (labels lack <label for> attribute)
+    const dlg = adminPage.getByRole('dialog');
+    await expect(dlg).toBeVisible({ timeout: 5000 });
+    const inputs = dlg.locator('input');
+    // Order: First Name, Last Name, Email, Password, Phone
+    await inputs.nth(0).fill('ScenarioTest');
+    await inputs.nth(1).fill('User');
+    await inputs.nth(2).fill(testEmail);
+    await inputs.nth(3).fill(testPassword);
 
     // Submit
-    await adminPage.getByRole('button', { name: 'Create User' }).click();
+    await dlg.getByRole('button', { name: 'Create User' }).click();
     await adminPage.waitForTimeout(3000);
 
     // Verify user appears in table

@@ -707,9 +707,7 @@ export default function CoachRegistrationPage() {
             setGatewayOpen(true);
             return;
           }
-          if (!!tournament && (registrationMode === 'new' || existingProfileLoaded)) {
-            setGatewayOpen(false);
-          }
+          setGatewayOpen(false);
         }}
         onCodeInputChange={setCodeInput}
         onVerify={() => void resolveTournament()}
@@ -823,12 +821,6 @@ const CoachRegistrationGatewayDialog: React.FC<{
   <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent
       className="max-w-lg"
-      onInteractOutside={(event) => {
-        if (!canContinue) event.preventDefault();
-      }}
-      onEscapeKeyDown={(event) => {
-        if (!canContinue) event.preventDefault();
-      }}
     >
       <DialogHeader>
         <DialogTitle>Start Coach Registration</DialogTitle>
