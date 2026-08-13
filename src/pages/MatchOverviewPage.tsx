@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { BarChart3, Trophy, Users, Timer } from 'lucide-react';
 import { apiRequest, isApiConfigured } from '@/services/api';
+import { tournamentService, type Tournament } from '@/services/tournamentService';
+import { TournamentSelectItem } from '@/components/TournamentSelectItem';
 
 interface MatchOverview {
   total: number;
@@ -21,15 +23,15 @@ const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'
 
 export default function MatchOverviewPage() {
   const [tournamentId, setTournamentId] = useState('');
-  const [tournaments, setTournaments] = useState<{ id: string; name: string }[]>([]);
+  const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [overview, setOverview] = useState<MatchOverview | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (isApiConfigured()) {
-      apiRequest<{ data: any[] }>('/api/tournaments').then(res => {
-        setTournaments(res.data.map((t: any) => ({ id: t.id, name: t.name })));
-        if (res.data.length > 0) setTournamentId(res.data[0].id);
+      tournamentService.listTournaments().then(list => {
+        setTournaments(list);
+        if (list.length > 0) setTournamentId(list[0].id);
       }).catch(() => {});
     }
   }, []);
@@ -103,7 +105,11 @@ export default function MatchOverviewPage() {
           <Select value={tournamentId} onValueChange={setTournamentId}>
             <SelectTrigger><SelectValue placeholder="Select tournament" /></SelectTrigger>
             <SelectContent>
-              {tournaments.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+              {tournaments.map(t => (
+                <SelectItem key={t.id} value={t.id}>
+                  <TournamentSelectItem name={t.name} status={t.status} count={t.player_count} countLabel="players" />
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

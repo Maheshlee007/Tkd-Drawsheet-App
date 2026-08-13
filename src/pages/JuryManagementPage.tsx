@@ -6,29 +6,14 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Shield, Plus, Copy, CheckCircle, Users, Eye, EyeOff, ListChecks } from 'lucide-react';
 import { judgeService, type JuryMember } from '@/services/judgeService';
 import { tournamentService } from '@/services/tournamentService';
 import { dashboardService } from '@/services/dashboardService';
-import { useToast } from '@/hooks/use-toast';
-
-interface CategoryOption {
-  id: string;
-  event_type: string;
-  age_category: string;
-  gender: string;
-  weight_class: string;
-  player_count?: number;
-}
-
-function categoryLabel(cat: CategoryOption) {
-  return `${cat.event_type} • ${cat.age_category} • ${cat.gender} • ${cat.weight_class}`;
-}
+import JuryCategoryAssignDialog from '@/components/JuryCategoryAssignDialog';
 
 export default function JuryManagementPage() {
-  const { toast } = useToast();
   const [tournaments, setTournaments] = useState<Array<{ id: string; name: string; judgeCount?: number }>>([]);
   const [selectedTournament, setSelectedTournament] = useState('');
   const [judges, setJudges] = useState<JuryMember[]>([]);
@@ -47,11 +32,6 @@ export default function JuryManagementPage() {
   const [assignmentCounts, setAssignmentCounts] = useState<Record<string, number>>({});
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignJudge, setAssignJudge] = useState<JuryMember | null>(null);
-  const [assignCategories, setAssignCategories] = useState<CategoryOption[]>([]);
-  const [checkedCategories, setCheckedCategories] = useState<Set<string>>(new Set());
-  const [knownAssignments, setKnownAssignments] = useState<Record<string, string>>({});
-  const [loadingAssignments, setLoadingAssignments] = useState(false);
-  const [savingAssignments, setSavingAssignments] = useState(false);
 
   useEffect(() => {
     tournamentService.getAll().then(async (data: any[]) => {
@@ -104,99 +84,9 @@ export default function JuryManagementPage() {
     }
   }
 
-  async function openAssignDialog(judge: JuryMember) {
+  function openAssignDialog(judge: JuryMember) {
     setAssignJudge(judge);
     setAssignOpen(true);
-    setLoadingAssignments(true);
-    try {
-      const [cats, rows] = await Promise.all([
-        tournamentService.getCategories(selectedTournament) as Promise<CategoryOption[]>,
-        judgeService.listAssignments(judge.user_id, selectedTournament),
-      ]);
-      setAssignCategories(cats);
-      // categoryId → assignmentId for the jury's active category-level assignments
-      const existing: Record<string, string> = {};
-      for (const row of rows) {
-        if (row.category_id && !row.match_id) existing[row.category_id] = row.id;
-      }
-      setKnownAssignments(existing);
-      setCheckedCategories(new Set(Object.keys(existing)));
-    } catch (e: any) {
-      toast({
-        title: 'Failed to load categories',
-        description: e.message || 'Could not load tournament categories.',
-        variant: 'destructive',
-      });
-      setAssignOpen(false);
-    } finally {
-      setLoadingAssignments(false);
-    }
-  }
-
-  function toggleCategory(categoryId: string, checked: boolean) {
-    setCheckedCategories(prev => {
-      const next = new Set(prev);
-      if (checked) next.add(categoryId);
-      else next.delete(categoryId);
-      return next;
-    });
-  }
-
-  async function handleSaveAssignments() {
-    if (!assignJudge) return;
-    setSavingAssignments(true);
-    const nextKnown: Record<string, string> = { ...knownAssignments };
-    const failures: string[] = [];
-    let added = 0;
-    let removed = 0;
-
-    // Assign every checked category — the backend upsert is idempotent and
-    // returns the assignment row, so this also repairs a stale local map.
-    for (const categoryId of Array.from(checkedCategories)) {
-      try {
-        const assignment = await judgeService.assignToCategory({
-          judgeId: assignJudge.user_id,
-          categoryId,
-          tournamentId: selectedTournament,
-        });
-        if (!(categoryId in knownAssignments)) added++;
-        if (assignment?.id) nextKnown[categoryId] = assignment.id;
-      } catch (e: any) {
-        const cat = assignCategories.find(c => c.id === categoryId);
-        failures.push(`assign ${cat ? categoryLabel(cat) : categoryId}: ${e.message || 'failed'}`);
-      }
-    }
-
-    // Revoke categories that were unchecked (only possible for assignments we know the id of)
-    for (const [categoryId, assignmentId] of Object.entries(knownAssignments)) {
-      if (checkedCategories.has(categoryId)) continue;
-      try {
-        await judgeService.revokeAssignment(assignmentId);
-        delete nextKnown[categoryId];
-        removed++;
-      } catch (e: any) {
-        const cat = assignCategories.find(c => c.id === categoryId);
-        failures.push(`revoke ${cat ? categoryLabel(cat) : categoryId}: ${e.message || 'failed'}`);
-      }
-    }
-
-    setKnownAssignments(nextKnown);
-    await loadAssignmentCounts();
-    setSavingAssignments(false);
-
-    if (failures.length > 0) {
-      toast({
-        title: 'Some assignments failed',
-        description: failures.slice(0, 3).join('; '),
-        variant: 'destructive',
-      });
-    } else {
-      toast({
-        title: 'Assignments saved',
-        description: `${added} added, ${removed} removed for ${assignJudge.first_name} ${assignJudge.last_name}.`,
-      });
-      setAssignOpen(false);
-    }
   }
 
   async function handleCreate() {
@@ -310,7 +200,7 @@ export default function JuryManagementPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="outline" size="sm" onClick={() => void openAssignDialog(judge)}>
+                      <Button variant="outline" size="sm" onClick={() => openAssignDialog(judge)}>
                         <ListChecks className="h-3.5 w-3.5 mr-1.5" />
                         Assign Categories
                       </Button>
@@ -400,64 +290,13 @@ export default function JuryManagementPage() {
       </Dialog>
 
       {/* Assign categories dialog */}
-      <Dialog open={assignOpen} onOpenChange={(open) => { if (!open && !savingAssignments) setAssignOpen(false); }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Assign Categories</DialogTitle>
-            <DialogDescription>
-              {assignJudge
-                ? `Select the categories ${assignJudge.first_name} ${assignJudge.last_name} will manage in the jury portal.`
-                : 'Select categories for this jury member.'}
-            </DialogDescription>
-          </DialogHeader>
-
-          {loadingAssignments ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-            </div>
-          ) : assignCategories.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4">
-              This tournament has no active categories yet. Add categories first, then assign them here.
-            </p>
-          ) : (
-            <>
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{checkedCategories.size} of {assignCategories.length} categories selected</span>
-              </div>
-              <div className="max-h-80 overflow-y-auto rounded-md border divide-y">
-                {assignCategories.map(cat => (
-                  <label
-                    key={cat.id}
-                    className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-slate-50"
-                  >
-                    <Checkbox
-                      checked={checkedCategories.has(cat.id)}
-                      onCheckedChange={(value) => toggleCategory(cat.id, value === true)}
-                      disabled={savingAssignments}
-                    />
-                    <span className="font-medium capitalize">{categoryLabel(cat)}</span>
-                    {cat.player_count != null && (
-                      <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground shrink-0">
-                        <Users className="h-3 w-3" /> {cat.player_count}
-                      </span>
-                    )}
-                  </label>
-                ))}
-              </div>
-            </>
-          )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAssignOpen(false)} disabled={savingAssignments}>Cancel</Button>
-            <Button
-              onClick={() => void handleSaveAssignments()}
-              disabled={savingAssignments || loadingAssignments || assignCategories.length === 0}
-            >
-              {savingAssignments ? 'Saving...' : 'Save Assignments'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <JuryCategoryAssignDialog
+        judge={assignJudge}
+        tournamentId={selectedTournament}
+        open={assignOpen}
+        onOpenChange={setAssignOpen}
+        onSaved={() => void loadAssignmentCounts()}
+      />
     </div>
   );
 }

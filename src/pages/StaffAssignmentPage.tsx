@@ -7,6 +7,7 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { staffService, type StaffMember, type StaffUser } from '@/services/staffService';
 import { tournamentService } from '@/services/tournamentService';
+import { TournamentSelectItem } from '@/components/TournamentSelectItem';
 import { Users, UserPlus, X, Shield, Gavel, QrCode, Monitor, UserCog, Stethoscope, Megaphone, Timer } from 'lucide-react';
 
 const STAFF_ROLES = [
@@ -20,7 +21,7 @@ const STAFF_ROLES = [
   { value: 'announcer', label: 'Announcer', icon: Megaphone, color: 'bg-yellow-100 text-yellow-800' },
 ];
 
-interface Tournament { id: string; name: string; tournament_code: string; status: string }
+interface Tournament { id: string; name: string; tournament_code: string; status: string; staff_count?: number }
 
 export default function StaffAssignmentPage() {
   const { toast } = useToast();
@@ -33,8 +34,8 @@ export default function StaffAssignmentPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    tournamentService.getAll().then(data => {
-      setTournaments((Array.isArray(data) ? data : []) as unknown as Tournament[]);
+    tournamentService.listTournaments().then(data => {
+      setTournaments(data);
     }).catch(() => {});
   }, []);
 
@@ -128,7 +129,12 @@ export default function StaffAssignmentPage() {
               <SelectContent>
                 {tournaments.map(t => (
                   <SelectItem key={t.id} value={t.id}>
-                    {t.name} ({t.tournament_code})
+                    <TournamentSelectItem
+                      name={`${t.name} (${t.tournament_code})`}
+                      status={t.status}
+                      count={t.staff_count}
+                      countLabel="staff"
+                    />
                   </SelectItem>
                 ))}
               </SelectContent>

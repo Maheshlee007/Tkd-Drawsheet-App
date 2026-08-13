@@ -8,7 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Search, Users, Download, RefreshCw, CheckCircle, Clock, XCircle, AlertCircle, FileText } from 'lucide-react';
 import { apiRequest } from '@/services/api';
-import { tournamentService } from '@/services/tournamentService';
+import { tournamentService, type Tournament } from '@/services/tournamentService';
+import { TournamentSelectItem } from '@/components/TournamentSelectItem';
 import { useToast } from '@/hooks/use-toast';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -50,7 +51,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function PlayersListPage() {
   const { toast } = useToast();
-  const [tournaments, setTournaments] = useState<Array<{ id: string; name: string; start_date?: string }>>([]);
+  const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [selectedTournament, setSelectedTournament] = useState('');
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(false);
@@ -61,8 +62,7 @@ export default function PlayersListPage() {
   const [filterAge, setFilterAge] = useState('all');
 
   useEffect(() => {
-    tournamentService.getAll().then((data: any[]) => {
-      const list = data.map((t: any) => ({ id: t.id, name: t.name || t.tournament_name }));
+    tournamentService.listTournaments().then(list => {
       setTournaments(list);
       if (list.length > 0) setSelectedTournament(list[0].id);
     }).catch(() => {});
@@ -215,7 +215,11 @@ export default function PlayersListPage() {
         <Select value={selectedTournament} onValueChange={setSelectedTournament}>
           <SelectTrigger className="w-80"><SelectValue placeholder="Select tournament..." /></SelectTrigger>
           <SelectContent>
-            {tournaments.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+            {tournaments.map(t => (
+              <SelectItem key={t.id} value={t.id}>
+                <TournamentSelectItem name={t.name} status={t.status} count={t.player_count} countLabel="players" />
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

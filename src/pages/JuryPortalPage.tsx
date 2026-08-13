@@ -6,13 +6,11 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Gavel, LogIn, LogOut, AlertCircle, Clock, CheckCircle, Play, RefreshCw, Trophy, UserRound, School, Shield, ClipboardList, Printer, Users, Swords } from 'lucide-react';
+import { Gavel, LogIn, LogOut, AlertCircle, CheckCircle, Play, RefreshCw, Trophy, UserRound, School, Shield, ClipboardList, Users, Swords } from 'lucide-react';
 import { jwtDecode } from 'jwt-decode';
 import { judgeService, type JudgeAssignment, type JuryCategory } from '@/services/judgeService';
 import { matchService as matchApiService, type Match as ApiMatch } from '@/services/matchService';
-import { drawService, type DrawEligiblePlayer } from '@/services/drawService';
-import { useBracketPDF } from '@/hooks/useBracketPDF';
-import type { BracketMatch } from '@shared/schema';
+import JuryCategoryBoard, { categoryLabel } from '@/components/JuryCategoryBoard';
 import { tournamentService } from '@/services/tournamentService';
 import { setStoredTokens } from '@/services/api';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -40,6 +38,17 @@ const STATUS_STYLE: Record<MatchStatus, { label: string; className: string }> = 
   forfeit: { label: 'Forfeit', className: 'bg-rose-100 text-rose-800 border-rose-200' },
 };
 
+/** Tournament statuses that get a green "active" dot in the dropdown */
+const ACTIVE_TOURNAMENT_STATUSES = ['registration_open', 'in_progress'];
+
+interface TournamentOption {
+  id: string;
+  name: string;
+  tournament_code?: string;
+  status?: string;
+  pending_matches?: number;
+}
+
 function formatScheduledTime(value?: string) {
   if (!value) return 'Not scheduled';
   const date = new Date(value);
@@ -49,40 +58,6 @@ function formatScheduledTime(value?: string) {
 
 function playerLabel(name?: string) {
   return name?.trim() || 'TBD';
-}
-
-function categoryLabel(cat: JuryCategory) {
-  return `${cat.event_type} • ${cat.age_category} • ${cat.gender} • ${cat.weight_class}`;
-}
-
-/** Map persisted category matches (DB rows) into the bracket shape used by the PDF renderer */
-function matchesToBracketData(matches: ApiMatch[]): BracketMatch[][] {
-  const byRound = new Map<number, ApiMatch[]>();
-  matches.forEach((m) => {
-    const raw = m as unknown as Record<string, unknown>;
-    const round = Number(raw.round_number ?? m.round ?? 1);
-    if (!byRound.has(round)) byRound.set(round, []);
-    byRound.get(round)!.push(m);
-  });
-  return Array.from(byRound.entries())
-    .sort((a, b) => a[0] - b[0])
-    .map(([, roundMatches]) =>
-      roundMatches
-        .sort((a, b) => (a.match_number ?? 0) - (b.match_number ?? 0))
-        .map((m) => {
-          const raw = m as unknown as Record<string, unknown>;
-          const isBye = Boolean(raw.is_bye);
-          const p1 = m.player1_name ?? (isBye ? '(bye)' : null);
-          const p2 = m.player2_name ?? (isBye ? '(bye)' : null);
-          return {
-            id: m.id,
-            participants: [p1, p2] as [string | null, string | null],
-            winner: (raw.winner_name as string | undefined) ?? null,
-            nextMatchId: (raw.next_match_id as string | undefined) ?? null,
-            position: m.match_number ?? 0,
-          };
-        })
-    );
 }
 
 export default function JuryPortalPage() {
@@ -98,13 +73,20 @@ export default function JuryPortalPage() {
     user.roles?.includes('organizer')
   ));
 
+  // Plain jury members only see their own tournaments; admin/organizer oversee everything
+  const isPlainJury = !!(user &&
+    user.roles?.includes('jury') &&
+    !user.roles?.includes('admin') &&
+    !user.roles?.includes('organizer')
+  );
+
   // Login state
   const [juryCode, setJuryCode] = useState('');
   const [loginError, setLoginError] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
 
   // Matches state
-  const [tournaments, setTournaments] = useState<Array<{ id: string; name: string; tournament_code?: string }>>([]);
+  const [tournaments, setTournaments] = useState<TournamentOption[]>([]);
   const [selectedTournament, setSelectedTournament] = useState('');
   const [matches, setMatches] = useState<JudgeAssignment[]>([]);
   const [loading, setLoading] = useState(false);
@@ -112,14 +94,10 @@ export default function JuryPortalPage() {
   const [actionMsg, setActionMsg] = useState('');
   const [startingMatchId, setStartingMatchId] = useState('');
 
-  // Assigned categories (category → players → bracket flow)
-  const { generateBracketPDF } = useBracketPDF();
+  // Assigned categories → in-page bracket board
   const [categories, setCategories] = useState<JuryCategory[]>([]);
-  const [categoryDialog, setCategoryDialog] = useState<JuryCategory | null>(null);
-  const [eligiblePlayers, setEligiblePlayers] = useState<DrawEligiblePlayer[]>([]);
-  const [loadingEligible, setLoadingEligible] = useState(false);
-  const [drawing, setDrawing] = useState(false);
-  const [printing, setPrinting] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<JuryCategory | null>(null);
+  const [boardRefreshKey, setBoardRefreshKey] = useState(0);
 
   // Details and play dialogs
   const [detailMatch, setDetailMatch] = useState<JudgeAssignment | null>(null);
@@ -131,17 +109,43 @@ export default function JuryPortalPage() {
   const [submittingScore, setSubmittingScore] = useState(false);
 
   useEffect(() => {
-    if (isJuryAuthenticated) {
-      tournamentService.getAll().then((data: any[]) => {
-        const list = data.map((t: any) => ({
-          id: t.id,
-          name: t.name || t.tournament_name,
-          tournament_code: t.tournament_code,
-        }));
+    if (!isJuryAuthenticated) return;
+    let cancelled = false;
+    const loadTournaments = async () => {
+      try {
+        let list: TournamentOption[];
+        if (isPlainJury) {
+          // Jury members only ever see tournaments they are assigned to
+          const mine = await judgeService.listMyTournaments();
+          list = mine.map((t) => ({
+            id: t.id,
+            name: t.name,
+            tournament_code: t.tournament_code,
+            status: t.status,
+            pending_matches: t.pending_matches ?? 0,
+          }));
+        } else {
+          // Admin/organizer oversee everything — keep the full list
+          const data: any[] = await tournamentService.getAll();
+          list = data.map((t: any) => ({
+            id: t.id,
+            name: t.name || t.tournament_name,
+            tournament_code: t.tournament_code,
+            status: t.status,
+          }));
+        }
+        if (cancelled) return;
         setTournaments(list);
-      }).catch(() => {});
-    }
-  }, [isJuryAuthenticated]);
+        if (list.length === 1) {
+          setSelectedTournament((prev) => prev || list[0].id);
+        }
+      } catch {
+        // Non-fatal — the dropdown simply stays hidden
+      }
+    };
+    void loadTournaments();
+    return () => { cancelled = true; };
+  }, [isJuryAuthenticated, isPlainJury]);
 
   useEffect(() => {
     if (!selectedTournament) {
@@ -197,6 +201,7 @@ export default function JuryPortalPage() {
     setSelectedTournament('');
     setMatches([]);
     setCategories([]);
+    setSelectedCategory(null);
     setJuryCode('');
     setLoginError('');
     setError('');
@@ -213,62 +218,14 @@ export default function JuryPortalPage() {
       ]);
       setMatches(matchData);
       setCategories(categoryData);
+      // Keep the open board in sync with refreshed category counts
+      setSelectedCategory((prev) =>
+        prev ? (categoryData.find((c) => c.id === prev.id) ?? prev) : prev
+      );
     } catch (e: any) {
       setError(e.message);
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function openCategory(cat: JuryCategory) {
-    setCategoryDialog(cat);
-    setEligiblePlayers([]);
-    setLoadingEligible(true);
-    try {
-      const players = await drawService.getEligible(cat.id, cat.tournament_id);
-      setEligiblePlayers(players);
-    } catch (e: any) {
-      setError(e.message || 'Failed to load players for this category');
-    } finally {
-      setLoadingEligible(false);
-    }
-  }
-
-  async function handleGenerateBracket(cat: JuryCategory) {
-    setDrawing(true);
-    setError('');
-    try {
-      const result = await drawService.execute(cat.id, cat.tournament_id);
-      pushActionMessage(`Bracket created: ${result.matchCount} matches (${result.byeCount} byes). You can start matches now or print the chart.`);
-      setCategoryDialog(null);
-      await loadMatches();
-    } catch (e: any) {
-      setError(e.message || 'Failed to generate bracket');
-    } finally {
-      setDrawing(false);
-    }
-  }
-
-  async function handlePrintChart(cat: JuryCategory) {
-    setPrinting(true);
-    setError('');
-    try {
-      const categoryMatches = await matchApiService.getByCategory(cat.id);
-      if (!categoryMatches.length) {
-        setError('No bracket exists for this category yet — generate it first.');
-        return;
-      }
-      const bracketData = matchesToBracketData(categoryMatches);
-      await generateBracketPDF(
-        bracketData,
-        categoryLabel(cat),
-        cat.player_count,
-        { tournamentHeader: categoryLabel(cat).toUpperCase() }
-      );
-    } catch (e: any) {
-      setError(e.message || 'Failed to generate chart PDF');
-    } finally {
-      setPrinting(false);
     }
   }
 
@@ -285,6 +242,7 @@ export default function JuryPortalPage() {
       await matchApiService.startMatch(matchId);
       pushActionMessage('Match started. You can now record the result.');
       await loadMatches();
+      setBoardRefreshKey((k) => k + 1);
       return true;
     } catch (e: any) {
       setError(e.message || 'Failed to start match');
@@ -303,6 +261,40 @@ export default function JuryPortalPage() {
       return;
     }
     openScoringDialog(match);
+  }
+
+  /**
+   * Bridge from the bracket board canvas to the existing scoring flow:
+   * maps a DB match row (matchService shape) onto the JudgeAssignment shape
+   * the dialogs consume, then reuses Start & Play. DB 'scheduled' is treated
+   * as 'pending' so the match gets started before scoring.
+   */
+  function handleBoardMatchScore(dbMatch: ApiMatch) {
+    const raw = dbMatch as unknown as Record<string, unknown>;
+    const statusRaw = String(dbMatch.status);
+    const normalized: JudgeAssignment['match_status'] =
+      statusRaw === 'in_progress' ? 'in_progress'
+      : statusRaw === 'completed' ? 'completed'
+      : 'pending';
+    const assignment: JudgeAssignment = {
+      id: dbMatch.id,
+      match_id: dbMatch.id,
+      judge_id: (raw.judge_id as string | undefined) ?? '',
+      role: 'judge',
+      tournament_id: selectedCategory?.tournament_id,
+      category_id: selectedCategory?.id,
+      category_name: selectedCategory ? categoryLabel(selectedCategory) : dbMatch.category_name,
+      round_number: Number(raw.round_number ?? dbMatch.round ?? 1),
+      match_number: dbMatch.match_number,
+      player1_id: dbMatch.player1_id,
+      player2_id: dbMatch.player2_id,
+      player1_name: dbMatch.player1_name ?? (raw.player1_display as string | undefined),
+      player2_name: dbMatch.player2_name ?? (raw.player2_display as string | undefined),
+      match_status: normalized,
+      mat_name: dbMatch.mat_name,
+      scheduled_time: dbMatch.scheduled_time,
+    };
+    void handleStartAndPlay(assignment);
   }
 
   function openScoringDialog(match: JudgeAssignment) {
@@ -367,6 +359,8 @@ export default function JuryPortalPage() {
       setScoreMatch(null);
       pushActionMessage(`Result submitted. Winner: ${winnerName}`);
       await loadMatches();
+      // Re-render the open bracket board with the advanced winner
+      setBoardRefreshKey((k) => k + 1);
     } catch (e: any) {
       setError(e.message || 'Failed to submit match result');
     } finally {
@@ -527,6 +521,26 @@ export default function JuryPortalPage() {
       </header>
 
     <div className="space-y-6 p-4 max-w-5xl mx-auto">
+      {/* Global error/action messages — rendered above BOTH the dashboard and the
+          category board so failures are never hidden while the board is open */}
+      {error && <div className="bg-destructive/10 text-destructive p-3 rounded-md text-sm">{error}</div>}
+      {actionMsg && (
+        <div className="bg-green-50 text-green-800 p-3 rounded-md text-sm flex items-center gap-2">
+          <CheckCircle className="h-4 w-4" /> {actionMsg}
+        </div>
+      )}
+
+      {selectedCategory ? (
+        /* Category board — full in-page bracket view */
+        <JuryCategoryBoard
+          category={selectedCategory}
+          onBack={() => setSelectedCategory(null)}
+          onOpenScoring={handleBoardMatchScore}
+          onBracketCreated={() => void loadMatches()}
+          refreshKey={boardRefreshKey}
+        />
+      ) : (
+        <>
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <Gavel className="h-6 w-6" />
@@ -541,28 +555,33 @@ export default function JuryPortalPage() {
         </Button>
       </div>
 
-      {/* Tournament filter */}
+      {/* Tournament filter — jury only see their own tournaments (my-tournaments) */}
       {tournaments.length > 0 && (
         <div className="flex items-center gap-3">
           <Trophy className="h-4 w-4 text-muted-foreground shrink-0" />
           <Select value={selectedTournament || 'all'} onValueChange={v => setSelectedTournament(v === 'all' ? '' : v)}>
-            <SelectTrigger className="w-72"><SelectValue placeholder="All tournaments" /></SelectTrigger>
+            <SelectTrigger className="w-80"><SelectValue placeholder="All tournaments" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Tournaments</SelectItem>
               {tournaments.map(t => (
                 <SelectItem key={t.id} value={t.id}>
-                  {t.tournament_code ? `${t.tournament_code} • ${t.name}` : t.name}
+                  <span className="flex items-center gap-2">
+                    <span
+                      className={`h-2 w-2 rounded-full shrink-0 ${
+                        ACTIVE_TOURNAMENT_STATUSES.includes(t.status ?? '') ? 'bg-green-500' : 'bg-gray-300'
+                      }`}
+                    />
+                    <span className="truncate">{t.name}</span>
+                    {(t.pending_matches ?? 0) > 0 && (
+                      <Badge variant="outline" className="ml-1 bg-amber-50 text-amber-800 border-amber-200 shrink-0">
+                        {t.pending_matches} pending
+                      </Badge>
+                    )}
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-        </div>
-      )}
-
-      {error && <div className="bg-destructive/10 text-destructive p-3 rounded-md text-sm">{error}</div>}
-      {actionMsg && (
-        <div className="bg-green-50 text-green-800 p-3 rounded-md text-sm flex items-center gap-2">
-          <CheckCircle className="h-4 w-4" /> {actionMsg}
         </div>
       )}
 
@@ -594,14 +613,14 @@ export default function JuryPortalPage() {
         </Card>
       </div>
 
-      {/* My Categories — click to fetch players, create bracket, print chart */}
+      {/* My Categories — click to open the in-page bracket board */}
       {categories.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
               <Swords className="h-4 w-4" /> My Categories
             </CardTitle>
-            <CardDescription>Click a category to view players, create its bracket, or print the chart</CardDescription>
+            <CardDescription>Click a category to open its bracket board — draw, score, and print from there</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -611,7 +630,7 @@ export default function JuryPortalPage() {
                 return (
                   <button
                     key={cat.id}
-                    onClick={() => void openCategory(cat)}
+                    onClick={() => setSelectedCategory(cat)}
                     className="rounded-xl border bg-slate-50/70 hover:bg-slate-100 p-4 text-left transition-colors"
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -697,63 +716,10 @@ export default function JuryPortalPage() {
           )}
         </CardContent>
       </Card>
+        </>
+      )}
 
-      {/* Match details */}
-      {/* Category dialog: players in order → create bracket / print chart */}
-      <Dialog open={!!categoryDialog} onOpenChange={(open) => !open && !drawing && setCategoryDialog(null)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="capitalize">{categoryDialog ? categoryLabel(categoryDialog) : ''}</DialogTitle>
-            <DialogDescription>
-              {categoryDialog && (categoryDialog.match_count ?? 0) > 0
-                ? `Bracket drawn — ${categoryDialog.completed_match_count}/${categoryDialog.match_count} matches completed`
-                : 'No bracket yet — review the players and create the draw'}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="max-h-72 overflow-y-auto rounded-md border">
-            {loadingEligible ? (
-              <p className="p-4 text-sm text-muted-foreground">Loading players…</p>
-            ) : eligiblePlayers.length === 0 ? (
-              <p className="p-4 text-sm text-muted-foreground">
-                {(categoryDialog?.match_count ?? 0) > 0
-                  ? 'Players are already drawn into the bracket.'
-                  : 'No eligible players in this category yet.'}
-              </p>
-            ) : (
-              <ol className="divide-y">
-                {eligiblePlayers.map((p, i) => (
-                  <li key={p.id} className="flex items-center gap-3 px-4 py-2 text-sm">
-                    <span className="w-6 text-right font-mono text-xs text-muted-foreground">{i + 1}.</span>
-                    <span className="font-medium">{p.fullName}</span>
-                    {p.seed != null && <Badge variant="outline" className="ml-auto">Seed {p.seed}</Badge>}
-                  </li>
-                ))}
-              </ol>
-            )}
-          </div>
-
-          <DialogFooter className="gap-2 sm:gap-2">
-            {categoryDialog && (categoryDialog.match_count ?? 0) === 0 && (
-              <Button
-                onClick={() => void handleGenerateBracket(categoryDialog)}
-                disabled={drawing || loadingEligible || eligiblePlayers.length < 2}
-              >
-                <Swords className="h-4 w-4 mr-1" />
-                {drawing ? 'Creating…' : 'Create Bracket & Start'}
-              </Button>
-            )}
-            {categoryDialog && (categoryDialog.match_count ?? 0) > 0 && (
-              <Button variant="secondary" onClick={() => void handlePrintChart(categoryDialog)} disabled={printing}>
-                <Printer className="h-4 w-4 mr-1" />
-                {printing ? 'Preparing…' : 'Print Chart'}
-              </Button>
-            )}
-            <Button variant="outline" onClick={() => setCategoryDialog(null)} disabled={drawing}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
+      {/* Match details — available from both the dashboard and the board */}
       <Dialog open={!!detailMatch} onOpenChange={(open) => !open && setDetailMatch(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -822,7 +788,7 @@ export default function JuryPortalPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Play and submit result */}
+      {/* Play and submit result — reused by the bracket board's match clicks */}
       <Dialog open={!!scoreMatch} onOpenChange={(open) => !open && !submittingScore && setScoreMatch(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>

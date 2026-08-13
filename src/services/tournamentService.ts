@@ -36,6 +36,8 @@ export interface Tournament {
   created_by: string | null;
   created_at: string;
   stats?: Record<string, number>;
+  player_count?: number;
+  staff_count?: number;
 }
 
 const STORAGE_KEY = 'tournament-history';

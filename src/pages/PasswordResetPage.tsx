@@ -7,15 +7,23 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { passwordService } from '@/services/playerHistoryService';
 import { adminService } from '@/services/adminService';
+import { staffService } from '@/services/staffService';
+import { tournamentService } from '@/services/tournamentService';
+import { TournamentSelectItem } from '@/components/TournamentSelectItem';
 import { KeyRound, Eye, EyeOff, Lock } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
 
 interface UserInfo { id: string; email: string; firstName: string; lastName: string; roles: string[] }
+interface TournamentOption { id: string; name: string; status?: string; staff_count?: number }
+
+const ALL_USERS = 'all';
 
 export default function PasswordResetPage() {
   const { toast } = useToast();
   const authUser = useAuthStore(s => s.user);
   const [users, setUsers] = useState<UserInfo[]>([]);
+  const [tournaments, setTournaments] = useState<TournamentOption[]>([]);
+  const [selectedScope, setSelectedScope] = useState(''); // ALL_USERS (admin) or a tournament id
   const [selectedUserId, setSelectedUserId] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [mustChange, setMustChange] = useState(true);
@@ -27,10 +35,31 @@ export default function PasswordResetPage() {
   const [myNewPassword, setMyNewPassword] = useState('');
   const [showMyPassword, setShowMyPassword] = useState(false);
 
-  const isAdmin = authUser?.roles?.includes('admin') || authUser?.roles?.includes('organizer');
+  const isAdmin = !!authUser?.roles?.includes('admin');
+  const canReset = isAdmin || !!authUser?.roles?.includes('organizer');
 
+  // Load tournament scopes: admins see all tournaments (+ "All users");
+  // organizers only see the tournaments they are staffed on.
   useEffect(() => {
     if (isAdmin) {
+      tournamentService.listTournaments().then(list => {
+        setTournaments(list.map(t => ({ id: t.id, name: t.name, status: t.status, staff_count: t.staff_count })));
+        setSelectedScope(ALL_USERS);
+      }).catch(() => {});
+    } else if (canReset) {
+      staffService.myTournaments().then(res => {
+        const list = res.data ?? [];
+        setTournaments(list.map(t => ({ id: t.id, name: t.name, status: t.status })));
+        if (list.length > 0) setSelectedScope(list[0].id);
+      }).catch(() => {});
+    }
+  }, [isAdmin, canReset]);
+
+  // Load the user list for the selected scope.
+  useEffect(() => {
+    if (!canReset || !selectedScope) return;
+    setSelectedUserId('');
+    if (selectedScope === ALL_USERS) {
       adminService.getUsers().then(data => {
         const mapped = (Array.isArray(data) ? data : []).map((u) => ({
           id: u.id,
@@ -40,9 +69,29 @@ export default function PasswordResetPage() {
           roles: u.roles ?? [],
         }));
         setUsers(mapped);
-      }).catch(() => {});
+      }).catch(() => setUsers([]));
+    } else {
+      staffService.listByTournament(selectedScope).then(res => {
+        // De-duplicate: a user holding multiple staff roles appears once, roles joined.
+        const byUser = new Map<string, UserInfo>();
+        for (const s of res.data ?? []) {
+          const existing = byUser.get(s.user_id);
+          if (existing) {
+            if (!existing.roles.includes(s.role)) existing.roles.push(s.role);
+          } else {
+            byUser.set(s.user_id, {
+              id: s.user_id,
+              email: s.email,
+              firstName: s.first_name ?? '',
+              lastName: s.last_name ?? '',
+              roles: [s.role],
+            });
+          }
+        }
+        setUsers(Array.from(byUser.values()));
+      }).catch(() => setUsers([]));
     }
-  }, [isAdmin]);
+  }, [canReset, selectedScope]);
 
   const handleResetPassword = async () => {
     if (!selectedUserId || !newPassword) {
@@ -97,7 +146,7 @@ export default function PasswordResetPage() {
         </div>
 
         {/* Admin/Organizer: Reset staff password */}
-        {isAdmin && (
+        {canReset && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -105,6 +154,23 @@ export default function PasswordResetPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div>
+                <label className="text-sm font-medium mb-1 block">Tournament</label>
+                <Select value={selectedScope} onValueChange={setSelectedScope}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a tournament..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {isAdmin && <SelectItem value={ALL_USERS}>All users</SelectItem>}
+                    {tournaments.map(t => (
+                      <SelectItem key={t.id} value={t.id}>
+                        <TournamentSelectItem name={t.name} status={t.status} count={t.staff_count} countLabel="staff" />
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div>
                 <label className="text-sm font-medium mb-1 block">Select Staff User</label>
                 <Select value={selectedUserId} onValueChange={setSelectedUserId}>

@@ -1,5 +1,8 @@
 import { apiRequest } from './api';
 
+/** Backend draw types: 'manual' = players in as-entered (registration) order */
+export type DrawType = 'random' | 'seeded' | 'manual';
+
 export interface DrawEligiblePlayer {
   id: string;
   fullName: string;
@@ -25,11 +28,16 @@ export const drawService = {
     return res.players ?? [];
   },
 
-  /** Generate the bracket AND persist it (creates matches) */
+  /**
+   * Generate the bracket AND persist it (creates matches).
+   * Body fields accepted by POST /api/draw/execute:
+   * categoryId, tournamentId, drawType ('random'|'seeded'|'manual'),
+   * thirdPlaceMatch (boolean), roundsPerMatch (int 1–5).
+   */
   async execute(
     categoryId: string,
     tournamentId: string,
-    options: { drawType?: 'random' | 'seeded' | 'manual'; thirdPlaceMatch?: boolean; roundsPerMatch?: number } = {}
+    options: { drawType?: DrawType; thirdPlaceMatch?: boolean; roundsPerMatch?: number } = {}
   ): Promise<DrawExecuteResult> {
     return apiRequest<DrawExecuteResult>('/api/draw/execute', {
       method: 'POST',

@@ -42,6 +42,18 @@ export interface JudgeAssignment {
   scheduled_time?: string;
 }
 
+export interface JuryTournament {
+  id: string;
+  name: string;
+  tournament_code?: string;
+  status?: string;
+  start_date?: string;
+  end_date?: string;
+  assigned_categories?: number;
+  assigned_matches?: number;
+  pending_matches?: number;
+}
+
 export interface JuryCategory {
   id: string;
   tournament_id: string;
@@ -106,6 +118,12 @@ export const judgeService = {
       : '/api/matches/judge/me';
     const res = await apiRequest<{ data: JudgeAssignment[] }>(url);
     return res.data;
+  },
+
+  /** Tournaments the logged-in jury member has active assignments in (jury portal dropdown) */
+  async listMyTournaments(): Promise<JuryTournament[]> {
+    const res = await apiRequest<{ data: JuryTournament[] }>('/api/judges/my-tournaments');
+    return res.data ?? [];
   },
 
   async getMyCategories(tournamentId?: string): Promise<JuryCategory[]> {
