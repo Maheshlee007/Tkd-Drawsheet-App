@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useParams } from 'wouter';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,12 +9,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   UserCog, ArrowLeft, CheckCircle, FileText, ShieldCheck, Loader2,
-  Download, Trophy, Eye, EyeOff, AlertTriangle,
+  Download, Trophy, Eye, EyeOff, AlertTriangle, Share2,
 } from 'lucide-react';
 import { coachService } from '@/services/coachService';
 import { tournamentService, type Tournament } from '@/services/tournamentService';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useToast } from '@/hooks/use-toast';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { AutoCloseErrorModal } from '@/components/AutoCloseErrorModal';
 import { CoachIdCardPreview } from '@/components/coach/CoachIdCardPreview';
 import { buildCoachQrPayload, generateCoachIdCardPDFBlob } from '@/utils/coachIdCardPDF';
@@ -94,7 +95,22 @@ export default function CoachRegistrationPage() {
 
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfDownloaded, setPdfDownloaded] = useState(false);
   const previewBlobRef = useRef<string | null>(null);
+  const pdfBlobRef = useRef<Blob | null>(null);
+  const isMobile = useIsMobile();
+
+  // navigator.share with files — available on most mobile browsers, rarely on desktop
+  const canSharePdf = useMemo(() => {
+    if (typeof navigator === 'undefined') return false;
+    const nav = navigator as Navigator & { canShare?: (data: { files: File[] }) => boolean };
+    if (typeof nav.share !== 'function' || typeof nav.canShare !== 'function') return false;
+    try {
+      return nav.canShare({ files: [new File([new Blob()], 'test.pdf', { type: 'application/pdf' })] });
+    } catch {
+      return false;
+    }
+  }, []);
 
   const coachFormLinks = tournament?.coach_form_links?.length
     ? tournament.coach_form_links
@@ -112,6 +128,17 @@ export default function CoachRegistrationPage() {
       }
     };
   }, []);
+
+  // Guard against navigating away before the coach card PDF was downloaded
+  useEffect(() => {
+    const handler = (event: BeforeUnloadEvent) => {
+      if (!pdfPreviewOpen || pdfDownloaded) return;
+      event.preventDefault();
+      event.returnValue = 'Download the coach ID card PDF before leaving this page.';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [pdfPreviewOpen, pdfDownloaded]);
 
   async function resolveTournament(raw?: string) {
     const code = (raw ?? codeInput).trim().toUpperCase();
@@ -220,15 +247,10 @@ export default function CoachRegistrationPage() {
 
     const objectUrl = URL.createObjectURL(blob);
     previewBlobRef.current = objectUrl;
+    pdfBlobRef.current = blob;
     setPdfPreviewUrl(objectUrl);
+    setPdfDownloaded(false);
     setPdfPreviewOpen(true);
-
-    const anchor = document.createElement('a');
-    anchor.href = objectUrl;
-    anchor.download = `${successData.coachCode}-coach-id-card.pdf`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
   }
 
   async function triggerPdfDownload() {
@@ -239,6 +261,29 @@ export default function CoachRegistrationPage() {
     document.body.appendChild(anchor);
     anchor.click();
     document.body.removeChild(anchor);
+    setPdfDownloaded(true);
+  }
+
+  async function handleSharePdf() {
+    const blob = pdfBlobRef.current;
+    if (!blob || !success) return;
+    const file = new File([blob], `${success.coachCode}-coach-id-card.pdf`, { type: 'application/pdf' });
+    try {
+      await (navigator as Navigator & { share: (data: { files: File[]; title?: string }) => Promise<void> })
+        .share({ files: [file], title: 'Coach ID Card PDF' });
+    } catch {
+      // user cancelled or the share sheet failed — nothing to do
+    }
+  }
+
+  function handlePdfDialogOpenChange(nextOpen: boolean) {
+    if (!nextOpen && !pdfDownloaded) {
+      const shouldDownload = window.confirm('Download the coach ID card PDF before closing?');
+      if (shouldDownload) {
+        void triggerPdfDownload();
+      }
+    }
+    setPdfPreviewOpen(nextOpen);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -346,6 +391,10 @@ export default function CoachRegistrationPage() {
   function resetFormForNextRegistration() {
     setSuccess(null);
     setCoachQrDataUrl(null);
+    setPdfPreviewOpen(false);
+    setPdfPreviewUrl(null);
+    setPdfDownloaded(false);
+    pdfBlobRef.current = null;
     setForm({
       firstName: '',
       lastName: '',
@@ -377,7 +426,13 @@ export default function CoachRegistrationPage() {
               <CheckCircle className="h-12 w-12 text-green-500 mx-auto" />
               <h2 className="text-2xl font-bold mt-2">Registration Successful</h2>
               <p className="text-muted-foreground">Coach ID: <span className="font-mono font-semibold">{success.coachCode}</span></p>
-              <p className="text-xs text-slate-500 mt-1">Coach card PDF was downloaded automatically.</p>
+              {pdfDownloaded ? (
+                <p className="text-xs text-green-700 mt-1">Coach card PDF downloaded successfully.</p>
+              ) : (
+                <p className="text-xs text-amber-700 font-medium mt-1">
+                  Not downloaded yet — download your coach card PDF before leaving this page.
+                </p>
+              )}
             </div>
 
             <CoachIdCardPreview
@@ -393,26 +448,67 @@ export default function CoachRegistrationPage() {
 
             <div className="flex flex-wrap gap-2 justify-center">
               <Button variant="outline" onClick={() => setPdfPreviewOpen(true)} disabled={!pdfPreviewUrl}>Preview PDF</Button>
-              <Button variant="outline" onClick={() => void triggerPdfDownload()} disabled={!pdfPreviewUrl}>
-                <Download className="h-4 w-4 mr-2" /> Download Again
+              <Button onClick={() => void triggerPdfDownload()} disabled={!pdfPreviewUrl}>
+                <Download className="h-4 w-4 mr-2" /> Download PDF
               </Button>
+              {canSharePdf && (
+                <Button variant="outline" onClick={() => void handleSharePdf()} disabled={!pdfPreviewUrl}>
+                  <Share2 className="h-4 w-4 mr-2" /> Share PDF
+                </Button>
+              )}
               <Button variant="outline" onClick={resetFormForNextRegistration}>Register Another</Button>
-              <Button onClick={() => navigate('/login')}>Go to Login</Button>
+              <Button variant="outline" onClick={() => navigate('/login')}>Go to Login</Button>
             </div>
           </CardContent>
         </Card>
 
-        <Dialog open={pdfPreviewOpen} onOpenChange={setPdfPreviewOpen}>
+        <Dialog open={pdfPreviewOpen} onOpenChange={handlePdfDialogOpenChange}>
           <DialogContent className="max-w-5xl w-[95vw] h-[90vh] p-4">
             <DialogHeader>
               <DialogTitle>Coach ID Card PDF Preview</DialogTitle>
             </DialogHeader>
-            <div className="h-[calc(90vh-110px)] rounded border overflow-hidden bg-slate-100">
-              {pdfPreviewUrl ? (
-                <iframe title="Coach ID card PDF preview" src={pdfPreviewUrl} className="w-full h-full" />
-              ) : (
+            <div className="h-[calc(90vh-130px)] rounded border overflow-hidden bg-slate-100">
+              {!pdfPreviewUrl ? (
                 <div className="h-full flex items-center justify-center text-sm text-slate-500">PDF preview not available.</div>
+              ) : isMobile ? (
+                <div className="h-full flex flex-col items-center justify-center gap-3 p-6 text-center">
+                  <FileText className="h-12 w-12 text-slate-400" />
+                  <p className="text-sm text-slate-600">PDF preview isn't supported on this device.</p>
+                  <Button onClick={() => void triggerPdfDownload()}>
+                    <Download className="h-4 w-4 mr-2" /> Download PDF
+                  </Button>
+                  {canSharePdf && (
+                    <Button variant="outline" onClick={() => void handleSharePdf()}>
+                      <Share2 className="h-4 w-4 mr-2" /> Share
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <object data={pdfPreviewUrl} type="application/pdf" className="w-full h-full">
+                  <iframe title="Coach ID card PDF preview" src={`${pdfPreviewUrl}#view=FitH`} className="w-full h-full">
+                    <div className="h-full flex flex-col items-center justify-center gap-3 p-6 text-center">
+                      <FileText className="h-12 w-12 text-slate-400" />
+                      <p className="text-sm text-slate-600">PDF preview is not supported on this device.</p>
+                      <Button onClick={() => void triggerPdfDownload()}>
+                        <Download className="h-4 w-4 mr-2" /> Download PDF
+                      </Button>
+                    </div>
+                  </iframe>
+                </object>
               )}
+            </div>
+            <div className="flex items-center justify-end gap-3">
+              {!pdfDownloaded && pdfPreviewUrl && (
+                <span className="text-xs text-amber-700 font-medium">Not downloaded yet</span>
+              )}
+              {canSharePdf && (
+                <Button variant="outline" onClick={() => void handleSharePdf()} disabled={!pdfPreviewUrl}>
+                  <Share2 className="h-4 w-4 mr-2" /> Share
+                </Button>
+              )}
+              <Button onClick={() => void triggerPdfDownload()} disabled={!pdfPreviewUrl}>
+                <Download className="h-4 w-4 mr-2" /> Download PDF
+              </Button>
             </div>
           </DialogContent>
         </Dialog>

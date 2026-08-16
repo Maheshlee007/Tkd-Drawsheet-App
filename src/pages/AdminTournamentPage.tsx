@@ -10,17 +10,44 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetClose } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { tournamentService, type Tournament } from '@/services/tournamentService';
 import { staffService } from '@/services/staffService';
+import { apiRequest } from '@/services/api';
 import {
   Trophy, Plus, Edit, MapPin, Calendar, Users, Search,
   Building2, Phone, Mail, Shield, CheckCircle, Clock, XCircle, X,
-  Copy, Link2,
+  Copy, Link2, Eye, EyeOff,
 } from 'lucide-react';
 
 const STATUSES = ['draft', 'published', 'registration_open', 'registration_closed', 'in_progress', 'completed', 'cancelled'];
+/** Only these statuses may be set at creation time; everything else goes through the detail panel transitions */
+const CREATE_STATUSES = ['draft', 'published', 'registration_open'];
 const ASSOCIATION_TYPES = ['Association', 'WT', 'SGFI', 'University', 'National', 'Club', 'Other'];
+
+/** Sensible default fee per event type for a brand-new tournament */
+const DEFAULT_EVENT_FEES: Record<string, number> = {
+  kyorugi: 500, poomsae: 400, poomsae_pair: 600, poomsae_group: 800, freestyle_poomsae: 500,
+};
+
+interface EventTypeRow { code: string; name: string; sort_order?: number }
+interface EventFeeFormRow { enabled: boolean; fee: string }
+
+/** ISO date-time → value for <input type="datetime-local"> in the user's local timezone */
+function isoToLocalInput(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** datetime-local input value → ISO string for the API */
+function localInputToIso(value: string): string | undefined {
+  return value ? new Date(value).toISOString() : undefined;
+}
 
 const statusConfig: Record<string, { color: string; icon: typeof CheckCircle; label: string }> = {
   draft: { color: 'bg-slate-100 text-slate-700', icon: Clock, label: 'Draft (Not visible)' },
@@ -44,6 +71,13 @@ interface FormData {
   startDate: string;
   endDate: string;
   registrationDeadline: string;
+  registrationOpenAt: string;
+  registrationCloseAt: string;
+  lateRegistrationCloseAt: string;
+  lateFeeAmount: string;
+  lateFeeMode: 'flat' | 'per_event';
+  requireEmailVerification: boolean;
+  status: string;
   entryFee: string;
   maxParticipants: string;
   organizerName: string;
@@ -55,6 +89,11 @@ interface FormData {
 const emptyForm: FormData = {
   name: '', description: '', registrationInstructions: '', playerFormLinks: '', coachFormLinks: '', venue: '', city: '', state: '',
   startDate: '', endDate: '', registrationDeadline: '',
+  registrationOpenAt: '', registrationCloseAt: '', lateRegistrationCloseAt: '',
+  lateFeeAmount: '0', lateFeeMode: 'flat',
+  // DB default is false — the UI deliberately opts new tournaments in
+  requireEmailVerification: true,
+  status: 'draft',
   entryFee: '500', maxParticipants: '200',
   organizerName: '', organizerEmail: '', organizerPhone: '',
   associationType: 'Association',
@@ -85,6 +124,12 @@ export default function AdminTournamentPage() {
   const [form, setForm] = useState<FormData>({ ...emptyForm });
   const [saving, setSaving] = useState(false);
 
+  // Event fees grid (Create/Edit dialog)
+  const [eventTypes, setEventTypes] = useState<EventTypeRow[]>([]);
+  const [eventFeeRows, setEventFeeRows] = useState<Record<string, EventFeeFormRow>>({});
+  // Only PUT event fees on edit when the existing rows loaded — never wipe config blindly
+  const [feesLoaded, setFeesLoaded] = useState(false);
+
   // Detail view
   const [detailTournament, setDetailTournament] = useState<Tournament | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -95,6 +140,11 @@ export default function AdminTournamentPage() {
   const [availableUsers, setAvailableUsers] = useState<Array<{ id: string; email: string; first_name: string; last_name: string }>>([]);
   const [selectedOrganizer, setSelectedOrganizer] = useState('');
   const [assigning, setAssigning] = useState(false);
+  const [assignTab, setAssignTab] = useState<'existing' | 'create'>('existing');
+  const [showAllUsers, setShowAllUsers] = useState(false);
+  const [newOrg, setNewOrg] = useState({ fullName: '', email: '', password: '', phone: '' });
+  const [showOrgPassword, setShowOrgPassword] = useState(false);
+  const [orgConflict, setOrgConflict] = useState<{ message: string; existingUserId?: string } | null>(null);
 
   useEffect(() => { loadTournaments(); }, []);
 
@@ -122,13 +172,38 @@ export default function AdminTournamentPage() {
     return true;
   });
 
-  function openCreate() {
-    setEditingId(null);
-    setForm({ ...emptyForm });
-    setDialogOpen(true);
+  /** Fetch (and cache) the canonical event-type list from the public endpoint */
+  async function fetchEventTypes(): Promise<EventTypeRow[]> {
+    if (eventTypes.length) return eventTypes;
+    const res = await apiRequest<{ data: EventTypeRow[] }>('/api/event-types', { skipAuth: true });
+    const list = res.data ?? [];
+    setEventTypes(list);
+    return list;
   }
 
-  function openEdit(t: Tournament) {
+  async function openCreate() {
+    setEditingId(null);
+    setForm({ ...emptyForm });
+    setEventFeeRows({});
+    setFeesLoaded(false);
+    setDialogOpen(true);
+    try {
+      const types = await fetchEventTypes();
+      const rows: Record<string, EventFeeFormRow> = {};
+      for (const et of types) {
+        const isKyorugi = et.code === 'kyorugi';
+        const fallback = DEFAULT_EVENT_FEES[et.code] ?? 500;
+        rows[et.code] = {
+          enabled: isKyorugi,
+          fee: String(isKyorugi ? (parseFloat(emptyForm.entryFee) || fallback) : fallback),
+        };
+      }
+      setEventFeeRows(rows);
+      setFeesLoaded(true);
+    } catch { /* event types unavailable — create proceeds without eventFees */ }
+  }
+
+  async function openEdit(t: Tournament) {
     setEditingId(t.id);
     setForm({
       name: t.name,
@@ -140,11 +215,33 @@ export default function AdminTournamentPage() {
       city: t.city || '', state: t.state || '',
       startDate: t.start_date?.slice(0, 10) || '', endDate: t.end_date?.slice(0, 10) || '',
       registrationDeadline: t.registration_deadline?.slice(0, 10) || '',
+      registrationOpenAt: isoToLocalInput(t.registration_open_at),
+      registrationCloseAt: isoToLocalInput(t.registration_close_at),
+      lateRegistrationCloseAt: isoToLocalInput(t.late_registration_close_at),
+      lateFeeAmount: String(parseFloat(String(t.late_fee_amount ?? 0)) || 0),
+      lateFeeMode: t.late_fee_mode === 'per_event' ? 'per_event' : 'flat',
+      requireEmailVerification: !!t.require_email_verification,
+      status: t.status,
       entryFee: String(t.entry_fee || 500), maxParticipants: String(t.max_participants || 200),
       organizerName: t.organizer_name || '', organizerEmail: t.organizer_email || '',
       organizerPhone: t.organizer_phone || '', associationType: t.association_type || 'WT',
     });
+    setEventFeeRows({});
+    setFeesLoaded(false);
     setDialogOpen(true);
+    try {
+      const [types, existing] = await Promise.all([fetchEventTypes(), tournamentService.getEventFees(t.id)]);
+      const rows: Record<string, EventFeeFormRow> = {};
+      for (const et of types) {
+        const fallback = et.code === 'kyorugi' ? (t.entry_fee || DEFAULT_EVENT_FEES.kyorugi) : (DEFAULT_EVENT_FEES[et.code] ?? 500);
+        rows[et.code] = { enabled: false, fee: String(fallback) };
+      }
+      for (const row of existing) {
+        rows[row.event_type] = { enabled: row.is_enabled, fee: String(parseFloat(String(row.fee_amount)) || 0) };
+      }
+      setEventFeeRows(rows);
+      setFeesLoaded(true);
+    } catch { /* leave feesLoaded false — save will skip putEventFees to avoid wiping config */ }
   }
 
   async function handleSave() {
@@ -154,6 +251,16 @@ export default function AdminTournamentPage() {
     }
     setSaving(true);
     try {
+      // Enabled event-fee rows only — putEventFees is a full replace (omitted events become disabled)
+      const enabledEventFees = eventTypes
+        .filter(et => eventFeeRows[et.code]?.enabled)
+        .map(et => ({
+          eventType: et.code,
+          fee: parseFloat(eventFeeRows[et.code].fee) || 0,
+          isEnabled: true,
+          ...(et.sort_order != null ? { sortOrder: et.sort_order } : {}),
+        }));
+
       const payload = {
         name: form.name, description: form.description || undefined,
         registrationInstructions: form.registrationInstructions || undefined,
@@ -161,7 +268,14 @@ export default function AdminTournamentPage() {
         coachFormLinks: parseLinks(form.coachFormLinks),
         venue: form.venue || undefined, city: form.city || undefined, state: form.state || undefined,
         startDate: form.startDate, endDate: form.endDate,
-        registrationDeadline: form.registrationDeadline || undefined,
+        // Legacy deadline auto-mirrors into registrationCloseAt server-side — only send it when no explicit close time
+        registrationDeadline: form.registrationCloseAt ? undefined : (form.registrationDeadline || undefined),
+        registrationOpenAt: localInputToIso(form.registrationOpenAt),
+        registrationCloseAt: localInputToIso(form.registrationCloseAt),
+        lateRegistrationCloseAt: localInputToIso(form.lateRegistrationCloseAt),
+        lateFeeAmount: parseFloat(form.lateFeeAmount) || 0,
+        lateFeeMode: form.lateFeeMode,
+        requireEmailVerification: form.requireEmailVerification,
         entryFee: parseFloat(form.entryFee) || 0,
         maxParticipants: parseInt(form.maxParticipants) || undefined,
         organizerName: form.organizerName || undefined,
@@ -171,9 +285,25 @@ export default function AdminTournamentPage() {
       };
       if (editingId) {
         await tournamentService.updateTournament(editingId, payload);
-        toast({ title: 'Tournament updated' });
+        let feeError: string | null = null;
+        if (feesLoaded) {
+          try {
+            await tournamentService.putEventFees(editingId, enabledEventFees);
+          } catch (feeErr: any) {
+            feeError = feeErr.message;
+          }
+        }
+        if (feeError) {
+          toast({ title: 'Tournament updated, but event fees failed to save', description: feeError, variant: 'destructive' });
+        } else {
+          toast({ title: 'Tournament updated' });
+        }
       } else {
-        const created = await tournamentService.createTournament(payload);
+        const created = await tournamentService.createTournament({
+          ...payload,
+          status: form.status,
+          ...(feesLoaded && enabledEventFees.length ? { eventFees: enabledEventFees } : {}),
+        });
         toast({ title: 'Tournament created' });
         setDialogOpen(false);
         await loadTournaments();
@@ -198,20 +328,43 @@ export default function AdminTournamentPage() {
       toast({ title: `Status updated to ${newStatus}` });
       await loadTournaments();
     } catch (e: any) {
-      toast({ title: 'Status update failed', description: e.message, variant: 'destructive' });
+      // 409 = illegal transition; server sends { message, data: { from, to, allowed[] } }
+      const allowed = e?.details?.data?.allowed;
+      if (e?.status === 409 && Array.isArray(allowed)) {
+        toast({
+          title: 'Status change not allowed',
+          description: `${e.message} Allowed: ${allowed.length ? allowed.join(', ') : 'none'}`,
+          variant: 'destructive',
+        });
+      } else {
+        toast({ title: 'Status update failed', description: e.message, variant: 'destructive' });
+      }
     }
   }
 
   const [currentOrganizer, setCurrentOrganizer] = useState<string | null>(null);
 
+  async function loadAssignUsers(all: boolean) {
+    try {
+      const res = await staffService.listUsersByRole(all ? 'all' : 'organizer');
+      setAvailableUsers(res.data ?? []);
+    } catch {
+      setAvailableUsers([]);
+    }
+  }
+
   async function openAssign(tid: string) {
     setAssignTid(tid);
     setSelectedOrganizer('');
     setCurrentOrganizer(null);
+    setAssignTab('existing');
+    setShowAllUsers(false);
+    setNewOrg({ fullName: '', email: '', password: '', phone: '' });
+    setShowOrgPassword(false);
+    setOrgConflict(null);
     setAssignOpen(true);
+    loadAssignUsers(false);
     try {
-      const res = await staffService.listUsersByRole('all');
-      setAvailableUsers(res.data ?? []);
       // Load current assigned staff for this tournament to show existing organizer
       const staffRes = await staffService.listByTournament(tid);
       const orgAssignment = (staffRes.data ?? []).find((s: any) => s.role === 'organizer');
@@ -225,12 +378,45 @@ export default function AdminTournamentPage() {
     if (!selectedOrganizer || !assignTid) return;
     setAssigning(true);
     try {
-      await staffService.assignStaff({
-        tournamentId: assignTid,
-        userId: selectedOrganizer,
-        roles: ['organizer'],
-      });
+      await tournamentService.createOrganizer(assignTid, { userId: selectedOrganizer });
       toast({ title: 'Organizer assigned to tournament' });
+      setAssignOpen(false);
+    } catch (e: any) {
+      toast({ title: 'Assignment failed', description: e.message, variant: 'destructive' });
+    }
+    setAssigning(false);
+  }
+
+  async function handleCreateOrganizer() {
+    if (!newOrg.fullName || !newOrg.email || !newOrg.password || !assignTid) return;
+    setAssigning(true);
+    setOrgConflict(null);
+    try {
+      await tournamentService.createOrganizer(assignTid, {
+        email: newOrg.email,
+        fullName: newOrg.fullName,
+        password: newOrg.password,
+        phone: newOrg.phone || undefined,
+      });
+      toast({ title: 'Organizer created and assigned to tournament' });
+      setAssignOpen(false);
+    } catch (e: any) {
+      const existingUserId = e?.details?.data?.existingUserId ?? e?.data?.existingUserId;
+      if (e?.status === 409 || existingUserId || /already exists/i.test(e?.message ?? '')) {
+        setOrgConflict({ message: e.message, existingUserId });
+      } else {
+        toast({ title: 'Failed to create organizer', description: e.message, variant: 'destructive' });
+      }
+    }
+    setAssigning(false);
+  }
+
+  async function handleAttachExisting(userId: string) {
+    setAssigning(true);
+    try {
+      await tournamentService.createOrganizer(assignTid, { userId });
+      toast({ title: 'Existing user attached as organizer' });
+      setOrgConflict(null);
       setAssignOpen(false);
     } catch (e: any) {
       toast({ title: 'Assignment failed', description: e.message, variant: 'destructive' });
@@ -251,6 +437,7 @@ export default function AdminTournamentPage() {
 
   const f = (d: string | null) => d ? new Date(d).toLocaleDateString() : '-';
   const sc = (s: string) => statusConfig[s] ?? statusConfig.draft;
+  const anyEventFeeEnabled = Object.values(eventFeeRows).some(r => r.enabled);
 
   return (
     <div className="space-y-6 p-4 max-w-7xl mx-auto">
@@ -376,6 +563,20 @@ export default function AdminTournamentPage() {
               <Label>Tournament Name *</Label>
               <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. State Championship 2026" />
             </div>
+            {!editingId && (
+              <div>
+                <Label>Initial Status</Label>
+                <Select value={form.status} onValueChange={v => setForm({ ...form, status: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {CREATE_STATUSES.map(s => (
+                      <SelectItem key={s} value={s}>{statusConfig[s]?.label || s.replace('_', ' ')}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">Further status transitions are made from the tournament detail panel.</p>
+              </div>
+            )}
             <div><Label>Description</Label><Input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></div>
             <div>
               <Label>Registration Instructions</Label>
@@ -424,13 +625,92 @@ export default function AdminTournamentPage() {
               </div>
             </div>
             <Separator />
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <div><Label>Start Date *</Label><Input type="date" value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })} /></div>
               <div><Label>End Date *</Label><Input type="date" value={form.endDate} onChange={e => setForm({ ...form, endDate: e.target.value })} /></div>
-              <div><Label>Reg Deadline</Label><Input type="date" value={form.registrationDeadline} onChange={e => setForm({ ...form, registrationDeadline: e.target.value })} /></div>
             </div>
+            <Separator />
+            <p className="text-sm font-medium">Registration Window</p>
             <div className="grid grid-cols-2 gap-4">
-              <div><Label>Entry Fee (₹)</Label><Input type="number" value={form.entryFee} onChange={e => setForm({ ...form, entryFee: e.target.value })} /></div>
+              <div>
+                <Label>Registration opens at</Label>
+                <Input type="datetime-local" value={form.registrationOpenAt} onChange={e => setForm({ ...form, registrationOpenAt: e.target.value })} />
+              </div>
+              <div>
+                <Label>Registration closes at</Label>
+                <Input id="registrationCloseAt" type="datetime-local" value={form.registrationCloseAt} onChange={e => setForm({ ...form, registrationCloseAt: e.target.value })} />
+              </div>
+            </div>
+            {!form.registrationCloseAt && (
+              <div>
+                <Label>Deadline (legacy — sets close time to end of that day)</Label>
+                <Input id="registrationDeadline" type="date" value={form.registrationDeadline} onChange={e => setForm({ ...form, registrationDeadline: e.target.value })} />
+              </div>
+            )}
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <Label>Late registration until (optional)</Label>
+                <Input type="datetime-local" value={form.lateRegistrationCloseAt} onChange={e => setForm({ ...form, lateRegistrationCloseAt: e.target.value })} />
+              </div>
+              <div>
+                <Label>Late fee (₹)</Label>
+                <Input type="number" value={form.lateFeeAmount} onChange={e => setForm({ ...form, lateFeeAmount: e.target.value })} />
+              </div>
+              <div>
+                <Label>Late fee mode</Label>
+                <Select value={form.lateFeeMode} onValueChange={v => setForm({ ...form, lateFeeMode: v as 'flat' | 'per_event' })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="flat">Flat</SelectItem>
+                    <SelectItem value="per_event">Per event</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {!form.lateRegistrationCloseAt && (
+              <p className="text-xs text-muted-foreground">Late fee only applies when "Late registration until" is set.</p>
+            )}
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="require-email-verification"
+                checked={form.requireEmailVerification}
+                onCheckedChange={c => setForm({ ...form, requireEmailVerification: c === true })}
+              />
+              <Label htmlFor="require-email-verification" className="font-normal">Require email verification (player registrations)</Label>
+            </div>
+            <Separator />
+            <p className="text-sm font-medium">Event Fees</p>
+            {eventTypes.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Loading event types…</p>
+            ) : (
+              <div className="space-y-2">
+                {eventTypes.map(et => {
+                  const row = eventFeeRows[et.code] ?? { enabled: false, fee: String(DEFAULT_EVENT_FEES[et.code] ?? 500) };
+                  return (
+                    <div key={et.code} className="flex items-center gap-3">
+                      <Checkbox
+                        id={`event-fee-${et.code}`}
+                        checked={row.enabled}
+                        onCheckedChange={c => setEventFeeRows({ ...eventFeeRows, [et.code]: { ...row, enabled: c === true } })}
+                      />
+                      <Label htmlFor={`event-fee-${et.code}`} className="flex-1 font-normal">{et.name}</Label>
+                      <Input
+                        type="number"
+                        className="w-28"
+                        value={row.fee}
+                        disabled={!row.enabled}
+                        onChange={e => setEventFeeRows({ ...eventFeeRows, [et.code]: { ...row, fee: e.target.value } })}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-4">
+              <div className={anyEventFeeEnabled ? 'opacity-50' : ''}>
+                <Label>Legacy entry fee (fallback) (₹)</Label>
+                <Input type="number" value={form.entryFee} onChange={e => setForm({ ...form, entryFee: e.target.value })} />
+              </div>
               <div><Label>Max Participants</Label><Input type="number" value={form.maxParticipants} onChange={e => setForm({ ...form, maxParticipants: e.target.value })} /></div>
             </div>
             <Separator />
@@ -570,8 +850,8 @@ export default function AdminTournamentPage() {
                 <Button variant="outline" className="flex-1" onClick={() => {
                   openEdit(detailTournament);
                   setDetailOpen(false);
-                  // Focus on deadline field after dialog opens
-                  setTimeout(() => document.getElementById('registrationDeadline')?.focus(), 300);
+                  // Focus the close-time field (or the legacy deadline field when no close time set) after dialog opens
+                  setTimeout(() => (document.getElementById('registrationCloseAt') ?? document.getElementById('registrationDeadline'))?.focus(), 300);
                 }}>
                   <Calendar className="h-4 w-4 mr-2" /> Extend Deadline
                 </Button>
@@ -585,30 +865,110 @@ export default function AdminTournamentPage() {
       <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Assign Organizer</DialogTitle></DialogHeader>
-          <div className="py-4 space-y-4">
+          <div className="py-2 space-y-4">
             {currentOrganizer && (
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
                 <p className="text-xs text-blue-600 font-medium">Currently Assigned</p>
                 <p className="text-sm font-medium text-blue-900">{currentOrganizer}</p>
               </div>
             )}
-            <div>
-              <Label>Select User to assign as Organizer</Label>
-              <Select value={selectedOrganizer} onValueChange={setSelectedOrganizer}>
-                <SelectTrigger><SelectValue placeholder="Choose user..." /></SelectTrigger>
-                <SelectContent>
-                  {availableUsers.map(u => (
-                    <SelectItem key={u.id} value={u.id}>{u.first_name} {u.last_name} ({u.email})</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <Tabs value={assignTab} onValueChange={v => setAssignTab(v as 'existing' | 'create')}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="existing">Existing user</TabsTrigger>
+                <TabsTrigger value="create">Create new organizer</TabsTrigger>
+              </TabsList>
+              <TabsContent value="existing" className="space-y-4 pt-2">
+                <div>
+                  <Label>Select User to assign as Organizer</Label>
+                  <Select value={selectedOrganizer} onValueChange={setSelectedOrganizer}>
+                    <SelectTrigger><SelectValue placeholder="Choose user..." /></SelectTrigger>
+                    <SelectContent>
+                      {availableUsers.map(u => (
+                        <SelectItem key={u.id} value={u.id}>{u.first_name} {u.last_name} ({u.email})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {availableUsers.length === 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {showAllUsers ? 'No users found.' : 'No organizer-role users found — try "Show all users".'}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="show-all-users"
+                    checked={showAllUsers}
+                    onCheckedChange={c => {
+                      const v = c === true;
+                      setShowAllUsers(v);
+                      setSelectedOrganizer('');
+                      loadAssignUsers(v);
+                    }}
+                  />
+                  <Label htmlFor="show-all-users" className="text-xs font-normal">Show all users (not just organizers)</Label>
+                </div>
+              </TabsContent>
+              <TabsContent value="create" className="space-y-3 pt-2">
+                <div>
+                  <Label>Full Name *</Label>
+                  <Input value={newOrg.fullName} onChange={e => setNewOrg({ ...newOrg, fullName: e.target.value })} placeholder="e.g. Ravi Kumar" />
+                </div>
+                <div>
+                  <Label>Email *</Label>
+                  <Input type="email" value={newOrg.email} onChange={e => setNewOrg({ ...newOrg, email: e.target.value })} placeholder="organizer@example.com" />
+                </div>
+                <div>
+                  <Label>Password *</Label>
+                  <div className="relative">
+                    <Input
+                      type={showOrgPassword ? 'text' : 'password'}
+                      value={newOrg.password}
+                      onChange={e => setNewOrg({ ...newOrg, password: e.target.value })}
+                      className="pr-9"
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowOrgPassword(s => !s)}
+                      aria-label={showOrgPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showOrgPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <Label>Phone</Label>
+                  <Input value={newOrg.phone} onChange={e => setNewOrg({ ...newOrg, phone: e.target.value })} />
+                </div>
+                {orgConflict && (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-2">
+                    <p className="text-sm text-amber-900">{orgConflict.message}</p>
+                    {orgConflict.existingUserId && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={assigning}
+                        onClick={() => handleAttachExisting(orgConflict.existingUserId!)}
+                      >
+                        Attach the existing user instead
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAssignOpen(false)}>Cancel</Button>
-            <Button onClick={handleAssignOrganizer} disabled={assigning || !selectedOrganizer}>
-              {assigning ? 'Assigning...' : 'Assign Organizer'}
-            </Button>
+            {assignTab === 'existing' ? (
+              <Button onClick={handleAssignOrganizer} disabled={assigning || !selectedOrganizer}>
+                {assigning ? 'Assigning...' : 'Assign Organizer'}
+              </Button>
+            ) : (
+              <Button onClick={handleCreateOrganizer} disabled={assigning || !newOrg.fullName || !newOrg.email || !newOrg.password}>
+                {assigning ? 'Working...' : 'Create & Assign'}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

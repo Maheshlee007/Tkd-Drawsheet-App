@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useParams } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,11 +13,16 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import {
   Trophy, ArrowLeft, ArrowRight, CheckCircle, Loader2, Download, Copy, AlertTriangle, Eye, EyeOff,
+  Clock, FileText, Share2,
 } from 'lucide-react';
 import { PlayerRegistration } from '@/store/usePlayerStore';
 import { playerService, type RegisteredPlayer, type TeamEntryPayload } from '@/services/playerService';
-import { tournamentService, type Tournament } from '@/services/tournamentService';
+import {
+  tournamentService, type Tournament, type RegistrationConfig, type RegistrationQuote,
+} from '@/services/tournamentService';
+import { verificationService } from '@/services/verificationService';
 import { weightCategoryService, type WeightCategory as WeightCategoryRow } from '@/services/weightCategoryService';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useAuthStore } from '@/store/useAuthStore';
 import { AutoCloseErrorModal } from '@/components/AutoCloseErrorModal';
 import {
@@ -29,19 +34,51 @@ import { generateRegistrationPDFBlob } from '@/utils/registrationPDF';
 
 const STEPS = ['Basic Info', 'TKD Details', 'Verification', 'Review & Submit'];
 
-const EVENT_OPTIONS = [
-  { value: 'kyorugi', label: 'Kyorugi (Sparring)' },
-  { value: 'poomsae', label: 'Poomsae (Individual)' },
-  { value: 'poomsae_pair', label: 'Poomsae Pair' },
-  { value: 'poomsae_group', label: 'Poomsae Group' },
-  { value: 'freestyle_poomsae', label: 'Freestyle Poomsae' },
-];
+interface EventOption {
+  value: string;
+  label: string;
+  isGroupEvent: boolean;
+  fee: number;
+}
 
-const GROUP_EVENT_OPTIONS = ['poomsae_pair', 'poomsae_group'];
+/** Pricing shape returned by POST /api/players/register (superset of the typed client model) */
+interface ServerPricing {
+  totalFee: number;
+  eventFees?: number[];
+  currency?: string;
+  mode?: string;
+  subtotal?: number;
+  lines?: Array<{ eventType: string; label: string; amount: number }>;
+  lateFee?: { applied: boolean; amount: number; mode: string };
+}
 
 interface TeamEntryFormState {
   teamName: string;
   members: string[];
+}
+
+/** ISO timestamp → 'dd MMM yyyy, h:mm am/pm' (en-IN); '—' when absent */
+function fmtDateTime(iso?: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? String(iso)
+    : d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+/** Human "time left" until an ISO timestamp, measured from a given epoch-ms "now" (server clock) */
+function formatRemaining(targetIso: string | null | undefined, fromMs: number): string | null {
+  if (!targetIso) return null;
+  const target = new Date(targetIso).getTime();
+  if (!Number.isFinite(target)) return null;
+  const diffMin = Math.floor((target - fromMs) / 60000);
+  if (diffMin <= 0) return null;
+  const days = Math.floor(diffMin / 1440);
+  const hours = Math.floor((diffMin % 1440) / 60);
+  const mins = diffMin % 60;
+  if (days > 0) return `${days}d ${hours}h left`;
+  if (hours > 0) return `${hours}h ${mins}m left`;
+  return `${Math.max(mins, 1)}m left`;
 }
 
 const PlayerRegistrationPage: React.FC = () => {
@@ -76,11 +113,20 @@ const PlayerRegistrationPage: React.FC = () => {
   const [showSecret, setShowSecret] = useState(false);
   const [associationWeightRows, setAssociationWeightRows] = useState<WeightCategoryRow[]>([]);
 
+  // Server-driven registration config (window, offered events, fees) + live quote
+  const [registrationConfig, setRegistrationConfig] = useState<RegistrationConfig | null>(null);
+  const [quote, setQuote] = useState<RegistrationQuote | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  // serverNow = Date.now() + serverTimeOffset — countdown labels never trust the device clock
+  const [serverTimeOffset, setServerTimeOffset] = useState(0);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [pdfDownloaded, setPdfDownloaded] = useState(false);
-  const [autoDownloadIn, setAutoDownloadIn] = useState<number | null>(null);
   const previewBlobRef = useRef<string | null>(null);
+  const pdfBlobRef = useRef<Blob | null>(null);
+  const isMobile = useIsMobile();
 
   // Selected events for multi-event support
   const [selectedEvents, setSelectedEvents] = useState<string[]>(['kyorugi']);
@@ -99,19 +145,30 @@ const PlayerRegistrationPage: React.FC = () => {
     }));
   }
 
-  function resolveTournamentPricing() {
-    const firstEventFee = Number(resolvedTournament?.first_event_fee ?? resolvedTournament?.entry_fee ?? 500);
-    const additionalEventFee = Number(resolvedTournament?.additional_event_fee ?? 300);
-    const eventFees = selectedEvents.map((_, index) => (index === 0 ? firstEventFee : additionalEventFee));
-    return {
-      firstEventFee,
-      additionalEventFee,
-      eventFees,
-      totalFee: eventFees.reduce((sum, fee) => sum + fee, 0),
-    };
-  }
+  // Offered events come from the server config — never hardcoded
+  const eventOptions = useMemo<EventOption[]>(() =>
+    (registrationConfig?.events ?? []).map((e) => ({
+      value: e.eventType,
+      label: e.name,
+      isGroupEvent: e.isGroupEvent,
+      fee: e.fee,
+    })), [registrationConfig]);
+  const offeredEventTypes = useMemo(() => new Set(eventOptions.map((o) => o.value)), [eventOptions]);
+  const groupEventTypes = useMemo(
+    () => eventOptions.filter((o) => o.isGroupEvent).map((o) => o.value),
+    [eventOptions]
+  );
 
-  const pricingPreview = resolveTournamentPricing();
+  const registration = registrationConfig?.registration ?? null;
+  const registrationClosed = !!registration && !registration.isOpen;
+  const requireEmailVerification = !!registration?.requireEmailVerification;
+  const serverNowMs = nowMs + serverTimeOffset;
+
+  function applyRegistrationConfig(config: RegistrationConfig) {
+    setRegistrationConfig(config);
+    const serverNow = new Date(config.registration.serverTime).getTime();
+    setServerTimeOffset(Number.isFinite(serverNow) ? serverNow - Date.now() : 0);
+  }
 
   useEffect(() => {
     if (!routeTournamentCode) return;
@@ -119,7 +176,11 @@ const PlayerRegistrationPage: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeTournamentCode]);
 
- 
+  // Keep countdown labels fresh
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   async function handleTournamentLookup(rawCode?: string) {
     const code = (rawCode ?? tournamentCodeInput).trim().toUpperCase();
@@ -133,11 +194,16 @@ const PlayerRegistrationPage: React.FC = () => {
     setLoadingTournament(true);
     setTournamentError('');
     try {
-      const tournament = await tournamentService.getByCode(code);
+      const [tournament, config] = await Promise.all([
+        tournamentService.getByCode(code),
+        tournamentService.getRegistrationConfig(code),
+      ]);
       setResolvedTournament(tournament);
+      applyRegistrationConfig(config);
       setTournamentCodeInput(code);
       setRegistrationReady(false);
-      setGatewayOpen(true);
+      // When registration is closed, skip the gateway so the blocking card is visible.
+      setGatewayOpen(config.registration.isOpen);
       setRegistrationMode('new');
       setUpdateReason('');
       setExistingProfileLoaded(false);
@@ -146,6 +212,8 @@ const PlayerRegistrationPage: React.FC = () => {
       setRegistrationSecret('');
     } catch (error: any) {
       setResolvedTournament(null);
+      setRegistrationConfig(null);
+      setQuote(null);
       setRegistrationReady(false);
       setGatewayOpen(true);
       const rawMsg = String(error?.message || '');
@@ -156,6 +224,19 @@ const PlayerRegistrationPage: React.FC = () => {
       setModalError(msg);
     } finally {
       setLoadingTournament(false);
+    }
+  }
+
+  /** Re-check the window server-side (used after a 409 on submit) */
+  async function refreshRegistrationConfig() {
+    const code = (resolvedTournament?.tournament_code ?? tournamentCodeInput).trim().toUpperCase();
+    if (!code) return;
+    try {
+      const config = await tournamentService.getRegistrationConfig(code);
+      applyRegistrationConfig(config);
+      if (!config.registration.isOpen) setGatewayOpen(false);
+    } catch {
+      // keep the existing config on transient failures
     }
   }
 
@@ -182,12 +263,17 @@ const PlayerRegistrationPage: React.FC = () => {
   const [experience, setExperience] = useState('');
   // Verification
   const [aadhaarNumber, setAadhaarNumber] = useState('');
+  // Existing profile has an encrypted aadhaar server-side that could not be decrypted for display —
+  // show a masked read-only chip and OMIT aadhaarNumber from the payload unless the user re-enters it.
+  const [aadhaarOnFile, setAadhaarOnFile] = useState(false);
+  const [aadhaarLast4, setAadhaarLast4] = useState('');
   const [aadhaarVerified, setAadhaarVerified] = useState(false);
   const [aadhaarVerifying, setAadhaarVerifying] = useState(false);
   const [emailOtpSent, setEmailOtpSent] = useState(false);
   const [emailOtp, setEmailOtp] = useState('');
   const [emailVerified, setEmailVerified] = useState(false);
   const [emailVerifying, setEmailVerifying] = useState(false);
+  const [otpResendCooldown, setOtpResendCooldown] = useState(0);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [registrationSecret, setRegistrationSecret] = useState('');
 
@@ -207,11 +293,13 @@ const PlayerRegistrationPage: React.FC = () => {
     && (!needsGuardian || guardianName.trim())
     && (registrationMode === 'new' || existingProfileLoaded);
   const groupEventValidationPassed = selectedEvents
-    .filter(eventType => GROUP_EVENT_OPTIONS.includes(eventType))
+    .filter(eventType => groupEventTypes.includes(eventType))
     .every(eventType => (teamEntries[eventType]?.members ?? []).filter(name => name.trim()).length > 0);
   const canProceedStep1 = !!resolvedTournament && beltColor && weight > 0 && selectedEvents.length > 0 && groupEventValidationPassed;
-  const canProceedStep2 = !!registrationSecret.trim() && (registrationMode === 'new' || !!updateReason.trim());
-  const canContinueGateway = !!resolvedTournament && (registrationMode === 'new' || existingProfileLoaded);
+  const canProceedStep2 = !!registrationSecret.trim()
+    && (registrationMode === 'new' || !!updateReason.trim())
+    && (!requireEmailVerification || emailVerified);
+  const canContinueGateway = !!resolvedTournament && !registrationClosed && (registrationMode === 'new' || existingProfileLoaded);
 
   
    useEffect(() => {
@@ -247,17 +335,54 @@ const PlayerRegistrationPage: React.FC = () => {
     };
   }, [resolvedTournament, ageCategory, gender]);
   
+  // Keep the event selection within what this tournament actually offers
   useEffect(() => {
-    if (!pdfPreviewOpen || pdfDownloaded || autoDownloadIn == null) return;
-    const timer = window.setTimeout(() => {
-      if (autoDownloadIn <= 1) {
-        void triggerPdfDownload();
-      } else {
-        setAutoDownloadIn(autoDownloadIn - 1);
+    if (!registrationConfig) return;
+    setSelectedEvents(prev => {
+      const pruned = prev.filter(e => offeredEventTypes.has(e));
+      if (pruned.length > 0) return pruned.length === prev.length ? prev : pruned;
+      return offeredEventTypes.has('kyorugi') ? ['kyorugi'] : [];
+    });
+  }, [registrationConfig, offeredEventTypes]);
+
+  // Server-authoritative fee quote, refreshed (debounced) whenever the event selection changes
+  useEffect(() => {
+    if (!resolvedTournament || !registrationConfig) {
+      setQuote(null);
+      setQuoteLoading(false);
+      return;
+    }
+    const code = resolvedTournament.tournament_code;
+    const events = selectedEvents.filter(e => offeredEventTypes.has(e));
+    if (events.length === 0) {
+      setQuote(null);
+      setQuoteLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setQuoteLoading(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        const nextQuote = await tournamentService.getQuote(code, events);
+        if (!cancelled) setQuote(nextQuote);
+      } catch {
+        if (!cancelled) setQuote(null);
+      } finally {
+        if (!cancelled) setQuoteLoading(false);
       }
-    }, 1000);
+    }, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [resolvedTournament, registrationConfig, selectedEvents, offeredEventTypes]);
+
+  // OTP resend cooldown ticker
+  useEffect(() => {
+    if (otpResendCooldown <= 0) return;
+    const timer = window.setTimeout(() => setOtpResendCooldown((c) => Math.max(0, c - 1)), 1000);
     return () => window.clearTimeout(timer);
-  }, [pdfPreviewOpen, pdfDownloaded, autoDownloadIn]);
+  }, [otpResendCooldown]);
 
 
 
@@ -279,6 +404,8 @@ const PlayerRegistrationPage: React.FC = () => {
     };
   }, []);
 
+  // ⚠️ MOCK — aadhaar verification is intentionally still a client-side mock
+  // (no real UIDAI integration yet; must be replaced before production).
   const handleMockAadhaarVerify = async () => {
     if (!isValidAadhaarFormat(aadhaarNumber)) {
       toast({ title: 'Invalid Aadhaar', description: 'Must be 12 digits, not starting with 0 or 1', variant: 'destructive' });
@@ -291,13 +418,50 @@ const PlayerRegistrationPage: React.FC = () => {
     toast({ title: 'Aadhaar Verified', description: 'Verification successful (mock)' });
   };
 
+  /** Real email OTP — the code arrives by email, never in the response */
   const handleSendEmailOtp = async () => {
     if (!email.trim()) return;
     setEmailVerifying(true);
-    await new Promise((r) => setTimeout(r, 1500));
-    setEmailOtpSent(true);
-    setEmailVerifying(false);
-    toast({ title: 'OTP Sent', description: `Verification code sent to ${email} (mock)` });
+    try {
+      const result = await verificationService.sendEmailOtp(email.trim(), {
+        tournamentCode: resolvedTournament?.tournament_code ?? (tournamentCodeInput.trim().toUpperCase() || undefined),
+        purpose: 'player_registration',
+      });
+      setEmailOtpSent(true);
+      setEmailOtp('');
+      setOtpResendCooldown(Math.max(0, Math.ceil(Number(result.resendAfterSeconds) || 60)));
+      toast({
+        title: 'OTP Sent',
+        description: `A 6-digit verification code was emailed to ${email.trim()}. It expires at ${fmtDateTime(result.expiresAt)}.`,
+      });
+    } catch (error: any) {
+      if (error?.status === 429) {
+        const retryAfter = Number((error?.details as { retryAfter?: number } | undefined)?.retryAfter);
+        if (Number.isFinite(retryAfter) && retryAfter > 0) {
+          setOtpResendCooldown(Math.ceil(retryAfter));
+        }
+        toast({
+          title: 'Please wait',
+          description: `${String(error?.message || 'Too many requests.')}${Number.isFinite(retryAfter) && retryAfter > 0 ? ` Try again in ${Math.ceil(retryAfter)}s.` : ''}`,
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Could not send OTP',
+          description: String(error?.message || 'Sending the verification email failed. Please try again.'),
+          variant: 'destructive',
+        });
+      }
+    } finally {
+      setEmailVerifying(false);
+    }
+  };
+
+  const OTP_FAILURE_MESSAGES: Record<string, string> = {
+    mismatch: 'Incorrect code. Check the email and try again.',
+    expired: 'This code has expired. Request a new one.',
+    locked: 'Too many wrong attempts. Request a new code.',
+    no_active_code: 'No active code for this email. Request a new one.',
   };
 
   const handleVerifyEmailOtp = async () => {
@@ -306,10 +470,40 @@ const PlayerRegistrationPage: React.FC = () => {
       return;
     }
     setEmailVerifying(true);
-    await new Promise((r) => setTimeout(r, 1000));
-    setEmailVerified(true);
-    setEmailVerifying(false);
-    toast({ title: 'Email Verified', description: 'Email verification successful (mock)' });
+    try {
+      const result = await verificationService.verifyEmailOtp(email.trim(), emailOtp, 'player_registration');
+      if (result.verified === true) {
+        setEmailVerified(true);
+        toast({ title: 'Email Verified', description: 'Your email address has been verified.' });
+      } else {
+        const reason = result.reason ?? 'mismatch';
+        toast({
+          title: 'Verification failed',
+          description: OTP_FAILURE_MESSAGES[reason] ?? 'Verification failed. Please try again.',
+          variant: 'destructive',
+        });
+        if (reason === 'expired' || reason === 'locked' || reason === 'no_active_code') {
+          setEmailOtp('');
+        }
+      }
+    } catch (error: any) {
+      if (error?.status === 429) {
+        const retryAfter = Number((error?.details as { retryAfter?: number } | undefined)?.retryAfter);
+        toast({
+          title: 'Please wait',
+          description: `${String(error?.message || 'Too many attempts.')}${Number.isFinite(retryAfter) && retryAfter > 0 ? ` Try again in ${Math.ceil(retryAfter)}s.` : ''}`,
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Verification failed',
+          description: String(error?.message || 'Could not verify the code. Please try again.'),
+          variant: 'destructive',
+        });
+      }
+    } finally {
+      setEmailVerifying(false);
+    }
   };
 
   function parseRegistrationError(error: any): string {
@@ -361,13 +555,33 @@ const PlayerRegistrationPage: React.FC = () => {
       setAadhaarVerified(Boolean(profile.aadhaarVerified));
       if (profile.aadhaarNumber) {
         setAadhaarNumber(profile.aadhaarNumber);
+        setAadhaarOnFile(false);
+        setAadhaarLast4('');
         setAadhaarVerified(true);
       } else if (profile.aadhaarLast4) {
-        setAadhaarNumber('XXXXXXXX' + profile.aadhaarLast4);
+        // Aadhaar exists server-side but the full number was not returned.
+        // Never stuff a masked value into the editable field (it would fail
+        // the backend pattern on resubmit) — show a read-only chip instead
+        // and omit aadhaarNumber from the payload unless the user re-enters it.
+        setAadhaarNumber('');
+        setAadhaarOnFile(true);
+        setAadhaarLast4(String(profile.aadhaarLast4));
         setAadhaarVerified(true);
+      } else {
+        setAadhaarNumber('');
+        setAadhaarOnFile(false);
+        setAadhaarLast4('');
       }
       setEmailVerified(Boolean(profile.emailVerified));
-      setSelectedEvents(profile.events?.length ? profile.events : ['kyorugi']);
+      const profileEvents = profile.events?.length ? profile.events : ['kyorugi'];
+      const prunedEvents = registrationConfig
+        ? profileEvents.filter((e) => offeredEventTypes.has(e))
+        : profileEvents;
+      setSelectedEvents(
+        prunedEvents.length > 0
+          ? prunedEvents
+          : (offeredEventTypes.has('kyorugi') ? ['kyorugi'] : [])
+      );
       setRegistrationSecret(existingSecretKey.trim());
       setUpdateReason('');
       setExistingProfileLoaded(true);
@@ -386,6 +600,10 @@ const PlayerRegistrationPage: React.FC = () => {
   function handleGatewayContinue() {
     if (!resolvedTournament) {
       setModalError('Please verify tournament code first.');
+      return;
+    }
+    if (registrationClosed) {
+      setModalError('Registration for this tournament is currently closed.');
       return;
     }
     if (registrationMode === 'existing' && !existingProfileLoaded) {
@@ -407,14 +625,14 @@ const PlayerRegistrationPage: React.FC = () => {
       }
       const url = URL.createObjectURL(blob);
       previewBlobRef.current = url;
+      pdfBlobRef.current = blob;
       setPdfPreviewUrl(url);
       setPdfDownloaded(false);
-      setAutoDownloadIn(3);
       setPdfPreviewOpen(true);
     } catch {
       setPdfPreviewOpen(false);
       setPdfPreviewUrl(null);
-      setAutoDownloadIn(null);
+      pdfBlobRef.current = null;
     }
   }
 
@@ -427,7 +645,30 @@ const PlayerRegistrationPage: React.FC = () => {
     anchor.click();
     document.body.removeChild(anchor);
     setPdfDownloaded(true);
-    setAutoDownloadIn(null);
+  }
+
+  // navigator.share with files — available on most mobile browsers, rarely on desktop
+  const canSharePdf = useMemo(() => {
+    if (typeof navigator === 'undefined') return false;
+    const nav = navigator as Navigator & { canShare?: (data: { files: File[] }) => boolean };
+    if (typeof nav.share !== 'function' || typeof nav.canShare !== 'function') return false;
+    try {
+      return nav.canShare({ files: [new File([new Blob()], 'test.pdf', { type: 'application/pdf' })] });
+    } catch {
+      return false;
+    }
+  }, []);
+
+  async function handleSharePdf() {
+    const blob = pdfBlobRef.current;
+    if (!blob || !registeredPlayer) return;
+    const file = new File([blob], `${registeredPlayer.playerCode}-registration-card.pdf`, { type: 'application/pdf' });
+    try {
+      await (navigator as Navigator & { share: (data: { files: File[]; title?: string }) => Promise<void> })
+        .share({ files: [file], title: 'Registration PDF' });
+    } catch {
+      // user cancelled or the share sheet failed — nothing to do
+    }
   }
 
   function handlePdfDialogOpenChange(nextOpen: boolean) {
@@ -464,12 +705,13 @@ const PlayerRegistrationPage: React.FC = () => {
         club: club || undefined,
         coach: coach || undefined,
         experience: experience || undefined,
-        aadhaarNumber: aadhaarNumber || undefined,
+        // Omit aadhaar when it is unchanged/on-file — the profile keeps the stored value
+        aadhaarNumber: aadhaarOnFile ? undefined : (aadhaarNumber || undefined),
         aadhaarVerified, emailVerified,
         dobVerified: aadhaarVerified,
         events: selectedEvents,
         teamEntries: selectedEvents
-          .filter(eventType => GROUP_EVENT_OPTIONS.includes(eventType))
+          .filter(eventType => groupEventTypes.includes(eventType))
           .map<TeamEntryPayload>(eventType => ({
             eventType,
             teamName: teamEntries[eventType]?.teamName?.trim() || undefined,
@@ -496,6 +738,29 @@ const PlayerRegistrationPage: React.FC = () => {
       await preparePdfPreview(player, generatedQr);
       toast({ title: 'Registration Complete', description: `Player code: ${player.playerCode}` });
     } catch (error: any) {
+      const details = error?.details as {
+        code?: string;
+        data?: { opensAt?: string | null; closesAt?: string | null };
+      } | undefined;
+      // Tournament requires a server-side verified email — send the user back to the verification step
+      if (error?.status === 403 && details?.code === 'EMAIL_NOT_VERIFIED') {
+        setEmailVerified(false);
+        setStep(2);
+        toast({
+          title: 'Email verification required',
+          description: 'Verify your email address with the OTP sent to your inbox, then submit again.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      // Registration window closed between page load and submit
+      if (error?.status === 409 && details?.data && (details.data.opensAt || details.data.closesAt)) {
+        const windowMsg = `${String(error?.message || 'Registration is closed.')} Window: ${fmtDateTime(details.data.opensAt)} – ${fmtDateTime(details.data.closesAt)}.`;
+        setModalError(windowMsg);
+        toast({ title: 'Registration closed', description: windowMsg, variant: 'destructive' });
+        void refreshRegistrationConfig();
+        return;
+      }
       const message = parseRegistrationError(error);
       setModalError(message);
       toast({ title: 'Registration failed', description: message, variant: 'destructive' });
@@ -516,17 +781,19 @@ const PlayerRegistrationPage: React.FC = () => {
       URL.revokeObjectURL(previewBlobRef.current);
       previewBlobRef.current = null;
     }
+    pdfBlobRef.current = null;
     setRegisteredPlayer(null); setQrDataUrl(null); setStep(0);
-    setPdfPreviewOpen(false); setPdfPreviewUrl(null); setPdfDownloaded(false); setAutoDownloadIn(null);
+    setPdfPreviewOpen(false); setPdfPreviewUrl(null); setPdfDownloaded(false);
     setFullName(''); setDateOfBirth(''); setPhone(''); setEmail('');
     setGuardianName(''); setBeltColor(''); setDanId(''); setWeight(0);
     setClub(''); setCoach(''); setExperience(''); setAadhaarNumber('');
+    setAadhaarOnFile(false); setAadhaarLast4('');
     setAadhaarVerified(false); setEmailVerified(false); setEmailOtpSent(false);
-    setEmailOtp(''); setTermsAccepted(false);
+    setEmailOtp(''); setOtpResendCooldown(0); setTermsAccepted(false);
     setAddress(''); setState(''); setDistrict(''); setPincode('');
     setOccupation(''); setEducationType('school'); setEducationClass(''); setRegistrationSecret('');
     setUpdateReason('');
-    setSelectedEvents(['kyorugi']);
+    setSelectedEvents(offeredEventTypes.has('kyorugi') ? ['kyorugi'] : []);
     setTeamEntries({});
     setRegistrationMode('new');
     setExistingPlayerCode('');
@@ -535,6 +802,8 @@ const PlayerRegistrationPage: React.FC = () => {
   };
 
   if (registeredPlayer) {
+    // Server-authoritative pricing (lines/subtotal/lateFee ride along at runtime)
+    const serverPricing: ServerPricing | undefined = registeredPlayer.pricing;
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
         <RegistrationTopBar
@@ -566,10 +835,37 @@ const PlayerRegistrationPage: React.FC = () => {
                 <p><span className="font-medium">Name:</span> {registeredPlayer.fullName}</p>
                 <p><span className="font-medium">Category:</span> {registeredPlayer.ageCategory} - {registeredPlayer.weightCategory}</p>
                 <p><span className="font-medium">Belt:</span> {registeredPlayer.beltColor}</p>
-                {registeredPlayer.pricing && <p><span className="font-medium">Registration Fee:</span> Rs. {registeredPlayer.pricing.totalFee}</p>}
+                {serverPricing && <p><span className="font-medium">Registration Fee:</span> Rs. {serverPricing.totalFee}</p>}
                 {registeredPlayer.club && <p><span className="font-medium">Club:</span> {registeredPlayer.club}</p>}
                 {registeredPlayer.state && <p><span className="font-medium">Location:</span> {registeredPlayer.district ? `${registeredPlayer.district}, ` : ''}{registeredPlayer.state}</p>}
               </div>
+              {serverPricing?.lines && serverPricing.lines.length > 0 && (
+                <div className="bg-slate-50 rounded-lg p-4 text-left text-sm space-y-1">
+                  <p className="font-medium text-slate-700 mb-1">Fee Breakdown</p>
+                  {serverPricing.lines.map((line) => (
+                    <div key={line.eventType} className="flex justify-between gap-3 text-slate-600">
+                      <span>{line.label}</span>
+                      <span>₹{line.amount}</span>
+                    </div>
+                  ))}
+                  {serverPricing.subtotal != null && (
+                    <div className="flex justify-between gap-3 border-t pt-1 text-slate-700">
+                      <span>Subtotal</span>
+                      <span>₹{serverPricing.subtotal}</span>
+                    </div>
+                  )}
+                  {serverPricing.lateFee?.applied && (
+                    <div className="flex justify-between gap-3 text-amber-700">
+                      <span>Late registration fee</span>
+                      <span>+₹{serverPricing.lateFee.amount}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between gap-3 border-t pt-1 font-semibold text-slate-900">
+                    <span>Total</span>
+                    <span>₹{serverPricing.totalFee}</span>
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Button
                   variant="outline"
@@ -578,13 +874,18 @@ const PlayerRegistrationPage: React.FC = () => {
                 >
                   Preview Registration PDF
                 </Button>
-                <Button variant="outline" onClick={() => void triggerPdfDownload()} disabled={!pdfPreviewUrl}>
+                <Button onClick={() => void triggerPdfDownload()} disabled={!pdfPreviewUrl}>
                   <Download className="h-4 w-4 mr-2" /> Download PDF
                 </Button>
               </div>
-              {autoDownloadIn != null && !pdfDownloaded && (
-                <p className="text-xs text-slate-500">
-                  Auto-download starts in {autoDownloadIn}s if you do not download manually.
+              {canSharePdf && (
+                <Button variant="outline" className="w-full" onClick={() => void handleSharePdf()} disabled={!pdfPreviewUrl}>
+                  <Share2 className="h-4 w-4 mr-2" /> Share PDF
+                </Button>
+              )}
+              {!pdfDownloaded && pdfPreviewUrl && (
+                <p className="text-xs text-amber-700 font-medium">
+                  Not downloaded yet — download your registration PDF before leaving this page.
                 </p>
               )}
               {pdfDownloaded && (
@@ -602,16 +903,47 @@ const PlayerRegistrationPage: React.FC = () => {
             <DialogHeader>
               <DialogTitle>Registration PDF Preview</DialogTitle>
             </DialogHeader>
-            <div className="h-[calc(90vh-110px)] rounded border overflow-hidden bg-slate-100">
-              {pdfPreviewUrl ? (
-                <iframe title="Registration PDF preview" src={pdfPreviewUrl} className="w-full h-full" />
-              ) : (
+            <div className="h-[calc(90vh-130px)] rounded border overflow-hidden bg-slate-100">
+              {!pdfPreviewUrl ? (
                 <div className="h-full flex items-center justify-center text-sm text-slate-500">PDF preview not available.</div>
+              ) : isMobile ? (
+                <div className="h-full flex flex-col items-center justify-center gap-3 p-6 text-center">
+                  <FileText className="h-12 w-12 text-slate-400" />
+                  <p className="text-sm text-slate-600">PDF preview isn't supported on this device.</p>
+                  <Button onClick={() => void triggerPdfDownload()}>
+                    <Download className="h-4 w-4 mr-2" /> Download PDF
+                  </Button>
+                  {canSharePdf && (
+                    <Button variant="outline" onClick={() => void handleSharePdf()}>
+                      <Share2 className="h-4 w-4 mr-2" /> Share
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <object data={pdfPreviewUrl} type="application/pdf" className="w-full h-full">
+                  <iframe title="Registration PDF preview" src={`${pdfPreviewUrl}#view=FitH`} className="w-full h-full">
+                    <div className="h-full flex flex-col items-center justify-center gap-3 p-6 text-center">
+                      <FileText className="h-12 w-12 text-slate-400" />
+                      <p className="text-sm text-slate-600">PDF preview is not supported on this device.</p>
+                      <Button onClick={() => void triggerPdfDownload()}>
+                        <Download className="h-4 w-4 mr-2" /> Download PDF
+                      </Button>
+                    </div>
+                  </iframe>
+                </object>
               )}
             </div>
-            <div className="flex justify-end">
+            <div className="flex items-center justify-end gap-3">
+              {!pdfDownloaded && pdfPreviewUrl && (
+                <span className="text-xs text-amber-700 font-medium">Not downloaded yet</span>
+              )}
+              {canSharePdf && (
+                <Button variant="outline" onClick={() => void handleSharePdf()} disabled={!pdfPreviewUrl}>
+                  <Share2 className="h-4 w-4 mr-2" /> Share
+                </Button>
+              )}
               <Button onClick={() => void triggerPdfDownload()} disabled={!pdfPreviewUrl}>
-                <Download className="h-4 w-4 mr-2" /> Download
+                <Download className="h-4 w-4 mr-2" /> Download PDF
               </Button>
             </div>
           </DialogContent>
@@ -640,13 +972,15 @@ const PlayerRegistrationPage: React.FC = () => {
         <aside className="lg:col-span-3 space-y-4 h-full overflow-y-auto pr-1">
           <RegistrationInfoPanel
             tournament={resolvedTournament}
-            pricing={pricingPreview}
+            config={registrationConfig}
             registrationMode={registrationMode}
             existingProfileLoaded={existingProfileLoaded}
             registrationReady={registrationReady}
             onOpenSetup={() => setGatewayOpen(true)}
             onChangeTournament={() => {
               setResolvedTournament(null);
+              setRegistrationConfig(null);
+              setQuote(null);
               setTournamentError('');
               setRegistrationReady(false);
               setGatewayOpen(true);
@@ -663,7 +997,66 @@ const PlayerRegistrationPage: React.FC = () => {
 
         {/* Right (70%) — actual stepped form */}
         <div className="lg:col-span-7 h-full overflow-y-auto pr-1">
-        
+
+        {registrationClosed ? (
+          <Card className="border-red-200">
+            <CardHeader>
+              <CardTitle className="text-lg text-red-700 flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5" /> Registration Closed
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <p className="text-slate-700">
+                {registration?.reason || 'Registration for this tournament is not currently open.'}
+              </p>
+              <div className="rounded-lg border bg-slate-50 p-3 space-y-1 text-slate-600">
+                <div className="flex justify-between gap-3">
+                  <span>Opens</span>
+                  <span className="font-medium">{fmtDateTime(registration?.opensAt)}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>Closes</span>
+                  <span className="font-medium">{fmtDateTime(registration?.closesAt)}</span>
+                </div>
+                {registration?.lateClosesAt && (
+                  <div className="flex justify-between gap-3">
+                    <span>Late window closes</span>
+                    <span className="font-medium">{fmtDateTime(registration.lateClosesAt)}</span>
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-slate-500">Contact the organizer if you believe this is an error.</p>
+            </CardContent>
+          </Card>
+        ) : (
+        <>
+
+        {registration?.isOpen && (registration.isLateWindow ? registration.lateClosesAt : registration.closesAt) && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3 text-sm text-blue-800 flex items-center gap-2">
+            <Clock className="h-4 w-4 flex-shrink-0" />
+            <span>
+              {registration.isLateWindow
+                ? `Late registration closes ${fmtDateTime(registration.lateClosesAt)}`
+                : `Registration closes ${fmtDateTime(registration.closesAt)}`}
+              {(() => {
+                const remaining = formatRemaining(
+                  registration.isLateWindow ? registration.lateClosesAt : registration.closesAt,
+                  serverNowMs
+                );
+                return remaining ? ` (${remaining})` : '';
+              })()}
+            </span>
+          </div>
+        )}
+        {registration?.isOpen && registration.isLateWindow && (
+          <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 mb-3 text-sm text-amber-800 flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+            <span>
+              Late registration — ₹{registrationConfig?.fees.lateFeeAmount ?? 0} late fee applies
+              {registrationConfig?.fees.lateFeeMode === 'per_event' ? ' per event' : ''}.
+            </span>
+          </div>
+        )}
 
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 text-sm text-blue-800">
           Your details are collected exclusively for tournament organization and verification purposes.
@@ -730,7 +1123,20 @@ const PlayerRegistrationPage: React.FC = () => {
                   </div>
                   <div>
                     <Label htmlFor="email">Email *</Label>
-                    <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" className={`mt-1 ${showErrors && !email.trim() ? 'border-red-400 ring-1 ring-red-400' : ''}`} />
+                    <Input
+                      id="email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        // A different address must be verified again
+                        setEmailVerified(false);
+                        setEmailOtpSent(false);
+                        setEmailOtp('');
+                      }}
+                      placeholder="your@email.com"
+                      className={`mt-1 ${showErrors && !email.trim() ? 'border-red-400 ring-1 ring-red-400' : ''}`}
+                    />
                     {showErrors && !email.trim() && <p className="text-xs text-red-500 mt-1">Email is required</p>}
                   </div>
                 </div>
@@ -834,7 +1240,7 @@ const PlayerRegistrationPage: React.FC = () => {
                   <Label className="font-medium">Events to Participate *</Label>
                   <p className="text-xs text-slate-500 mt-0.5 mb-2">Select all events you will compete in</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {EVENT_OPTIONS.map(opt => (
+                    {eventOptions.map(opt => (
                       <label key={opt.value} className={`flex items-center gap-2 border rounded-lg px-3 py-2.5 cursor-pointer transition-colors ${
                         selectedEvents.includes(opt.value) ? 'bg-blue-50 border-blue-300' : 'hover:bg-slate-50'
                       }`}>
@@ -842,17 +1248,21 @@ const PlayerRegistrationPage: React.FC = () => {
                           checked={selectedEvents.includes(opt.value)}
                           onCheckedChange={() => toggleEvent(opt.value)}
                         />
-                        <span className="text-sm">{opt.label}</span>
+                        <span className="text-sm flex-1">{opt.label}</span>
+                        <span className="text-xs text-slate-500">₹{opt.fee}</span>
                       </label>
                     ))}
                   </div>
+                  {eventOptions.length === 0 && (
+                    <p className="text-xs text-slate-500 mt-1">No events are configured for this tournament yet. Contact the organizer.</p>
+                  )}
                   {showErrors && selectedEvents.length === 0 && (
                     <p className="text-xs text-red-500 mt-1">Please select at least one event</p>
                   )}
                 </div>
-                {selectedEvents.filter(eventType => GROUP_EVENT_OPTIONS.includes(eventType)).map(eventType => {
+                {selectedEvents.filter(eventType => groupEventTypes.includes(eventType)).map(eventType => {
                   const teamEntry = teamEntries[eventType] ?? { teamName: '', members: [''] };
-                  const label = EVENT_OPTIONS.find(option => option.value === eventType)?.label || eventType;
+                  const label = eventOptions.find(option => option.value === eventType)?.label || eventType;
                   return (
                     <div key={eventType} className="border-t pt-4 space-y-3">
                       <div>
@@ -937,19 +1347,40 @@ const PlayerRegistrationPage: React.FC = () => {
                 })}
                 {resolvedTournament && (
                   <div className="rounded-lg border bg-slate-50 p-3 text-sm">
-                    <p className="font-medium text-slate-700 mb-2">Pricing Preview</p>
-                    <div className="space-y-1 text-slate-600">
-                      {selectedEvents.map((eventType, index) => (
-                        <div key={eventType} className="flex justify-between gap-3">
-                          <span>{EVENT_OPTIONS.find(option => option.value === eventType)?.label || eventType}</span>
-                          <span>Rs. {pricingPreview.eventFees[index] ?? 0}</span>
-                        </div>
-                      ))}
-                      <div className="flex justify-between gap-3 border-t pt-2 font-semibold text-slate-900">
-                        <span>Total</span>
-                        <span>Rs. {pricingPreview.totalFee}</span>
-                      </div>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="font-medium text-slate-700">Pricing Preview</p>
+                      {quoteLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />}
                     </div>
+                    {quote ? (
+                      <div className="space-y-1 text-slate-600">
+                        {quote.lines.map((line) => (
+                          <div key={line.eventType} className="flex justify-between gap-3">
+                            <span>{line.label}</span>
+                            <span>₹{line.amount}</span>
+                          </div>
+                        ))}
+                        <div className="flex justify-between gap-3 border-t pt-2 text-slate-700">
+                          <span>Subtotal</span>
+                          <span>₹{quote.subtotal}</span>
+                        </div>
+                        {quote.lateFee.applied && (
+                          <div className="flex justify-between gap-3 text-amber-700">
+                            <span>Late registration fee</span>
+                            <span>+₹{quote.lateFee.amount}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between gap-3 border-t pt-2 font-semibold text-slate-900">
+                          <span>Total</span>
+                          <span>₹{quote.total}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-500">
+                        {selectedEvents.length === 0
+                          ? 'Select at least one event to see pricing.'
+                          : 'Fetching fees from the server…'}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -1010,33 +1441,76 @@ const PlayerRegistrationPage: React.FC = () => {
 
                 <div>
                   <Label htmlFor="aadhaar">Aadhaar Number</Label>
-                  <div className="flex gap-2 mt-1">
-                    <Input id="aadhaar" value={aadhaarNumber} onChange={(e) => setAadhaarNumber(e.target.value.replace(/\D/g, '').slice(0, 12))} placeholder="12-digit Aadhaar" disabled={aadhaarVerified} className="flex-1" />
-                    <Button onClick={handleMockAadhaarVerify} disabled={aadhaarVerified || aadhaarVerifying || aadhaarNumber.length !== 12} size="sm">
-                      {aadhaarVerifying ? <Loader2 className="h-4 w-4 animate-spin" /> : aadhaarVerified ? <CheckCircle className="h-4 w-4 text-green-500" /> : 'Verify'}
-                    </Button>
-                  </div>
-                  {aadhaarVerified && <p className="text-xs text-green-600 mt-1">Aadhaar verified successfully</p>}
-                </div>
-                <div>
-                  <Label>Email Verification</Label>
-                  {!emailOtpSent ? (
-                    <Button onClick={handleSendEmailOtp} disabled={emailVerifying || !email.trim()} variant="outline" size="sm" className="mt-1 w-full">
-                      {emailVerifying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                      Send OTP to {email || '...'}
-                    </Button>
-                  ) : !emailVerified ? (
-                    <div className="flex gap-2 mt-1">
-                      <Input value={emailOtp} onChange={(e) => setEmailOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="6-digit OTP" className="flex-1" />
-                      <Button onClick={handleVerifyEmailOtp} disabled={emailVerifying || emailOtp.length !== 6} size="sm">
-                        {emailVerifying ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Verify'}
+                  {aadhaarOnFile ? (
+                    <div className="mt-1 flex flex-wrap items-center justify-between gap-2 rounded-md border bg-slate-50 px-3 py-2">
+                      <span className="text-sm text-slate-700">
+                        Aadhaar on file: <span className="font-mono">••••-••••-{aadhaarLast4}</span>
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setAadhaarOnFile(false);
+                          setAadhaarLast4('');
+                          setAadhaarNumber('');
+                          setAadhaarVerified(false);
+                        }}
+                      >
+                        Enter a different number
                       </Button>
                     </div>
                   ) : (
+                    <div className="flex gap-2 mt-1">
+                      <Input id="aadhaar" value={aadhaarNumber} onChange={(e) => setAadhaarNumber(e.target.value.replace(/\D/g, '').slice(0, 12))} placeholder="12-digit Aadhaar" disabled={aadhaarVerified} className="flex-1" />
+                      <Button onClick={handleMockAadhaarVerify} disabled={aadhaarVerified || aadhaarVerifying || aadhaarNumber.length !== 12} size="sm">
+                        {aadhaarVerifying ? <Loader2 className="h-4 w-4 animate-spin" /> : aadhaarVerified ? <CheckCircle className="h-4 w-4 text-green-500" /> : 'Verify'}
+                      </Button>
+                    </div>
+                  )}
+                  {aadhaarVerified && <p className="text-xs text-green-600 mt-1">Aadhaar verified successfully</p>}
+                </div>
+                <div>
+                  <Label>Email Verification {requireEmailVerification && <span className="text-red-500">*</span>}</Label>
+                  {emailVerified ? (
                     <p className="text-xs text-green-600 mt-1 flex items-center gap-1"><CheckCircle className="h-3 w-3" /> Email verified</p>
+                  ) : !emailOtpSent ? (
+                    <Button onClick={handleSendEmailOtp} disabled={emailVerifying || !email.trim() || otpResendCooldown > 0} variant="outline" size="sm" className="mt-1 w-full">
+                      {emailVerifying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                      {otpResendCooldown > 0 ? `Resend available in ${otpResendCooldown}s` : `Send OTP to ${email || '...'}`}
+                    </Button>
+                  ) : (
+                    <div className="space-y-2 mt-1">
+                      <div className="flex gap-2">
+                        <Input value={emailOtp} onChange={(e) => setEmailOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="6-digit code from your email" className="flex-1" />
+                        <Button onClick={handleVerifyEmailOtp} disabled={emailVerifying || emailOtp.length !== 6} size="sm">
+                          {emailVerifying ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Verify'}
+                        </Button>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs text-slate-500">Code sent to {email}. Check your inbox (and spam folder).</p>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-xs shrink-0"
+                          onClick={handleSendEmailOtp}
+                          disabled={emailVerifying || otpResendCooldown > 0}
+                        >
+                          {otpResendCooldown > 0 ? `Resend in ${otpResendCooldown}s` : 'Resend code'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  {showErrors && requireEmailVerification && !emailVerified && (
+                    <p className="text-xs text-red-500 mt-1">Email verification is required for this tournament.</p>
                   )}
                 </div>
-                <p className="text-xs text-slate-400 mt-4">Verification is optional but recommended.</p>
+                <p className="text-xs text-slate-400 mt-4">
+                  {requireEmailVerification
+                    ? 'This tournament requires email verification before you can submit.'
+                    : 'Verification is optional but recommended.'}
+                </p>
               </div>
             )}
 
@@ -1080,7 +1554,7 @@ const PlayerRegistrationPage: React.FC = () => {
                       {coach && <div className="flex justify-between sm:block"><span className="text-slate-500">Coach</span><span className="font-medium sm:ml-2">{coach}</span></div>}
                       {experience && <div className="flex justify-between sm:block"><span className="text-slate-500">Experience</span><span className="font-medium sm:ml-2">{experience}</span></div>}
                       {resolvedTournament && <div className="flex justify-between sm:block"><span className="text-slate-500">Tournament</span><span className="font-medium sm:ml-2">{resolvedTournament.name}</span></div>}
-                      {resolvedTournament && <div className="flex justify-between sm:block"><span className="text-slate-500">Registration Fee</span><span className="font-medium sm:ml-2">Rs. {pricingPreview.totalFee}</span></div>}
+                      {resolvedTournament && <div className="flex justify-between sm:block"><span className="text-slate-500">Registration Fee</span><span className="font-medium sm:ml-2">{quote ? `Rs. ${quote.total}` : '—'}</span></div>}
                     </div>
                   </div>
                   <div className="border-t pt-2 mt-2 space-y-1">
@@ -1100,19 +1574,46 @@ const PlayerRegistrationPage: React.FC = () => {
                       {selectedEvents.length > 0
                         ? selectedEvents.map(e => (
                             <Badge key={e} variant="secondary" className="capitalize">
-                              {EVENT_OPTIONS.find(o => o.value === e)?.label || e}
+                              {eventOptions.find(o => o.value === e)?.label || e}
                             </Badge>
                           ))
                         : <span className="text-xs text-red-500">No events selected</span>
                       }
                     </div>
                   </div>
-                  {selectedEvents.filter(eventType => GROUP_EVENT_OPTIONS.includes(eventType)).length > 0 && (
+                  {quote && (
+                    <div className="border-t pt-3 mt-2">
+                      <p className="text-slate-500 text-xs font-medium mb-2">Fee Breakdown (server-calculated)</p>
+                      <div className="space-y-1">
+                        {quote.lines.map((line) => (
+                          <div key={line.eventType} className="flex justify-between gap-3 text-slate-600">
+                            <span>{line.label}</span>
+                            <span>₹{line.amount}</span>
+                          </div>
+                        ))}
+                        <div className="flex justify-between gap-3 border-t pt-1 text-slate-700">
+                          <span>Subtotal</span>
+                          <span>₹{quote.subtotal}</span>
+                        </div>
+                        {quote.lateFee.applied && (
+                          <div className="flex justify-between gap-3 text-amber-700">
+                            <span>Late registration fee</span>
+                            <span>+₹{quote.lateFee.amount}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between gap-3 border-t pt-1 font-semibold text-slate-900">
+                          <span>Total</span>
+                          <span>₹{quote.total}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {selectedEvents.filter(eventType => groupEventTypes.includes(eventType)).length > 0 && (
                     <div className="border-t pt-3 mt-2 space-y-2">
                       <p className="text-slate-500 text-xs font-medium">Group Event Members</p>
-                      {selectedEvents.filter(eventType => GROUP_EVENT_OPTIONS.includes(eventType)).map(eventType => (
+                      {selectedEvents.filter(eventType => groupEventTypes.includes(eventType)).map(eventType => (
                         <div key={eventType} className="text-xs text-slate-700">
-                          <span className="font-medium">{EVENT_OPTIONS.find(option => option.value === eventType)?.label || eventType}:</span>
+                          <span className="font-medium">{eventOptions.find(option => option.value === eventType)?.label || eventType}:</span>
                           <span className="ml-2">{(teamEntries[eventType]?.members ?? []).filter(Boolean).join(', ') || 'No members added'}</span>
                         </div>
                       ))}
@@ -1155,6 +1656,9 @@ const PlayerRegistrationPage: React.FC = () => {
             </div>
           </CardContent>
         </Card>
+
+        </>
+        )}
         </div>
       </div>
       </div>
@@ -1172,6 +1676,7 @@ const PlayerRegistrationPage: React.FC = () => {
         loadingExistingProfile={loadingExistingProfile}
         existingProfileLoaded={existingProfileLoaded}
         canContinue={canContinueGateway}
+        registrationClosed={registrationClosed}
         onOpenChange={(next) => {
           if (next) {
             setGatewayOpen(true);
@@ -1261,6 +1766,7 @@ const RegistrationGatewayDialog: React.FC<{
   loadingExistingProfile: boolean;
   existingProfileLoaded: boolean;
   canContinue: boolean;
+  registrationClosed: boolean;
   onOpenChange: (open: boolean) => void;
   onTournamentCodeInputChange: (value: string) => void;
   onRegistrationModeChange: (value: 'new' | 'existing') => void;
@@ -1283,6 +1789,7 @@ const RegistrationGatewayDialog: React.FC<{
   loadingExistingProfile,
   existingProfileLoaded,
   canContinue,
+  registrationClosed,
   onOpenChange,
   onTournamentCodeInputChange,
   onRegistrationModeChange,
@@ -1324,6 +1831,11 @@ const RegistrationGatewayDialog: React.FC<{
             <p className="font-semibold text-slate-800">{tournament.name}</p>
             <p className="text-slate-600">Code: <span className="font-mono">{tournament.tournament_code}</span></p>
             <p className="text-slate-600">{tournament.start_date} to {tournament.end_date}</p>
+            {registrationClosed && (
+              <p className="text-xs text-red-600 font-medium">
+                Registration is currently closed for this tournament.
+              </p>
+            )}
 
             <div className="border-t pt-3 space-y-2">
               <Label className="text-xs uppercase text-slate-500">Registration Type</Label>
@@ -1396,7 +1908,7 @@ const RegistrationGatewayDialog: React.FC<{
 
 const RegistrationInfoPanel: React.FC<{
   tournament: Tournament | null;
-  pricing: { firstEventFee: number; additionalEventFee: number; totalFee: number };
+  config: RegistrationConfig | null;
   registrationMode: 'new' | 'existing';
   existingProfileLoaded: boolean;
   registrationReady: boolean;
@@ -1404,7 +1916,7 @@ const RegistrationInfoPanel: React.FC<{
   onChangeTournament: () => void;
 }> = ({
   tournament,
-  pricing,
+  config,
   registrationMode,
   existingProfileLoaded,
   registrationReady,
@@ -1482,9 +1994,24 @@ const RegistrationInfoPanel: React.FC<{
                 <p className="text-slate-700 whitespace-pre-line">{tournament.registration_instructions}</p>
               </div>
             )}
-            <div className="border-t pt-2 mt-2 text-slate-700">
-              <div className="flex justify-between"><span>First event</span><span>₹ {pricing.firstEventFee}</span></div>
-              <div className="flex justify-between"><span>Additional event</span><span>₹ {pricing.additionalEventFee}</span></div>
+            <div className="border-t pt-2 mt-2 text-slate-700 space-y-1">
+              <p className="text-slate-400">Event fees:</p>
+              {config?.events?.length ? (
+                config.events.map((event) => (
+                  <div key={event.eventType} className="flex justify-between">
+                    <span>{event.name}</span>
+                    <span>₹ {event.fee}</span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-xs text-slate-500">Fee details unavailable.</p>
+              )}
+              {config && config.fees.lateFeeAmount > 0 && (
+                <div className="flex justify-between text-amber-700">
+                  <span>Late fee{config.fees.lateFeeMode === 'per_event' ? ' (per event)' : ''}</span>
+                  <span>₹ {config.fees.lateFeeAmount}</span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

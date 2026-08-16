@@ -259,9 +259,16 @@ export default function VerifyPage() {
       setPlayer(data);
       if (data.player.weight_kg) setWeight(String(data.player.weight_kg));
       if (!data.checkin) {
-        const calculatedFee = data.events.reduce((sum, event) => sum + Number(event.entry_fee_paid ?? 0), 0);
-        if (calculatedFee > 0) {
-          setTotalFee(String(calculatedFee));
+        // Server-computed amount due (includes any late fee) takes priority;
+        // fall back to summing per-event fees for older responses.
+        const amountDue = (data as CheckinPlayer & { amount_due?: number | string | null }).amount_due;
+        if (amountDue != null && Number.isFinite(Number(amountDue))) {
+          setTotalFee(String(Number(amountDue)));
+        } else {
+          const calculatedFee = data.events.reduce((sum, event) => sum + Number(event.entry_fee_paid ?? 0), 0);
+          if (calculatedFee > 0) {
+            setTotalFee(String(calculatedFee));
+          }
         }
       }
     } catch (e: any) {
